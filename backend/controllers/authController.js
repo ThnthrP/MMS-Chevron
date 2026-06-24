@@ -4,6 +4,15 @@ import prisma from "../config/prisma.js";
 import transporter from "../config/nodemailer.js";
 import { PASSWORD_RESET_TEMPLATE } from "../config/emailTemplates.js";
 
+const isProd = process.env.NODE_ENV === "production";
+
+const cookieOptions = {
+  httpOnly: true,
+  secure: isProd, // prod(https)=true, local(http)=false
+  sameSite: isProd ? "none" : "lax", // cross-site ต้อง none
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+};
+
 // ================= REGISTER =================
 export const register = async (req, res) => {
   const { name, email, password } = req.body;
@@ -109,12 +118,14 @@ export const login = async (req, res) => {
       },
     );
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: false,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    // res.cookie("token", token, {
+    //   httpOnly: true,
+    //   sameSite: "lax",
+    //   secure: false,
+    //   maxAge: 7 * 24 * 60 * 60 * 1000,
+    // });
+
+    res.cookie("token", token, cookieOptions);
 
     return res.json({
       success: true,
@@ -144,7 +155,13 @@ export const login = async (req, res) => {
 // ================= LOGOUT =================
 export const logout = async (req, res) => {
   try {
-    res.clearCookie("token");
+    // res.clearCookie("token");
+
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+    });
 
     return res.json({
       success: true,
