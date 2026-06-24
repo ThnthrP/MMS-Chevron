@@ -12,9 +12,6 @@ export default function TrainingMatrix() {
   const { backendUrl } = useContext(AppContent);
   const [positionGroups, setPositionGroups] = useState([]);
 
-  // ==========================
-  // Load Contracts
-  // ==========================
   useEffect(() => {
     fetchContracts();
   }, []);
@@ -36,9 +33,6 @@ export default function TrainingMatrix() {
     }
   };
 
-  // ==========================
-  // Load Positions
-  // ==========================
   const fetchPositions = async (contractId) => {
     try {
       const res = await axios.get(
@@ -51,9 +45,6 @@ export default function TrainingMatrix() {
     }
   };
 
-  // ==========================
-  // Search Requirements
-  // ==========================
   const loadRequirements = async () => {
     if (!selectedContract) return;
     try {
@@ -76,13 +67,10 @@ export default function TrainingMatrix() {
     }
   };
 
-  // 💡 จัดฟอร์แมตข้อมูลส่งให้ช่องพิมพ์ค้นหา Client (React Select)
   const contractOptions = contracts.map((c) => ({
     value: c.id,
     label: c.name,
   }));
-
-  // 💡 จัดฟอร์แมตข้อมูลส่งให้ช่องพิมพ์ค้นหา Position (React Select)
   const positionOptions = [
     { value: "", label: "All Positions" },
     ...positions.map((p) => ({ value: p.id, label: p.name })),
@@ -95,9 +83,6 @@ export default function TrainingMatrix() {
   const selectedPositionName =
     positions.find((p) => p.id === selectedPosition)?.name || "-";
 
-  // ==========================
-  // Badge Color (ตัวหนังสือสีดำเข้มทั้งหมด)
-  // ==========================
   const getRequirementBadge = (type) => {
     switch (type) {
       case "mandatory":
@@ -111,30 +96,87 @@ export default function TrainingMatrix() {
     }
   };
 
-  // 💡 สไตล์กล่องพิมพ์ค้นหาให้เข้ากลุ่มดีไซน์สไตล์ Bootstrap
   const customSelectStyles = {
     control: (provided) => ({
       ...provided,
       borderColor: "#dee2e6",
-      borderRadius: "0.375rem",
-      padding: "0.15rem 0",
+      borderRadius: "8px",
+      minHeight: "38px",
+      fontSize: "13px",
       boxShadow: "none",
       "&:hover": { borderColor: "#86b7fe" },
     }),
+    option: (provided) => ({ ...provided, fontSize: "13px" }),
+    placeholder: (provided) => ({
+      ...provided,
+      fontSize: "13px",
+      color: "#6c757d",
+    }),
   };
 
-  return (
-    <div className="container-fluid p-0">
-      <h3 className="mb-4 fw-bold text-dark">Training Matrix</h3>
+  const selectedContractLabel =
+    contractOptions.find((o) => o.value === selectedContract)?.label || "";
 
-      {/* Filters Section */}
-      <div className="card shadow-sm mb-4 border-0">
-        <div className="card-body bg-white rounded">
-          <div className="row g-3">
-            {/* 🌟 ปรับปรุง: เปลี่ยนช่องเลือก Client เป็นกล่องอัจฉริยะ (React-Select) สามารถพิมพ์ค้นหาได้ */}
-            <div className="col-md-6">
-              <label className="form-label fw-semibold text-secondary">
-                Client
+  return (
+    <div className="container-fluid p-4">
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+        {/* Header Card */}
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #dee2e6",
+            borderRadius: "10px",
+            padding: "16px 24px",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              marginBottom: "4px",
+            }}
+          >
+            <span style={{ fontSize: "18px" }}>☑️</span>
+            <span style={{ fontSize: "18px", fontWeight: 700 }}>
+              Training Matrix — Client Requirements
+            </span>
+          </div>
+          <div style={{ fontSize: "13px", color: "#6c757d" }}>
+            Required certifications per position for offshore eligibility (PTTEP
+            & Chevron)
+          </div>
+        </div>
+
+        {/* Filter Card */}
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #dee2e6",
+            borderRadius: "10px",
+            padding: "16px 24px",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "20px",
+            }}
+          >
+            <div>
+              <label
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#212529",
+                  marginBottom: "6px",
+                  display: "block",
+                }}
+              >
+                Select Client
               </label>
               <Select
                 options={contractOptions}
@@ -147,22 +189,26 @@ export default function TrainingMatrix() {
                 onChange={(selectedOpt) => {
                   const value = selectedOpt ? selectedOpt.value : "";
                   setSelectedContract(value);
-                  setSelectedPosition(""); // ล้างค่าตำแหน่งเดิมเมื่อเปลี่ยนสัญญา
+                  setSelectedPosition("");
                   setPositionGroups([]);
-                  if (value) {
-                    fetchPositions(value);
-                  }
+                  if (value) fetchPositions(value);
                 }}
                 placeholder="Type to search Client..."
                 isClearable
                 noOptionsMessage={() => "No clients found"}
               />
             </div>
-
-            {/* ช่องพิมพ์ค้นหา และ เลือกตำแหน่ง */}
-            <div className="col-md-6">
-              <label className="form-label fw-semibold text-secondary">
-                Position
+            <div>
+              <label
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#212529",
+                  marginBottom: "6px",
+                  display: "block",
+                }}
+              >
+                Search Position
               </label>
               <Select
                 options={positionOptions}
@@ -175,163 +221,129 @@ export default function TrainingMatrix() {
                 onChange={(selectedOpt) =>
                   setSelectedPosition(selectedOpt ? selectedOpt.value : "")
                 }
-                placeholder="Type to search... (e.g. Welder, Supervisor)"
+                placeholder="🔍 e.g. Welder, Rigger, Scaffolder..."
                 isClearable
                 noOptionsMessage={() => "No positions found"}
               />
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Summary Cards */}
-      <div className="row mb-4 g-3">
-        <div className="col-md-6">
-          <div className="card border-0 shadow-sm">
-            <div className="card-body">
-              <small className="text-muted text-uppercase fw-bold">
-                Active Position
-              </small>
-              <div className="fs-4 fw-bold text-primary mt-1">
-                {selectedPositionName}
-              </div>
-            </div>
+        {/* Output Area */}
+        {loading ? (
+          <div
+            style={{ textAlign: "center", padding: "60px", color: "#6c757d" }}
+          >
+            Loading Training Matrix...
           </div>
-        </div>
-        <div className="col-md-6">
-          <div className="card border-0 shadow-sm">
-            <div className="card-body">
-              <small className="text-muted text-uppercase fw-bold">
-                Total Trainings Required
-              </small>
-              <div className="fs-4 fw-bold text-success mt-1">
-                {positionGroups.reduce(
-                  (sum, group) => sum + group.requirements.length,
-                  0,
-                )}
-              </div>
-            </div>
+        ) : filteredGroups.length === 0 ? (
+          <div
+            style={{
+              textAlign: "center",
+              padding: "60px",
+              color: "#6c757d",
+              fontSize: "14px",
+            }}
+          >
+            Please select a Client and Position to view the data.
           </div>
-        </div>
-      </div>
-
-      {/* Output Area */}
-      <div className="card shadow-sm border-0">
-        <div className="card-body p-4">
-          {/* คำอธิบายความหมาย (Legend Box) แยกสัดส่วนและแก้ไขสีแถบให้ถูกต้องตามโค้ด */}
-          <div className="card bg-light border-0 mb-4 rounded-3 shadow-sm">
-            <div className="card-body py-3 px-4">
-              <div className="d-flex flex-wrap align-items-center gap-3">
-                <span
-                  className="fw-bold text-dark me-2"
-                  style={{ fontSize: "0.9rem" }}
-                >
-                  💡 Requirement Definitions:
-                </span>
+        ) : (
+          filteredGroups.map((group) => (
+            <div
+              key={group.positionId}
+              style={{
+                background: "#fff",
+                border: "1px solid #dee2e6",
+                borderRadius: "10px",
+                marginBottom: "1.5rem",
+                overflow: "hidden",
+              }}
+            >
+              {/* Group Header */}
+              <div
+                style={{
+                  padding: "14px 24px",
+                  borderBottom: "1px solid #dee2e6",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
                 <div
-                  className="d-flex flex-wrap align-items-center gap-3"
-                  style={{ fontSize: "0.85rem" }}
+                  style={{ display: "flex", alignItems: "center", gap: "12px" }}
                 >
-                  <span className="d-inline-flex align-items-center gap-1 text-dark fw-medium">
-                    <span className="badge bg-danger px-2 py-1 text-dark">
-                      Mandatory = Required for all personnel
-                    </span>{" "}
-                    |
-                  </span>{" "}
-                  <span className="d-inline-flex align-items-center gap-1 text-dark fw-medium">
-                    <span className="badge bg-primary px-2 py-1 text-dark">
-                      Required = Minimum requirement by client matrix
-                    </span>{" "}
-                    |
-                  </span>{" "}
-                  <span className="d-inline-flex align-items-center gap-1 text-dark fw-medium">
-                    <span className="badge bg-warning px-2 py-1 text-dark">
-                      Assigned = Required as assigned by company
-                    </span>{" "}
-                    |
-                  </span>{" "}
-                  <span className="d-inline-flex align-items-center gap-1 text-dark fw-medium">
-                    <span className="badge bg-warning px-2 py-1 text-dark">
-                      Relevant = Applicable to related personnel
-                    </span>{" "}
+                  <span style={{ fontWeight: 700, fontSize: "16px" }}>
+                    {group.positionName}
                   </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="text-center py-5">
-              <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Loading...</span>
-              </div>
-              <p className="text-muted mt-2">Loading Training Matrix...</p>
-            </div>
-          ) : filteredGroups.length === 0 ? (
-            <div className="text-center py-5 text-muted">
-              Please select a Client and Position to view the data.
-            </div>
-          ) : (
-            <div className="w-full">
-              {filteredGroups.map((group) => (
-                <div
-                  key={group.positionId}
-                  className="card shadow-sm mb-4 border-light"
-                >
-                  <div className="card-header bg-light d-flex justify-content-between align-items-center">
-                    <span className="fw-bold text-dark">
-                      {group.positionName} :
-                    </span>{" "}
-                    <span className="badge bg-dark rounded-pill">
-                      {group.requirements.length} Courses
+                  {selectedContractLabel && (
+                    <span
+                      style={{
+                        background: "#055160",
+                        color: "#fff",
+                        borderRadius: "6px",
+                        padding: "3px 10px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {selectedContractLabel}
                     </span>
-                  </div>
-
-                  <div className="card-body p-0">
-                    <div className="table-responsive">
-                      <table className="table table-hover mb-0 align-middle">
-                        <thead className="table-light">
-                          <tr>
-                            <th width="50%" className="text-dark fw-bold ps-4">
-                              Training Course
-                            </th>
-                            <th
-                              width="50%"
-                              className="text-dark fw-bold text-center"
-                            >
-                              <div className="d-inline-flex align-items-center justify-content-center gap-2 flex-wrap">
-                                <span>Requirement Type</span>
-                              </div>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.requirements.map((item) => (
-                            <tr key={item.id}>
-                              <td
-                                className="fw-medium text-dark ps-4"
-                                style={{ color: "#212529" }}
-                              >
-                                {item.trainingName}
-                              </td>
-                              <td className="text-center">
-                                <span
-                                  className={`badge ${getRequirementBadge(item.requirementType)} px-3 py-1.5`}
-                                >
-                                  {item.requirementType}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                  )}
                 </div>
-              ))}
+                <span
+                  style={{
+                    background: "#212529",
+                    color: "#fff",
+                    borderRadius: "6px",
+                    padding: "3px 12px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                  }}
+                >
+                  {group.requirements.length} required
+                </span>
+              </div>
+
+              {/* Requirements List — 2 columns */}
+              <div style={{ padding: "16px 24px" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "2px",
+                  }}
+                >
+                  {group.requirements.map((item, i) => (
+                    <div
+                      key={item.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "8px",
+                        padding: "8px 4px",
+                        borderBottom: "1px solid #f1f3f5",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "13px",
+                          color: "#6c757d",
+                          fontWeight: 600,
+                          minWidth: "24px",
+                        }}
+                      >
+                        {i + 1}.
+                      </span>
+                      <span style={{ fontSize: "13px", color: "#212529" }}>
+                        {item.trainingName}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+          ))
+        )}
       </div>
     </div>
   );

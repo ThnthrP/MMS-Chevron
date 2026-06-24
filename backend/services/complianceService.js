@@ -21,11 +21,9 @@ export async function getComplianceDashboard() {
       medicalChecks: true,
     },
     orderBy: {
-      fullName: "asc",
+      empCode: "asc",
     },
   });
-
-  console.log("Compliance Dashboard Employees:", employees.length);
 
   const requirements = await prisma.positionRequirement.findMany({
     include: {
@@ -42,8 +40,6 @@ export async function getComplianceDashboard() {
       },
     },
   });
-
-  console.log(JSON.stringify(requirements[0], null, 2));
 
   const requirementsByPosition = {};
 
@@ -62,27 +58,8 @@ export async function getComplianceDashboard() {
       requirementsByPosition[employee.positionId] || [];
 
     // =========================
-    // Cert Alerts (Training + Medical + Passport)
+    // Cert Alerts (Training + Medical)
     // =========================
-    // let expired = employee.trainings.filter(
-    //   (t) => t.status === "overdue",
-    // ).length;
-    // let dueSoon = employee.trainings.filter(
-    //   (t) => t.status === "due_soon",
-    // ).length;
-
-    // expired += employee.medicalChecks.filter(
-    //   (m) => m.status === "overdue",
-    // ).length;
-    // dueSoon += employee.medicalChecks.filter(
-    //   (m) => m.status === "due_soon",
-    // ).length;
-
-    // if (employee.passport?.status === "overdue") expired++;
-    // if (employee.passport?.status === "due_soon") dueSoon++;
-
-    // const alerts = { expired, dueSoon, valid: expired === 0 && dueSoon === 0 };
-    // แทนที่ส่วน Cert Alerts เดิม
     let expired = 0,
       critical = 0,
       warning = 0,
@@ -90,7 +67,11 @@ export async function getComplianceDashboard() {
     const today = new Date();
 
     for (const t of employee.trainings) {
-      if (!t.expiryDate) continue;
+      // ไม่มีวันหมดอายุ = permanent = valid (ไม่ใช่ข้าม)
+      if (!t.expiryDate) {
+        valid++;
+        continue;
+      }
       const days = Math.ceil(
         (new Date(t.expiryDate) - today) / (1000 * 60 * 60 * 24),
       );
@@ -101,7 +82,11 @@ export async function getComplianceDashboard() {
     }
 
     for (const m of employee.medicalChecks) {
-      if (!m.expiryDate) continue;
+      // ไม่มีวันหมดอายุ = valid
+      if (!m.expiryDate) {
+        valid++;
+        continue;
+      }
       const days = Math.ceil(
         (new Date(m.expiryDate) - today) / (1000 * 60 * 60 * 24),
       );
@@ -160,8 +145,12 @@ export async function getComplianceDashboard() {
 
     return {
       id: employee.id,
+      empCode: employee.empCode, // ← เพิ่ม: ใช้แสดงใต้ชื่อ
       fullName: employee.fullName,
+      department: employee.division, // schema ใช้ฟิลด์ division
+      startWorkDate: employee.startWorkDate, // ← เพิ่ม: ใช้คำนวณ Experience
       position: employee.position,
+      medicalChecks: employee.medicalChecks, // ← เพิ่ม: ใช้คอลัมน์ Medical
       alerts,
       clients,
     };
@@ -268,7 +257,11 @@ export async function getComplianceStats() {
 
   for (const employee of employees) {
     for (const cert of employee.trainings) {
-      if (!cert.expiryDate) continue;
+      // ไม่มีวันหมดอายุ = permanent = valid (ไม่ใช่ข้าม)
+      if (!cert.expiryDate) {
+        stats.valid++;
+        continue;
+      }
       const daysLeft = Math.ceil(
         (new Date(cert.expiryDate) - today) / (1000 * 60 * 60 * 24),
       );
@@ -279,7 +272,11 @@ export async function getComplianceStats() {
     }
 
     for (const medical of employee.medicalChecks) {
-      if (!medical.expiryDate) continue;
+      // ไม่มีวันหมดอายุ = valid
+      if (!medical.expiryDate) {
+        stats.valid++;
+        continue;
+      }
       const daysLeft = Math.ceil(
         (new Date(medical.expiryDate) - today) / (1000 * 60 * 60 * 24),
       );

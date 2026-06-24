@@ -11,21 +11,6 @@ async function seedClients() {
       shortName: "CHV",
       type: "offshore",
     },
-    {
-      name: "Erawan",
-      shortName: "ER",
-      type: "offshore",
-    },
-    {
-      name: "PTT",
-      shortName: "PTT",
-      type: "onshore",
-    },
-    {
-      name: "Valeura",
-      shortName: "VAL",
-      type: "offshore",
-    },
   ];
 
   for (const client of CLIENTS) {

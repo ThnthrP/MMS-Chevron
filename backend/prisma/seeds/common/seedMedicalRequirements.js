@@ -9,27 +9,9 @@ async function seedMedicalRequirements() {
   // Clients
   // ======================================================
 
-  const erawan = await prisma.client.findUnique({
-    where: {
-      name: "Erawan",
-    },
-  });
-
   const chevron = await prisma.client.findUnique({
     where: {
       name: "Chevron",
-    },
-  });
-
-  const ptt = await prisma.client.findUnique({
-    where: {
-      name: "PTT",
-    },
-  });
-
-  const valeura = await prisma.client.findUnique({
-    where: {
-      name: "Valeura",
     },
   });
 
@@ -37,20 +19,8 @@ async function seedMedicalRequirements() {
   // Validate
   // ======================================================
 
-  if (!erawan) {
-    throw new Error("Client not found: Erawan");
-  }
-
   if (!chevron) {
     throw new Error("Client not found: Chevron");
-  }
-
-  if (!ptt) {
-    throw new Error("Client not found: PTT");
-  }
-
-  if (!valeura) {
-    throw new Error("Client not found: Valeura");
   }
 
   // ======================================================
@@ -58,22 +28,6 @@ async function seedMedicalRequirements() {
   // ======================================================
 
   const REQUIREMENTS = [
-    // ====================================================
-    // Erawan
-    // ====================================================
-
-    {
-      clientId: erawan.id,
-      name: "Medical Check",
-      validityMonths: 12,
-    },
-
-    {
-      clientId: erawan.id,
-      name: "Confined Space Entry",
-      validityMonths: 12,
-    },
-
     // ====================================================
     // Chevron
     // ====================================================
@@ -86,38 +40,6 @@ async function seedMedicalRequirements() {
 
     {
       clientId: chevron.id,
-      name: "Confined Space Entry",
-      validityMonths: 12,
-    },
-
-    // ====================================================
-    // PTT
-    // ====================================================
-
-    {
-      clientId: ptt.id,
-      name: "Medical Check",
-      validityMonths: 12,
-    },
-
-    {
-      clientId: ptt.id,
-      name: "Confined Space Entry",
-      validityMonths: 12,
-    },
-
-    // ====================================================
-    // Valeura
-    // ====================================================
-
-    {
-      clientId: valeura.id,
-      name: "Medical Check",
-      validityMonths: 12,
-    },
-
-    {
-      clientId: valeura.id,
       name: "Confined Space Entry",
       validityMonths: 12,
     },

@@ -17,11 +17,6 @@ const FILE_PATH = path.join(
   "../../../training_record_from_hr/clean/Employee Training Offshore-Chevron 31-3-2026-CLEAN.xlsx",
 );
 
-// const TRAINING_MAPPING_FILE = path.join(
-//   __dirname,
-//   "../../../training_record_from_hr/importChevron-Emp.xlsx",
-// );
-
 const SHEET_NAME = "Chevron Matrix 2025(14-11-25)";
 
 const CONTRACT_CODE = "CHV-2025";
@@ -81,46 +76,10 @@ function normalizePosition(positionName) {
     return "CPP Crane Operator, Class A";
   }
 
-  return name;
+  // generic: normalize เว้นวรรครอบ "/" ให้เป็น " / " (ตรงกับ seedPositions)
+  // กันเคสที่ไม่ได้ map explicit เช่น "(Piping/Structure)"
+  return name.replace(/\s*\/\s*/g, " / ");
 }
-
-// =========================================================
-// Training Mapping
-// =========================================================
-
-// function buildTrainingMap(sheet) {
-//   const map = new Map();
-
-//   for (let row = 2; row <= 500; row++) {
-//     const globalTrainingRaw = sheet[`A${row}`]?.v;
-
-//     const excelTrainingRaw = sheet[`B${row}`]?.v;
-
-//     const globalTraining = cleanText(globalTrainingRaw);
-
-//     const excelTraining = cleanText(excelTrainingRaw);
-
-//     if (!globalTraining || !excelTraining) {
-//       continue;
-//     }
-
-//     map.set(excelTraining, globalTraining);
-//   }
-
-//   return map;
-// }
-
-// =========================================================
-// Training Normalize
-// =========================================================
-
-// function normalizeTraining(trainingName, trainingMap) {
-//   if (!trainingName) return null;
-
-//   const cleanedName = cleanText(trainingName);
-
-//   return trainingMap.get(cleanedName) || cleanedName;
-// }
 
 // =========================================================
 // Create Position Requirement
@@ -237,8 +196,6 @@ async function importMatrix() {
 
     const trainingNameRaw = sheet[`${columnLetter}10`]?.v;
 
-    // const trainingName = normalizeTraining(trainingNameRaw, TRAINING_NAME_MAP);
-
     const cleanedTrainingName = cleanText(trainingNameRaw);
 
     if (!cleanedTrainingName) {
@@ -271,15 +228,6 @@ async function importMatrix() {
 
       continue;
     }
-
-    // if (!trainingName) {
-    //   continue;
-    // }
-
-    // TRAINING_COLUMNS.push({
-    //   columnLetter,
-    //   trainingName,
-    // });
 
     TRAINING_COLUMNS.push({
       columnLetter,
@@ -343,9 +291,6 @@ async function importMatrix() {
             SHEET_NAME,
           );
         } catch (err) {
-          //   console.error(
-          //     `❌ ${positionName} -> ${training.trainingName}: ${err.message}`,
-          //   );
           console.error(
             `❌ ${positionName} -> ${training.globalTraining.name}: ${err.message}`,
           );

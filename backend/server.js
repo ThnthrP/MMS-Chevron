@@ -13,6 +13,22 @@ import trainingRoutes from "./routes/trainingMatrix.routes.js";
 
 import complianceRoutes from "./routes/complianceRoutes.js";
 
+import projectRoutes from "./routes/projectRoutes.js";
+
+import clientRoutes from "./routes/clientRoutes.js";
+
+import allocationRoutes from "./routes/allocationRoutes.js";
+
+import mobilizationRoutes from "./routes/mobilizationRoutes.js";
+
+import reviewRoutes from "./routes/reviewRoutes.js";
+
+import analyticsRoutes from "./routes/analyticsRoutes.js";
+
+import dashboardRoutes from "./routes/dashboardRoutes.js";
+
+import divisionRoutes from "./routes/divisionRoutes.js";
+
 
 
 import safetyRouter from "./routes/safetyRoutes.js";
@@ -28,7 +44,8 @@ const app = express();
 const port = process.env.PORT || 4000;
 const allowedOrigins = [
   process.env.CLIENT_URL?.trim(),
-  "http://localhost:5173",
+  // "http://localhost:5173",
+  "http://localhost:5175",
 ].filter(Boolean);
 
 const corsOptions = {
@@ -59,9 +76,24 @@ app.use("/api/training-matrix", trainingMatrixRoutes);
 app.use("/api/workers", workerRoutes);
 app.use("/api/positions", positionRoutes);
 app.use("/api/trainings", trainingRoutes);
+
 app.use("/api/compliance", complianceRoutes);
 
+app.use("/api/projects", projectRoutes);
 
+app.use("/api/clients", clientRoutes);
+
+app.use("/api/allocation", allocationRoutes);
+
+app.use("/api/mobilization", mobilizationRoutes);
+
+app.use("/api/review", reviewRoutes);
+
+app.use("/api/analytics", analyticsRoutes);
+
+app.use("/api/dashboard", dashboardRoutes);
+
+app.use("/api/divisions", divisionRoutes);
 
 
 app.use("/api/safety", safetyRouter);

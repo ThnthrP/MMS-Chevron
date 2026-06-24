@@ -21,6 +21,37 @@ const SHEET_NAME = "Chevron Matrix 2025(14-11-25)";
 const CONTRACT_CODE = "CHV-2025";
 
 // ============================================================
+// Header columns / rows that are NOT trainings (skip silently)
+// ============================================================
+
+const IGNORE_TRAININGS = new Set(["Process", "Training % completed"]);
+
+// ============================================================
+// Alias maps: messy Excel text -> canonical DB name
+// ⚠ ค่าทางขวาเป็นการเดาชื่อใน DB — verify กับ seedGlobalTrainings /
+//   seedPositions ของจริง (ดูหมายเหตุท้ายไฟล์)
+// ============================================================
+
+const TRAINING_ALIASES = {
+  "Certification of Basis Offshore Safety Training (BOST) or Tropical Basis Offshore Safety Induction and Emegency TrainingTraining (TBOSIET) or Tropical Further Offshore Emergency Training ( TFOET training)":
+    "T-BOSIET",
+
+  "Fire watch": "Fire Watch",
+
+  "* Insulation": "Insulation",
+
+  "Qulified Gas Tester (QGT)": "Qualified Gas Tester (QGT)",
+
+  "Isolation of Hazardous energy (IHE)": "Isolation of Hazardous Energy (IHE)",
+};
+
+const POSITION_ALIASES = {
+  // comma เกินใน sheet
+  "Construction, Supervisor (Mech & E&I)":
+    "Construction Supervisor (Mech & E&I)",
+};
+
+// ============================================================
 // Helpers
 // ============================================================
 
@@ -29,6 +60,17 @@ function normalize(value) {
     .replace(/\r?\n|\r/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// รวม slash ทุกแบบ (/, / , /  , ...) ให้เป็น " / " แล้วค่อย map
+function normalizePosition(value) {
+  const name = normalize(value).replace(/\s*\/\s*/g, " / ");
+
+  return POSITION_ALIASES[name] || name;
+}
+
+function isNoteRow(name) {
+  return /^NOTE\b/i.test(name) || name.includes('"X"');
 }
 
 function mapRequirement(value) {
@@ -97,22 +139,31 @@ async function seedTrainingMatrix() {
   const headerRow = rows[TRAINING_ROW];
 
   for (let col = TRAINING_START_COL; col < headerRow.length; col++) {
-    const trainingName = normalize(headerRow[col]);
+    const rawName = normalize(headerRow[col]);
 
-    if (!trainingName) {
+    // คอลัมน์ว่าง หรือไม่ใช่ training → ข้ามเงียบ
+    if (!rawName || IGNORE_TRAININGS.has(rawName)) {
       continue;
     }
+
+    const trainingName = TRAINING_ALIASES[rawName] || rawName;
 
     const clientTraining = await prisma.clientTraining.findFirst({
       where: {
         contractId: contract.id,
         OR: [
           {
-            nameAlias: trainingName,
+            nameAlias: {
+              equals: trainingName,
+              mode: "insensitive",
+            },
           },
           {
             globalTraining: {
-              name: trainingName,
+              name: {
+                equals: trainingName,
+                mode: "insensitive",
+              },
             },
           },
         ],
@@ -144,15 +195,19 @@ async function seedTrainingMatrix() {
   for (let rowIndex = POSITION_START_ROW; rowIndex < rows.length; rowIndex++) {
     const row = rows[rowIndex];
 
-    const positionName = normalize(row[0]);
+    const positionName = normalizePosition(row[0]);
 
-    if (!positionName) {
+    // แถวว่าง หรือแถว note/legend → ข้ามเงียบ
+    if (!positionName || isNoteRow(positionName)) {
       continue;
     }
 
     const position = await prisma.position.findFirst({
       where: {
-        name: positionName,
+        name: {
+          equals: positionName,
+          mode: "insensitive",
+        },
       },
     });
 

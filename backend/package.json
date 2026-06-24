@@ -8,7 +8,8 @@
     "start": "node server.js",
     "server": "nodemon server.js",
     "seed": "npx prisma db seed",
-    "reset": "npx prisma migrate reset"
+    "reset": "npx prisma migrate reset",
+    "setup:chevron": "node scripts/setupChevron.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

@@ -42,6 +42,16 @@ export const APP_MENU = [
         path: "/admin/workers/add",
         roles: ["admin", "hr"],
       },
+      {
+        name: "Manage Positions",
+        path: "/admin/positions",
+        roles: ["admin", "hr", "manpower"],
+      },
+      {
+        name: "Manage Divisions",
+        path: "/admin/divisions",
+        roles: ["admin", "hr", "manpower"],
+      },
     ],
   },
 
@@ -55,6 +65,11 @@ export const APP_MENU = [
         name: "Training Matrix",
         path: "/admin/training-matrix",
         roles: ["admin", "hr", "manpower", "pe", "expert"], // PE และ Expert เข้ามาดูเป็น Knowledge Base ได้เลยจากตรงนี้
+      },
+      {
+        name: "Matrix Editor",
+        path: "/admin/positions/matrix",
+        roles: ["admin", "hr", "manpower"],
       },
       {
         name: "Compliance Center",

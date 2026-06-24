@@ -1,0 +1,54 @@
+services:
+  frontend:
+    container_name: chevron-frontend
+    build:
+      context: ./frontend
+      dockerfile: frontend.dockerfile
+    ports:
+      # - "5175:5173"          # host 5175 -> Vite 5173
+      - "5175:5175"
+    volumes:
+    - ./frontend:/app
+    - /app/node_modules
+    restart: always
+    depends_on:
+      - backend
+
+  backend:
+    container_name: chevron-backend
+    build:
+      context: ./backend
+      dockerfile: backend.dockerfile
+    ports:
+      - "4100:4100"
+    restart: always
+    env_file:
+      - ./backend/.env       # ฉีด env ตอน runtime (มี secret)
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./training_record_from_hr:/training_record_from_hr
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    container_name: chevron-db
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: chevron_mms_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - chevron_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  chevron_pgdata:

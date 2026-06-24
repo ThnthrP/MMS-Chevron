@@ -1,0 +1,5 @@
+node_modules
+dist
+.git
+.gitignore
+# .env  <- คงไว้ใน image ให้ Vite อ่าน VITE_BACKEND_URL

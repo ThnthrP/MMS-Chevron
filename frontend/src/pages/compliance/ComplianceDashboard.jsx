@@ -9,14 +9,14 @@ export default function ComplianceDashboard() {
     missing = 0,
     score = 0,
   }) => {
-    if (completed === null) return <span className="text-muted">—</span>;
+    if (completed === null) return <span style={{ color: "#6c757d" }}>—</span>;
     const color = missing === 0 ? "#198754" : "#dc3545";
     return (
       <div>
-        <div className="fw-semibold" style={{ fontSize: "13px", color }}>
+        <div style={{ fontSize: "13px", color, fontWeight: 600 }}>
           {missing === 0 ? "Complete" : `${missing} Missing`}
         </div>
-        <div className="text-muted" style={{ fontSize: "11px" }}>
+        <div style={{ fontSize: "11px", color: "#6c757d" }}>
           {completed} / {required} completed
         </div>
         <div
@@ -43,11 +43,9 @@ export default function ComplianceDashboard() {
     warning: 0,
     valid: 0,
   });
-
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  // ล็อก scroll เมื่อ modal เปิด
   useEffect(() => {
     if (showGapModal) {
       document.body.style.overflow = "hidden";
@@ -69,7 +67,6 @@ export default function ComplianceDashboard() {
           withCredentials: true,
         }),
       ]);
-      setWorkers(dashboardRes.data);
       const sorted = [...dashboardRes.data].sort((a, b) => {
         const severity = (w) =>
           (w.alerts?.expired ?? 0) > 0
@@ -104,7 +101,6 @@ export default function ComplianceDashboard() {
       console.error(error);
     }
   };
-
   const closeModal = () => {
     setShowGapModal(false);
     setSelectedGap(null);
@@ -112,6 +108,9 @@ export default function ComplianceDashboard() {
 
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [showAlertModal, setShowAlertModal] = useState(false);
+
+  // Medical notes popup: { name, note }
+  const [noteModal, setNoteModal] = useState(null);
 
   const handleViewAlerts = async (workerId) => {
     try {
@@ -125,7 +124,6 @@ export default function ComplianceDashboard() {
       console.error(error);
     }
   };
-
   const closeAlertModal = () => {
     setShowAlertModal(false);
     setSelectedAlert(null);
@@ -136,11 +134,9 @@ export default function ComplianceDashboard() {
     const matchSearch =
       w.fullName?.toLowerCase().includes(search) ||
       w.position?.name?.toLowerCase().includes(search);
-
     const expired = w.alerts?.expired ?? 0;
     const critical = w.alerts?.critical ?? 0;
     const warning = w.alerts?.warning ?? 0;
-
     const matchStatus =
       statusFilter === "expired"
         ? expired > 0
@@ -151,19 +147,91 @@ export default function ComplianceDashboard() {
             : statusFilter === "valid"
               ? expired === 0 && critical === 0 && warning === 0
               : true;
-
     return matchSearch && matchStatus;
   });
 
+  const badge = (bg, color, text) => (
+    <span
+      style={{
+        background: bg,
+        color,
+        borderRadius: "6px",
+        padding: "3px 8px",
+        fontSize: "11px",
+        fontWeight: 600,
+        display: "inline-block",
+      }}
+    >
+      {text}
+    </span>
+  );
+
+  // ── Medical: หา record "Medical Check up" ของ worker ──
+  const getMedical = (w) =>
+    (w.medicalChecks || []).find((m) => m.checkType === "Medical Check up") ||
+    null;
+
+  // map CheckStatus enum -> label + สี
+  const medicalStatusInfo = (status) => {
+    switch (status) {
+      case "passed":
+        return { label: "Fit", bg: "#d1e7dd", color: "#0f5132" };
+      case "pending":
+        return { label: "Pending", bg: "#fff3cd", color: "#664d03" };
+      case "failed":
+        return { label: "Unfit", bg: "#f8d7da", color: "#842029" };
+      case "not_required":
+        return { label: "Fit w/ Restriction", bg: "#e8f0ff", color: "#0d6efd" };
+      case "overdue":
+        return { label: "Overdue", bg: "#f8d7da", color: "#842029" };
+      case "due_soon":
+        return { label: "Due Soon", bg: "#fff3cd", color: "#664d03" };
+      default:
+        return { label: status || "N/A", bg: "#f1f3f5", color: "#6c757d" };
+    }
+  };
+
   return (
-    <div className="container-fluid p-0">
+    <div className="container-fluid p-4">
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* Header */}
-        <div className="mb-4">
-          <h2 className="fw-bold mb-1">Compliance Center</h2>
-          <p className="text-muted mb-0">
+        {/* Header Card */}
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #dee2e6",
+            borderRadius: "10px",
+            padding: "16px 24px",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              marginBottom: "4px",
+            }}
+          >
+            <span style={{ fontSize: "20px" }}>🛡️</span>
+            <span style={{ fontSize: "18px", fontWeight: 700 }}>
+              Compliance Center
+            </span>
+            <span
+              style={{
+                background: "#e9f5fb",
+                color: "#0d6efd",
+                borderRadius: "6px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+              }}
+            >
+              Phase 2
+            </span>
+          </div>
+          <div style={{ fontSize: "13px", color: "#6c757d" }}>
             Certification Monitoring, Gap Analysis & Position Matching
-          </p>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -172,27 +240,27 @@ export default function ComplianceDashboard() {
             display: "grid",
             gridTemplateColumns: "repeat(4, 1fr)",
             gap: "1rem",
+            marginBottom: "1.5rem",
           }}
-          className="mb-4"
         >
           {[
             {
-              icon: "⚠️",
+              icon: "🔴",
               value: stats.expired,
               label: "Expired",
               key: "expired",
               bg: "#fff5f5",
               bar: "#dc3545",
-              color: "text-danger",
+              color: "#dc3545",
             },
             {
-              icon: "🔴",
+              icon: "🔥",
               value: stats.critical,
               label: "Critical (<30 days)",
               key: "critical",
               bg: "#fff8e1",
               bar: "#ffc107",
-              color: "text-warning",
+              color: "#cc8400",
             },
             {
               icon: "🟡",
@@ -201,26 +269,48 @@ export default function ComplianceDashboard() {
               key: "warning",
               bg: "#e8f4fd",
               bar: "#0dcaf0",
-              color: "text-info",
+              color: "#0aa2c0",
             },
             {
               icon: "✅",
               value: stats.valid,
-              label: "Valid (>60 days)",
+              label: "Valid (>60 days or no expiry)",
               key: "valid",
               bg: "#f0fff4",
               bar: "#198754",
-              color: "text-success",
+              color: "#198754",
             },
           ].map((card) => (
-            <div key={card.label} className="card shadow-sm border-0">
-              <div className="card-body d-flex align-items-center gap-3 px-4 py-3">
+            <div
+              key={card.label}
+              style={{
+                background: "#fff",
+                border: "1px solid #dee2e6",
+                borderRadius: "10px",
+                overflow: "hidden",
+                cursor: "pointer",
+              }}
+              onClick={() =>
+                setStatusFilter(statusFilter === card.key ? "all" : card.key)
+              }
+            >
+              <div
+                style={{
+                  padding: "16px 20px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "14px",
+                }}
+              >
                 <div
-                  className="rounded-circle d-flex align-items-center justify-content-center"
                   style={{
                     width: "48px",
                     height: "48px",
+                    borderRadius: "50%",
                     background: card.bg,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                     flexShrink: 0,
                   }}
                 >
@@ -228,23 +318,21 @@ export default function ComplianceDashboard() {
                 </div>
                 <div>
                   <div
-                    className={`${card.color} fw-bold`}
-                    style={{ fontSize: "28px", lineHeight: 1 }}
+                    style={{
+                      fontSize: "28px",
+                      fontWeight: 700,
+                      color: card.color,
+                      lineHeight: 1,
+                    }}
                   >
                     {card.value}
                   </div>
-                  <div className="text-muted" style={{ fontSize: "13px" }}>
+                  <div style={{ fontSize: "12px", color: "#6c757d" }}>
                     {card.label}
                   </div>
                 </div>
               </div>
-              <div
-                style={{
-                  height: "4px",
-                  background: card.bar,
-                  borderRadius: "0 0 4px 4px",
-                }}
-              />
+              <div style={{ height: "4px", background: card.bar }} />
             </div>
           ))}
         </div>
@@ -293,7 +381,6 @@ export default function ComplianceDashboard() {
               }}
             />
           </div>
-
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -311,9 +398,9 @@ export default function ComplianceDashboard() {
             <option value="expired">🔴 Expired</option>
             <option value="critical">🔥 Critical (&lt;30 days)</option>
             <option value="warning">🟡 Warning (30-60 days)</option>
-            <option value="valid">✅ All Valid</option>
+            {/* <option value="valid">✅ All Valid</option> */}
+            <option value="valid">✅ No Alerts</option>
           </select>
-
           {(statusFilter !== "all" || searchTerm) && (
             <button
               onClick={() => {
@@ -336,131 +423,252 @@ export default function ComplianceDashboard() {
           )}
         </div>
 
-        {/* Worker Compliance Overview */}
-        <div className="card shadow-sm border-0">
-          <div className="card-header bg-white border-bottom py-3 px-4">
-            <h6 className="fw-bold mb-0">Worker Compliance Overview</h6>
+        {/* Worker Compliance Table */}
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #dee2e6",
+            borderRadius: "10px",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{ padding: "14px 20px", borderBottom: "1px solid #dee2e6" }}
+          >
+            <span style={{ fontWeight: 700, fontSize: "14px" }}>
+              Worker Compliance Overview
+            </span>
           </div>
-          <div className="card-body p-0">
-            <table
-              className="table table-hover align-middle mb-0"
-              style={{ fontSize: "13px" }}
-            >
-              <thead className="table-light">
-                <tr>
-                  <th className="ps-4 pe-4 py-2 text-dark fw-bold">Worker</th>
-                  <th className="pe-4 py-2 text-dark fw-bold">Position</th>
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: "13px",
+            }}
+          >
+            <thead>
+              <tr style={{ borderBottom: "1px solid #dee2e6" }}>
+                {[
+                  ["WORKER", "left"],
+                  ["POSITION", "left"],
+                  ["DEPARTMENT", "left"],
+                  ["COMPLIANCE ALERTS", "center"],
+                  ["CHEVRON MATCH", "center"],
+                  ["MEDICAL", "center"],
+                  ["ACTIONS", "center"],
+                ].map(([h, align]) => (
                   <th
-                    className="pe-4 py-2 text-dark fw-bold text-center"
-                    style={{ width: "260px" }}
+                    key={h}
+                    style={{
+                      padding: "10px 14px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      color: "#6c757d",
+                      letterSpacing: "0.5px",
+                      textAlign: align,
+                      background: "#fff",
+                      whiteSpace: "nowrap",
+                    }}
                   >
-                    Compliance Alerts
+                    {h}
                   </th>
-                  <th className="pe-4 py-2 text-dark fw-bold text-center">
-                    Chevron
-                  </th>
-                  <th className="pe-4 py-2 text-dark fw-bold text-center">
-                    Erawan
-                  </th>
-                  <th className="pe-4 py-2 text-dark fw-bold text-center">
-                    PTT
-                  </th>
-                  <th className="pe-4 py-2 text-dark fw-bold text-center">
-                    Valeura
-                  </th>
-                  <th
-                    className="pe-4 py-2 text-dark fw-bold text-center"
-                    style={{ width: "120px" }}
-                  >
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredWorkers.map((w) => (
-                  <tr key={w.id}>
-                    <td className="ps-4 pe-4 py-2 fw-medium">{w.fullName}</td>
-                    <td className="pe-4 py-2">{w.position?.name || "-"}</td>
-
-                    <td
-                      className="pe-4 py-2 text-center"
-                      style={{ width: "260px" }}
-                    >
-                      {(() => {
-                        const expired = w.alerts?.expired ?? 0;
-                        const critical = w.alerts?.critical ?? 0;
-                        const warning = w.alerts?.warning ?? 0;
-                        return expired === 0 &&
-                          critical === 0 &&
-                          warning === 0 ? (
-                          <span
-                            className="badge bg-success px-2 py-1"
-                            style={{ fontSize: "11px" }}
-                          >
-                            ✅ All Valid
-                          </span>
-                        ) : (
-                          <div className="d-flex flex-wrap justify-content-center gap-1">
-                            {expired > 0 && (
-                              <span
-                                className="badge bg-danger px-2 py-1"
-                                style={{ fontSize: "11px" }}
-                              >
-                                🔴 {expired} Expired
-                              </span>
-                            )}
-                            {critical > 0 && (
-                              <span
-                                className="badge bg-danger px-2 py-1"
-                                style={{ fontSize: "11px" }}
-                              >
-                                🔥 {critical} Critical
-                              </span>
-                            )}
-                            {warning > 0 && (
-                              <span
-                                className="badge bg-warning text-dark px-2 py-1"
-                                style={{ fontSize: "11px" }}
-                              >
-                                🟡 {warning} Warning
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </td>
-
-                    {["chevron", "erawan", "ptt", "valeura"].map((client) => (
-                      <td key={client} className="pe-4 py-2 text-center">
-                        <ClientCell
-                          {...(w.clients?.[client] ?? { completed: null })}
-                        />
-                      </td>
-                    ))}
-
-                    <td className="pe-4 py-2 text-center">
-                      <div className="d-flex justify-content-center gap-1">
-                        <button
-                          className="btn btn-sm btn-outline-primary px-2 py-0"
-                          style={{ fontSize: "12px", whiteSpace: "nowrap" }}
-                          onClick={() => handleViewGap(w.id)}
-                        >
-                          Gap
-                        </button>
-                        <button
-                          className="btn btn-sm btn-outline-warning px-2 py-0"
-                          style={{ fontSize: "12px", whiteSpace: "nowrap" }}
-                          onClick={() => handleViewAlerts(w.id)}
-                        >
-                          Alerts
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredWorkers.map((w, idx) => (
+                <tr
+                  key={w.id}
+                  style={{
+                    borderBottom:
+                      idx < filteredWorkers.length - 1
+                        ? "1px solid #f1f3f5"
+                        : "none",
+                    transition: "background 0.15s",
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = "#f8f9fa")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = "#fff")
+                  }
+                >
+                  <td style={{ padding: "12px 14px" }}>
+                    <div style={{ fontWeight: 600 }}>{w.fullName}</div>
+                    {w.empCode && (
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#6c757d",
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        {w.empCode}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ padding: "12px 14px", color: "#6c757d" }}>
+                    {w.position?.name || "—"}
+                  </td>
+                  <td
+                    style={{
+                      padding: "12px 14px",
+                      color: "#6c757d",
+                    }}
+                  >
+                    {w.department || "—"}
+                  </td>
+                  <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                    {(() => {
+                      const expired = w.alerts?.expired ?? 0;
+                      const critical = w.alerts?.critical ?? 0;
+                      const warning = w.alerts?.warning ?? 0;
+                      return expired === 0 &&
+                        critical === 0 &&
+                        warning === 0 ? (
+                        // badge("#d1e7dd", "#0f5132", "✅ All Valid")
+                        badge("#d1e7dd", "#0f5132", "✅ No Alerts")
+                      ) : (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            justifyContent: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          {expired > 0 &&
+                            badge(
+                              "#f8d7da",
+                              "#842029",
+                              `🔴 ${expired} Expired`,
+                            )}
+                          {critical > 0 &&
+                            badge(
+                              "#f8d7da",
+                              "#842029",
+                              `🔥 ${critical} Critical`,
+                            )}
+                          {warning > 0 &&
+                            badge(
+                              "#fff3cd",
+                              "#664d03",
+                              `🟡 ${warning} Warning`,
+                            )}
+                        </div>
+                      );
+                    })()}
+                  </td>
+
+                  {/* CHEVRON */}
+                  <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                    <ClientCell
+                      {...(w.clients?.chevron ?? { completed: null })}
+                    />
+                  </td>
+
+                  {/* MEDICAL */}
+                  <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                    {(() => {
+                      const med = getMedical(w);
+                      if (!med)
+                        return <span style={{ color: "#6c757d" }}>—</span>;
+                      const info = medicalStatusInfo(med.status);
+                      const exp = med.expiryDate
+                        ? new Date(med.expiryDate)
+                        : null;
+                      const expired =
+                        exp && !isNaN(exp.getTime()) && exp < new Date();
+                      return (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: "3px",
+                          }}
+                        >
+                          {badge(info.bg, info.color, info.label)}
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: expired ? "#dc3545" : "#6c757d",
+                            }}
+                          >
+                            {exp && !isNaN(exp.getTime())
+                              ? `Exp: ${exp.toLocaleDateString()}`
+                              : "No expiry"}
+                          </div>
+                          {med.notes && (
+                            <button
+                              onClick={() =>
+                                setNoteModal({
+                                  name: w.fullName,
+                                  note: med.notes,
+                                })
+                              }
+                              title="View medical notes"
+                              style={{
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                fontSize: "14px",
+                                padding: 0,
+                                lineHeight: 1,
+                              }}
+                            >
+                              📄
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </td>
+
+                  <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <button
+                        onClick={() => handleViewGap(w.id)}
+                        style={{
+                          background: "#fff",
+                          border: "1px solid #0d6efd",
+                          color: "#0d6efd",
+                          borderRadius: "6px",
+                          padding: "3px 10px",
+                          fontSize: "12px",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Gap
+                      </button>
+                      <button
+                        onClick={() => handleViewAlerts(w.id)}
+                        style={{
+                          background: "#fff",
+                          border: "1px solid #ffc107",
+                          color: "#664d03",
+                          borderRadius: "6px",
+                          padding: "3px 10px",
+                          fontSize: "12px",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Alerts
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -488,38 +696,94 @@ export default function ComplianceDashboard() {
               overflow: "hidden",
             }}
           >
-            {/* Modal Header */}
-            <div className="d-flex justify-content-between align-items-center p-4 border-bottom">
+            <div
+              style={{
+                padding: "20px 24px",
+                borderBottom: "1px solid #dee2e6",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+              }}
+            >
               <div>
-                <h5 className="fw-bold mb-1">
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "16px",
+                    marginBottom: "4px",
+                  }}
+                >
                   Gap Analysis — {selectedGap.fullName}
-                </h5>
-                <div className="text-muted" style={{ fontSize: "13px" }}>
+                </div>
+                <div style={{ fontSize: "13px", color: "#6c757d" }}>
                   {selectedGap.position}
                 </div>
               </div>
-              <button className="btn-close" onClick={closeModal} />
+              <button
+                onClick={closeModal}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  color: "#6c757d",
+                }}
+              >
+                ✕
+              </button>
             </div>
-
-            {/* Modal Body */}
-            <div className="p-4">
+            <div style={{ padding: "24px" }}>
               {Object.entries(selectedGap.clients).map(
                 ([clientName, client]) => (
-                  <div key={clientName} className="mb-4 p-4 rounded border">
-                    <div className="d-flex justify-content-between align-items-center mb-3">
-                      <h6 className="fw-bold text-uppercase mb-0">
-                        {clientName}
-                      </h6>
+                  <div
+                    key={clientName}
+                    style={{
+                      border: "1px solid #dee2e6",
+                      borderRadius: "10px",
+                      padding: "20px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "16px",
+                      }}
+                    >
                       <span
-                        className={`badge px-3 py-2 ${
-                          client.missing.length === 0
-                            ? "bg-success"
-                            : client.completed.length /
-                                  client.required.length >=
-                                0.8
-                              ? "bg-warning text-dark"
-                              : "bg-danger"
-                        }`}
+                        style={{
+                          fontWeight: 700,
+                          fontSize: "14px",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {clientName}
+                      </span>
+                      <span
+                        style={{
+                          borderRadius: "6px",
+                          padding: "4px 12px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          background:
+                            client.missing.length === 0
+                              ? "#d1e7dd"
+                              : client.completed.length /
+                                    client.required.length >=
+                                  0.8
+                                ? "#fff3cd"
+                                : "#f8d7da",
+                          color:
+                            client.missing.length === 0
+                              ? "#0f5132"
+                              : client.completed.length /
+                                    client.required.length >=
+                                  0.8
+                                ? "#664d03"
+                                : "#842029",
+                        }}
                       >
                         {Math.round(
                           (client.completed.length / client.required.length) *
@@ -528,104 +792,165 @@ export default function ComplianceDashboard() {
                         % Match
                       </span>
                     </div>
-
                     <div
                       style={{
                         display: "grid",
                         gridTemplateColumns: "repeat(3, 1fr)",
-                        gap: "0.75rem",
+                        gap: "12px",
+                        marginBottom: "16px",
                       }}
-                      className="mb-3"
                     >
-                      <div
-                        className="text-center p-2 rounded"
-                        style={{ background: "#f0f4ff" }}
-                      >
+                      {[
+                        {
+                          label: "Required",
+                          value: client.required.length,
+                          bg: "#e8f0ff",
+                          color: "#0d6efd",
+                        },
+                        {
+                          label: "Completed",
+                          value: client.completed.length,
+                          bg: "#f0fff4",
+                          color: "#198754",
+                        },
+                        {
+                          label: "Missing",
+                          value: client.missing.length,
+                          bg: "#fff5f5",
+                          color: "#dc3545",
+                        },
+                      ].map((s) => (
                         <div
-                          className="fw-bold text-primary"
-                          style={{ fontSize: "22px" }}
+                          key={s.label}
+                          style={{
+                            background: s.bg,
+                            borderRadius: "8px",
+                            padding: "12px",
+                            textAlign: "center",
+                          }}
                         >
-                          {client.required.length}
+                          <div
+                            style={{
+                              fontSize: "22px",
+                              fontWeight: 700,
+                              color: s.color,
+                            }}
+                          >
+                            {s.value}
+                          </div>
+                          <div style={{ fontSize: "12px", color: "#6c757d" }}>
+                            {s.label}
+                          </div>
                         </div>
-                        <div
-                          className="text-muted"
-                          style={{ fontSize: "12px" }}
-                        >
-                          Required
-                        </div>
-                      </div>
-                      <div
-                        className="text-center p-2 rounded"
-                        style={{ background: "#f0fff4" }}
-                      >
-                        <div
-                          className="fw-bold text-success"
-                          style={{ fontSize: "22px" }}
-                        >
-                          {client.completed.length}
-                        </div>
-                        <div
-                          className="text-muted"
-                          style={{ fontSize: "12px" }}
-                        >
-                          Completed
-                        </div>
-                      </div>
-                      <div
-                        className="text-center p-2 rounded"
-                        style={{ background: "#fff5f5" }}
-                      >
-                        <div
-                          className="fw-bold text-danger"
-                          style={{ fontSize: "22px" }}
-                        >
-                          {client.missing.length}
-                        </div>
-                        <div
-                          className="text-muted"
-                          style={{ fontSize: "12px" }}
-                        >
-                          Missing
-                        </div>
-                      </div>
+                      ))}
                     </div>
-
                     {client.missing.length > 0 ? (
                       <div>
                         <div
-                          className="fw-semibold text-danger mb-2"
-                          style={{ fontSize: "13px" }}
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            color: "#dc3545",
+                            marginBottom: "8px",
+                          }}
                         >
                           Missing Training:
                         </div>
-                        <div className="d-flex flex-wrap gap-2">
-                          {client.missing.map((training) => (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: "6px",
+                          }}
+                        >
+                          {client.missing.map((t) => (
                             <span
-                              key={training}
-                              className="badge bg-danger bg-opacity-10 text-danger px-2 py-1"
-                              style={{ fontSize: "12px" }}
+                              key={t}
+                              style={{
+                                background: "#fff5f5",
+                                color: "#dc3545",
+                                border: "1px solid #f5c6cb",
+                                borderRadius: "6px",
+                                padding: "3px 10px",
+                                fontSize: "12px",
+                              }}
                             >
-                              ✕ {training}
+                              ✕ {t}
                             </span>
                           ))}
                         </div>
                       </div>
                     ) : (
                       <div
-                        className="text-success fw-semibold"
-                        style={{ fontSize: "13px" }}
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          color: "#198754",
+                        }}
                       >
                         ✅ All training completed
+                      </div>
+                    )}
+                    {client.completed.length > 0 && (
+                      <div style={{ marginTop: "12px" }}>
+                        <div
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            color: "#198754",
+                            marginBottom: "8px",
+                          }}
+                        >
+                          Completed Training:
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: "6px",
+                          }}
+                        >
+                          {client.completed.map((t) => (
+                            <span
+                              key={t}
+                              style={{
+                                background: "#f0fff4",
+                                color: "#198754",
+                                border: "1px solid #b2dfdb",
+                                borderRadius: "6px",
+                                padding: "3px 10px",
+                                fontSize: "12px",
+                              }}
+                            >
+                              ✓ {t}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
                 ),
               )}
             </div>
-
-            {/* Modal Footer — อยู่ในกล่องสีขาว */}
-            <div className="p-4 border-top text-end">
-              <button className="btn btn-secondary px-4" onClick={closeModal}>
+            <div
+              style={{
+                padding: "16px 24px",
+                borderTop: "1px solid #dee2e6",
+                textAlign: "right",
+              }}
+            >
+              <button
+                onClick={closeModal}
+                style={{
+                  padding: "8px 24px",
+                  fontSize: "13px",
+                  border: "1px solid #dee2e6",
+                  borderRadius: "8px",
+                  background: "#6c757d",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
                 Close
               </button>
             </div>
@@ -633,6 +958,7 @@ export default function ComplianceDashboard() {
         </div>
       )}
 
+      {/* Alert Modal */}
       {showAlertModal && selectedAlert && (
         <div
           style={{
@@ -656,156 +982,255 @@ export default function ComplianceDashboard() {
               overflow: "hidden",
             }}
           >
-            <div className="d-flex justify-content-between align-items-center p-4 border-bottom">
+            <div
+              style={{
+                padding: "20px 24px",
+                borderBottom: "1px solid #dee2e6",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+              }}
+            >
               <div>
-                <h5 className="fw-bold mb-2">
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "16px",
+                    marginBottom: "8px",
+                  }}
+                >
                   Compliance Alerts — {selectedAlert.fullName}
-                </h5>
-                <div className="d-flex gap-2">
-                  {selectedAlert.expired.length > 0 && (
-                    <span
-                      className="badge bg-danger px-2 py-1"
-                      style={{ fontSize: "11px" }}
-                    >
-                      🔴 {selectedAlert.expired.length} Expired
-                    </span>
-                  )}
-                  {selectedAlert.critical.length > 0 && (
-                    <span
-                      className="badge bg-danger px-2 py-1"
-                      style={{ fontSize: "11px" }}
-                    >
-                      🔥 {selectedAlert.critical.length} Critical
-                    </span>
-                  )}
-                  {selectedAlert.warning.length > 0 && (
-                    <span
-                      className="badge bg-warning text-dark px-2 py-1"
-                      style={{ fontSize: "11px" }}
-                    >
-                      🟡 {selectedAlert.warning.length} Warning
-                    </span>
-                  )}
+                </div>
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  {selectedAlert.expired.length > 0 &&
+                    badge(
+                      "#f8d7da",
+                      "#842029",
+                      `🔴 ${selectedAlert.expired.length} Expired`,
+                    )}
+                  {selectedAlert.critical.length > 0 &&
+                    badge(
+                      "#f8d7da",
+                      "#842029",
+                      `🔥 ${selectedAlert.critical.length} Critical`,
+                    )}
+                  {selectedAlert.warning.length > 0 &&
+                    badge(
+                      "#fff3cd",
+                      "#664d03",
+                      `🟡 ${selectedAlert.warning.length} Warning`,
+                    )}
                 </div>
               </div>
-              <button className="btn-close" onClick={closeAlertModal} />
+              <button
+                onClick={closeAlertModal}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  color: "#6c757d",
+                }}
+              >
+                ✕
+              </button>
             </div>
-            <div className="p-4">
-              {/* Expired */}
-              {selectedAlert.expired.length > 0 && (
-                <div className="mb-4">
-                  <div
-                    className="fw-bold text-danger mb-2"
-                    style={{ fontSize: "14px" }}
-                  >
-                    🔴 Expired
-                  </div>
-                  {selectedAlert.expired.map((item, i) => (
-                    <div
-                      key={i}
-                      className="d-flex justify-content-between align-items-center py-2 border-bottom"
-                    >
-                      <div>
-                        <span
-                          className="badge bg-secondary me-2"
-                          style={{ fontSize: "10px" }}
-                        >
-                          {item.type}
-                        </span>
-                        <span style={{ fontSize: "13px" }}>{item.name}</span>
-                      </div>
-                      <div className="text-danger" style={{ fontSize: "12px" }}>
-                        {new Date(item.expiryDate).toLocaleDateString()} (
-                        {Math.abs(item.daysLeft)} days ago)
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Critical */}
-              {selectedAlert.critical.length > 0 && (
-                <div className="mb-4">
-                  <div
-                    className="fw-bold text-warning mb-2"
-                    style={{ fontSize: "14px" }}
-                  >
-                    🔥 Critical (&lt;30 days)
-                  </div>
-                  {selectedAlert.critical.map((item, i) => (
-                    <div
-                      key={i}
-                      className="d-flex justify-content-between align-items-center py-2 border-bottom"
-                    >
-                      <div>
-                        <span
-                          className="badge bg-secondary me-2"
-                          style={{ fontSize: "10px" }}
-                        >
-                          {item.type}
-                        </span>
-                        <span style={{ fontSize: "13px" }}>{item.name}</span>
-                      </div>
+            <div style={{ padding: "24px" }}>
+              {[
+                {
+                  items: selectedAlert.expired,
+                  label: "🔴 Expired",
+                  color: "#dc3545",
+                },
+                {
+                  items: selectedAlert.critical,
+                  label: "🔥 Critical (<30 days)",
+                  color: "#ffc107",
+                },
+                {
+                  items: selectedAlert.warning,
+                  label: "🟡 Warning (30-60 days)",
+                  color: "#0dcaf0",
+                },
+              ].map(
+                ({ items, label, color }) =>
+                  items.length > 0 && (
+                    <div key={label} style={{ marginBottom: "24px" }}>
                       <div
-                        className="text-warning fw-semibold"
-                        style={{ fontSize: "12px" }}
+                        style={{
+                          fontWeight: 700,
+                          color,
+                          fontSize: "14px",
+                          marginBottom: "8px",
+                        }}
                       >
-                        {new Date(item.expiryDate).toLocaleDateString()} (
-                        {item.daysLeft} days left)
+                        {label}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Warning */}
-              {selectedAlert.warning.length > 0 && (
-                <div className="mb-4">
-                  <div
-                    className="fw-bold text-info mb-2"
-                    style={{ fontSize: "14px" }}
-                  >
-                    🟡 Warning (30-60 days)
-                  </div>
-                  {selectedAlert.warning.map((item, i) => (
-                    <div
-                      key={i}
-                      className="d-flex justify-content-between align-items-center py-2 border-bottom"
-                    >
-                      <div>
-                        <span
-                          className="badge bg-secondary me-2"
-                          style={{ fontSize: "10px" }}
+                      {items.map((item, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "10px 0",
+                            borderBottom: "1px solid #f1f3f5",
+                          }}
                         >
-                          {item.type}
-                        </span>
-                        <span style={{ fontSize: "13px" }}>{item.name}</span>
-                      </div>
-                      <div
-                        className="text-info fw-semibold"
-                        style={{ fontSize: "12px" }}
-                      >
-                        {new Date(item.expiryDate).toLocaleDateString()} (
-                        {item.daysLeft} days left)
-                      </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                background: "#e9ecef",
+                                color: "#495057",
+                                borderRadius: "4px",
+                                padding: "2px 6px",
+                                fontSize: "10px",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {item.type}
+                            </span>
+                            <span style={{ fontSize: "13px" }}>
+                              {item.name}
+                            </span>
+                          </div>
+                          <div
+                            style={{ fontSize: "12px", color, fontWeight: 600 }}
+                          >
+                            {new Date(item.expiryDate).toLocaleDateString()} (
+                            {Math.abs(item.daysLeft)} days{" "}
+                            {item.daysLeft < 0 ? "ago" : "left"})
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  ),
               )}
-
               {selectedAlert.expired.length === 0 &&
                 selectedAlert.critical.length === 0 &&
                 selectedAlert.warning.length === 0 && (
-                  <div className="text-success fw-semibold text-center py-4">
+                  <div
+                    style={{
+                      textAlign: "center",
+                      padding: "32px",
+                      color: "#198754",
+                      fontWeight: 600,
+                    }}
+                  >
                     ✅ All certifications valid
                   </div>
                 )}
             </div>
-
-            <div className="p-4 border-top text-end">
+            <div
+              style={{
+                padding: "16px 24px",
+                borderTop: "1px solid #dee2e6",
+                textAlign: "right",
+              }}
+            >
               <button
-                className="btn btn-secondary px-4"
                 onClick={closeAlertModal}
+                style={{
+                  padding: "8px 24px",
+                  fontSize: "13px",
+                  border: "1px solid #dee2e6",
+                  borderRadius: "8px",
+                  background: "#6c757d",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Medical Notes Modal */}
+      {noteModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 999999,
+            overflowY: "auto",
+            padding: "40px",
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setNoteModal(null);
+          }}
+        >
+          <div
+            style={{
+              maxWidth: "480px",
+              margin: "0 auto",
+              background: "#fff",
+              borderRadius: "10px",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "18px 22px",
+                borderBottom: "1px solid #dee2e6",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: "15px" }}>
+                📄 Medical Notes — {noteModal.name}
+              </div>
+              <button
+                onClick={() => setNoteModal(null)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  color: "#6c757d",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div
+              style={{
+                padding: "22px",
+                fontSize: "14px",
+                color: "#212529",
+                whiteSpace: "pre-wrap",
+                lineHeight: 1.6,
+              }}
+            >
+              {noteModal.note}
+            </div>
+            <div
+              style={{
+                padding: "14px 22px",
+                borderTop: "1px solid #dee2e6",
+                textAlign: "right",
+              }}
+            >
+              <button
+                onClick={() => setNoteModal(null)}
+                style={{
+                  padding: "8px 24px",
+                  fontSize: "13px",
+                  border: "1px solid #dee2e6",
+                  borderRadius: "8px",
+                  background: "#6c757d",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
               >
                 Close
               </button>

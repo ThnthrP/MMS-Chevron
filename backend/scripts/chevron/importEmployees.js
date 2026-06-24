@@ -57,7 +57,9 @@ function normalizePosition(positionName) {
 
   const name = cleanText(positionName);
 
-  return POSITION_MAPPINGS[name] || name;
+  // explicit mapping ก่อน → แล้ว normalize เว้นวรรครอบ "/" ให้เป็น " / "
+  // (ตรงกับ seedPositions ที่ใช้ " / " เสมอ — กันเคส "(Piping/Structure)" ฯลฯ)
+  return (POSITION_MAPPINGS[name] || name).replace(/\s*\/\s*/g, " / ");
 }
 
 // function isEmployeeRow(fullNameEN, positionName) {
@@ -199,7 +201,7 @@ async function importEmployees() {
       // Employee Code
       // ===================================================
 
-      const employeeCode = `CHV-${String(runningNumber).padStart(4, "0")}`;
+      const employeeCode = `EXPT-${String(runningNumber).padStart(3, "0")}`;
 
       // ===================================================
       // Create

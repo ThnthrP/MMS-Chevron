@@ -12,7 +12,7 @@ async function seedPositions() {
 
     "Construction E&I Technician",
     "Construction E&I Foreman",
-    "Construction Mechanical (Piping/Structure) Foreman",
+    "Construction Mechanical (Piping / Structure) Foreman",
     "Construction Supervisor (Mech & E&I)",
 
     "Crane Operator / Crane Coordinator / Crane Team Lead - Class A",

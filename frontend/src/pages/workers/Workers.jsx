@@ -2,7 +2,7 @@ import { useState, useEffect, useContext } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { AppContent } from "../../context/AppContext";
-import Select from "react-select"; // 💡 นำเข้า react-select เพื่อทำกล่องเลือกที่พิมพ์ค้นหาได้
+import Select from "react-select";
 
 export default function Workers() {
   const [search, setSearch] = useState("");
@@ -15,43 +15,33 @@ export default function Workers() {
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(false);
   const { backendUrl } = useContext(AppContent);
-
   const navigate = useNavigate();
 
-  // ==========================
-  // ของเดิมคงไว้: ดึงข้อมูลและจัดการ Options
-  // ==========================
   const departments = [
     ...new Set(workers.map((w) => w.division).filter(Boolean)),
   ];
-
   const positions = [
     ...new Set(workers.map((w) => w.position?.name).filter(Boolean)),
   ];
 
-  // 💡 จัดรูปแบบตัวเลือกให้อยู่ใน Format ของ React-Select ( { value, label } )
   const departmentOptions = [
     { value: "", label: "All Departments" },
     ...departments.map((dept) => ({ value: dept, label: dept })),
   ];
-
   const positionOptions = [
     { value: "", label: "All Positions" },
     ...positions.map((pos) => ({ value: pos, label: pos })),
   ];
-
   const statusOptions = [
     { value: "", label: "All Status" },
     { value: "active", label: "Active" },
     { value: "inactive", label: "Inactive" },
   ];
-
   const availabilityOptions = [
     { value: "", label: "All Availability" },
     { value: "available", label: "Available" },
     { value: "unavailable", label: "Unavailable" },
   ];
-
   const mobilizationOptions = [
     { value: "", label: "All Mobilization" },
     { value: "pending", label: "Pending" },
@@ -59,56 +49,101 @@ export default function Workers() {
     { value: "on_site", label: "On-Site" },
   ];
 
-  // ==========================
-  // Filter & Logic
-  // ==========================
-  const filteredWorkers = workers.filter((worker) => {
-    const matchSearch =
-      (worker.fullName || "").toLowerCase().includes(search.toLowerCase()) ||
-      (worker.empCode || "").toLowerCase().includes(search.toLowerCase());
+  const filteredWorkers = workers
+    .filter((worker) => {
+      const matchSearch =
+        (worker.fullName || "").toLowerCase().includes(search.toLowerCase()) ||
+        (worker.empCode || "").toLowerCase().includes(search.toLowerCase());
 
-    const matchStatus = !status || worker.status === status;
-    const matchDepartment = !department || worker.division === department;
-    const matchPosition = !position || worker.position?.name === position;
-    const matchAvailability =
-      !availability || worker.availabilityStatus === availability;
+      const matchStatus = !status || worker.status === status;
 
-    const matchMobilization =
-      !mobilization || worker.mobilizationStatus === mobilization;
+      const matchDepartment = !department || worker.division === department;
 
-    return (
-      matchSearch &&
-      matchStatus &&
-      matchDepartment &&
-      matchPosition &&
-      matchAvailability &&
-      matchMobilization
+      const matchPosition = !position || worker.position?.name === position;
+
+      const matchAvailability =
+        !availability || worker.availabilityStatus === availability;
+
+      const matchMobilization =
+        !mobilization || worker.mobilizationStatus === mobilization;
+
+      return (
+        matchSearch &&
+        matchStatus &&
+        matchDepartment &&
+        matchPosition &&
+        matchAvailability &&
+        matchMobilization
+      );
+    })
+    .sort((a, b) =>
+      (a.empCode || "").localeCompare(b.empCode || "", undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }),
     );
-  });
 
   const totalWorkers = workers.length;
   const activeWorkers = workers.filter((w) => w.status === "active").length;
   const inactiveWorkers = workers.filter((w) => w.status !== "active").length;
 
-  const getStatusBadge = (status) => {
-    switch (status) {
+  const statusBadge = (bg, color, text) => (
+    <span
+      style={{
+        display: "inline-block",
+        minWidth: "90px",
+        textAlign: "center",
+        padding: "4px 10px",
+        borderRadius: "6px",
+        background: bg,
+        color,
+        fontSize: "12px",
+        fontWeight: 600,
+      }}
+    >
+      {text}
+    </span>
+  );
+
+  const renderStatus = (status) => {
+    switch ((status || "").toLowerCase()) {
       case "active":
-        return "bg-success text-dark fw-bold";
+        return statusBadge("#d1e7dd", "#0f5132", "Active");
+
       case "inactive":
-        return "bg-secondary text-dark fw-bold";
+        return statusBadge("#f8d7da", "#842029", "Inactive");
+
       default:
-        return "bg-warning text-dark fw-bold";
+        return statusBadge("#f1f3f5", "#6c757d", status || "-");
     }
   };
 
-  const getAvailabilityBadge = (availability) => {
-    switch (availability) {
+  const renderAvailability = (status) => {
+    switch ((status || "").toLowerCase()) {
       case "available":
-        return "bg-success text-dark fw-bold";
+        return statusBadge("#d1e7dd", "#0f5132", "Available");
+
       case "unavailable":
-        return "bg-danger text-dark fw-bold";
+        return statusBadge("#f8d7da", "#842029", "Unavailable");
+
       default:
-        return "bg-secondary text-dark fw-bold";
+        return statusBadge("#f1f3f5", "#6c757d", status || "-");
+    }
+  };
+
+  const renderMobilization = (status) => {
+    switch ((status || "").toLowerCase()) {
+      case "ready":
+        return statusBadge("#d1e7dd", "#0f5132", "Ready");
+
+      case "on_site":
+        return statusBadge("#e8f4fd", "#0a58ca", "On Site");
+
+      case "pending":
+        return statusBadge("#fff3cd", "#664d03", "Pending");
+
+      default:
+        return statusBadge("#f1f3f5", "#6c757d", status || "-");
     }
   };
 
@@ -142,94 +177,162 @@ export default function Workers() {
     fetchWorkers();
   }, []);
 
-  // 💡 ตกแต่งสไตล์กล่อง Select ของ React-Select ให้ขอบสวย มน และเท่ากับช่อง Search ทั่วไป
   const customSelectStyles = {
     control: (provided) => ({
       ...provided,
       borderColor: "#dee2e6",
-      borderRadius: "0.375rem",
-      padding: "0.15rem 0",
+      borderRadius: "8px",
+      minHeight: "36px",
+      fontSize: "13px",
       boxShadow: "none",
       "&:hover": { borderColor: "#86b7fe" },
     }),
-  };
-
-  const getMobilizationBadge = (mobilizationStatus) => {
-    switch (mobilizationStatus) {
-      case "ready":
-        return "bg-success text-dark fw-bold";
-      case "on_site":
-        return "bg-primary text-white fw-bold";
-      case "pending":
-        return "bg-warning text-dark fw-bold";
-      default:
-        return "bg-secondary text-dark fw-bold";
-    }
+    option: (provided) => ({ ...provided, fontSize: "13px" }),
+    placeholder: (provided) => ({
+      ...provided,
+      fontSize: "13px",
+      color: "#6c757d",
+    }),
   };
 
   const handleDelete = async (id) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to deactivate this worker?",
-    );
-
-    if (!confirmed) return;
-
+    if (!window.confirm("Are you sure you want to deactivate this worker?"))
+      return;
     try {
       await axios.delete(`${backendUrl}/api/workers/${id}`, {
         withCredentials: true,
       });
-
       fetchWorkers();
     } catch (error) {
       console.error(error);
-
       alert(error.response?.data?.message || "Failed to deactivate worker");
     }
   };
 
   return (
-    <div className="container-fluid p-0">
-      <h3 className="mb-4 fw-bold text-dark">Workers</h3>
-
-      <div className="card shadow-sm mb-4 border-0">
-        <div className="card-body bg-white rounded">
+    <div className="container-fluid p-4">
+      <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
+        {/* Header Card */}
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #dee2e6",
+            borderRadius: "10px",
+            padding: "16px 24px",
+            marginBottom: "1.5rem",
+          }}
+        >
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(6, 1fr)", // 👈 5 → 6
-              gap: "1rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "20px" }}>👷</span>
+              <span style={{ fontSize: "18px", fontWeight: 700 }}>Workers</span>
+              <span
+                style={{
+                  background: "#e9f5fb",
+                  color: "#0d6efd",
+                  borderRadius: "6px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                }}
+              >
+                Phase 1
+              </span>
+              <span style={{ color: "#6c757d", fontSize: "12px" }}>
+                Recruitment & Data Entry
+              </span>
+            </div>
+            <button
+              onClick={() => navigate("/admin/workers/add")}
+              style={{
+                background: "#0d6efd",
+                color: "#fff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "8px 16px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              + Add Worker
+            </button>
+          </div>
+        </div>
+
+        {/* Search & Filter Card */}
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #dee2e6",
+            borderRadius: "10px",
+            padding: "14px 20px",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "10px",
+              alignItems: "center",
             }}
           >
             {/* Search */}
-            <div>
-              <label className="form-label fw-semibold text-secondary">
-                Search
-              </label>
+            <div
+              style={{
+                position: "relative",
+                flex: "1 1 220px",
+                minWidth: "180px",
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  left: "10px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "#adb5bd",
+                  fontSize: "14px",
+                }}
+              >
+                🔍
+              </span>
               <input
                 type="text"
-                className="form-control"
-                style={{ padding: "0.53rem 0.75rem" }}
-                placeholder="Search worker..."
+                placeholder="Search name, ID, position..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                style={{
+                  width: "100%",
+                  paddingLeft: "34px",
+                  paddingRight: "12px",
+                  paddingTop: "7px",
+                  paddingBottom: "7px",
+                  fontSize: "13px",
+                  border: "1px solid #dee2e6",
+                  borderRadius: "8px",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
               />
             </div>
 
             {/* Department */}
-            <div>
-              <label className="form-label fw-semibold text-secondary">
-                Department
-              </label>
+            <div style={{ flex: "1 1 150px", minWidth: "130px" }}>
               <Select
                 options={departmentOptions}
                 styles={customSelectStyles}
                 value={
-                  departmentOptions.find((opt) => opt.value === department) ||
-                  null
+                  departmentOptions.find((o) => o.value === department) || null
                 }
-                onChange={(selectedOpt) =>
-                  setDepartment(selectedOpt ? selectedOpt.value : "")
-                }
+                onChange={(o) => setDepartment(o ? o.value : "")}
                 placeholder="All Departments"
                 isClearable
                 noOptionsMessage={() => "No departments found"}
@@ -237,261 +340,486 @@ export default function Workers() {
             </div>
 
             {/* Position */}
-            <div>
-              <label className="form-label fw-semibold text-secondary">
-                Position
-              </label>
+            <div style={{ flex: "1 1 150px", minWidth: "130px" }}>
               <Select
                 options={positionOptions}
                 styles={customSelectStyles}
                 value={
-                  positionOptions.find((opt) => opt.value === position) || null
+                  positionOptions.find((o) => o.value === position) || null
                 }
-                onChange={(selectedOpt) =>
-                  setPosition(selectedOpt ? selectedOpt.value : "")
-                }
+                onChange={(o) => setPosition(o ? o.value : "")}
                 placeholder="All Positions"
                 isClearable
                 noOptionsMessage={() => "No positions found"}
               />
             </div>
 
-            {/* Availability */}
-            <div>
-              <label className="form-label fw-semibold text-secondary">
-                Availability
-              </label>
-              <Select
-                options={availabilityOptions}
-                styles={customSelectStyles}
-                value={
-                  availabilityOptions.find(
-                    (opt) => opt.value === availability,
-                  ) || null
-                }
-                onChange={(selectedOpt) =>
-                  setAvailability(selectedOpt ? selectedOpt.value : "")
-                }
-                placeholder="All Availability"
-                isClearable
-                isSearchable={false}
-              />
-            </div>
-
             {/* Status */}
-            <div>
-              <label className="form-label fw-semibold text-secondary">
-                Status
-              </label>
+            <div style={{ flex: "1 1 120px", minWidth: "110px" }}>
               <Select
                 options={statusOptions}
                 styles={customSelectStyles}
-                value={
-                  statusOptions.find((opt) => opt.value === status) || null
-                }
-                onChange={(selectedOpt) =>
-                  setStatus(selectedOpt ? selectedOpt.value : "")
-                }
+                value={statusOptions.find((o) => o.value === status) || null}
+                onChange={(o) => setStatus(o ? o.value : "")}
                 placeholder="All Status"
                 isClearable
                 isSearchable={false}
               />
             </div>
 
+            {/* Availability */}
+            <div style={{ flex: "1 1 130px", minWidth: "120px" }}>
+              <Select
+                options={availabilityOptions}
+                styles={customSelectStyles}
+                value={
+                  availabilityOptions.find((o) => o.value === availability) ||
+                  null
+                }
+                onChange={(o) => setAvailability(o ? o.value : "")}
+                placeholder="All Availability"
+                isClearable
+                isSearchable={false}
+              />
+            </div>
+
             {/* Mobilization */}
-            <div>
-              <label className="form-label fw-semibold text-secondary">
-                Mobilization
-              </label>
+            <div style={{ flex: "1 1 130px", minWidth: "120px" }}>
               <Select
                 options={mobilizationOptions}
                 styles={customSelectStyles}
                 value={
-                  mobilizationOptions.find(
-                    (opt) => opt.value === mobilization,
-                  ) || null
+                  mobilizationOptions.find((o) => o.value === mobilization) ||
+                  null
                 }
-                onChange={(selectedOpt) =>
-                  setMobilization(selectedOpt ? selectedOpt.value : "")
-                }
+                onChange={(o) => setMobilization(o ? o.value : "")}
                 placeholder="All Mobilization"
                 isClearable
                 isSearchable={false}
               />
             </div>
+
+            {/* Clear All */}
+            {(search ||
+              department ||
+              position ||
+              status ||
+              availability ||
+              mobilization) && (
+              <button
+                onClick={() => {
+                  setSearch("");
+                  setDepartment("");
+                  setPosition("");
+                  setStatus("");
+                  setAvailability("");
+                  setMobilization("");
+                }}
+                style={{
+                  flexShrink: 0,
+                  padding: "7px 14px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  border: "1px solid #f5c6cb",
+                  borderRadius: "8px",
+                  background: "#fff",
+                  color: "#dc3545",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                ✕ Clear
+              </button>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* Summary Area */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: "1rem",
-        }}
-        className="mb-4"
-      >
-        <div className="card border-0 shadow-sm">
-          <div className="card-body">
-            <small className="text-muted text-uppercase fw-bold">
+        {/* Summary Cards */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: "1rem",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              border: "1px solid #dee2e6",
+              borderRadius: "10px",
+              padding: "16px 20px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#6c757d",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+                marginBottom: "6px",
+              }}
+            >
               Total Workers
-            </small>
-            <div className="fw-bold fs-4 mt-1 text-dark">{totalWorkers}</div>
+            </div>
+            <div
+              style={{ fontSize: "24px", fontWeight: 700, color: "#212529" }}
+            >
+              {totalWorkers}
+            </div>
           </div>
-        </div>
-
-        <div className="card border-0 shadow-sm">
-          <div className="card-body">
-            <small className="text-muted text-uppercase fw-bold">
+          <div
+            style={{
+              background: "#fff",
+              border: "1px solid #dee2e6",
+              borderRadius: "10px",
+              padding: "16px 20px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#6c757d",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+                marginBottom: "6px",
+              }}
+            >
               Active Workers
-            </small>
-            <div className="fw-bold fs-4 mt-1 text-success">
+            </div>
+            <div
+              style={{ fontSize: "24px", fontWeight: 700, color: "#198754" }}
+            >
               {activeWorkers}
             </div>
           </div>
-        </div>
-
-        <div className="card border-0 shadow-sm">
-          <div className="card-body">
-            <small className="text-muted text-uppercase fw-bold">
+          <div
+            style={{
+              background: "#fff",
+              border: "1px solid #dee2e6",
+              borderRadius: "10px",
+              padding: "16px 20px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#6c757d",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+                marginBottom: "6px",
+              }}
+            >
               Inactive Workers
-            </small>
-            <div className="fw-bold fs-4 mt-1 text-secondary">
+            </div>
+            <div
+              style={{ fontSize: "24px", fontWeight: 700, color: "#6c757d" }}
+            >
               {inactiveWorkers}
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Workers Table */}
-      <div className="card shadow-sm border-0">
-        <div className="card-body p-0">
-          <div className="table-responsive">
-            {/* 💡 เพิ่มคลาส `table-sm` เพื่อลด padding ตาราง และ `small` เพื่อลดขนาด font ทั้งตารางลงเหลือ ~14px (หรือใช้สไตล์ fontSize: "13px" ก็ได้ครับ) */}
-            <table
-              className="table table-sm table-hover align-middle mb-0 small"
-              style={{ fontSize: "13px" }}
-            >
-              <thead className="table-light">
+        {/* Workers Table Card */}
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #dee2e6",
+            borderRadius: "10px",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "10px 16px",
+              borderBottom: "1px solid #dee2e6",
+              display: "flex",
+              justifyContent: "flex-end",
+            }}
+          >
+            <span style={{ fontSize: "13px", color: "#6c757d" }}>
+              {filteredWorkers.length} of {workers.length}
+            </span>
+          </div>
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: "13px",
+            }}
+          >
+            <thead>
+              <tr style={{ borderBottom: "1px solid #dee2e6" }}>
+                <th
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "#6c757d",
+                    letterSpacing: "0.5px",
+                    textAlign: "left",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  EMP CODE
+                </th>
+                <th
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "#6c757d",
+                    letterSpacing: "0.5px",
+                    textAlign: "left",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  NAME
+                </th>
+                <th
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "#6c757d",
+                    letterSpacing: "0.5px",
+                    textAlign: "left",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  POSITION
+                </th>
+                <th
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "#6c757d",
+                    letterSpacing: "0.5px",
+                    textAlign: "left",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  DEPARTMENT
+                </th>
+                <th
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "#6c757d",
+                    letterSpacing: "0.5px",
+                    textAlign: "center",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  STATUS
+                </th>
+                <th
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "#6c757d",
+                    letterSpacing: "0.5px",
+                    textAlign: "center",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  AVAILABILITY
+                </th>
+
+                <th
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "#6c757d",
+                    letterSpacing: "0.5px",
+                    textAlign: "center",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  MOBILIZATION
+                </th>
+                <th
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "#6c757d",
+                    letterSpacing: "0.5px",
+                    textAlign: "center",
+                    whiteSpace: "nowrap",
+                    width: "200px",
+                  }}
+                >
+                  ACTIONS
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
                 <tr>
-                  <th className="ps-4 text-dark fw-bold py-2 pe-3">Emp Code</th>
-                  <th className="text-dark fw-bold py-2 pe-3">Name</th>
-                  <th className="text-dark fw-bold py-2 pe-3">Position</th>
-                  <th className="text-dark fw-bold py-2 pe-3">Department</th>
-                  <th className="text-dark fw-bold text-center py-2 pe-3">
-                    Availability
-                  </th>
-                  <th className="text-dark fw-bold text-center py-2 pe-3">
-                    Status
-                  </th>
-                  <th className="text-dark fw-bold text-center py-2 pe-3">
-                    Mobilization
-                  </th>
-                  <th
-                    width="220"
-                    className="text-dark fw-bold text-center pe-4 py-2 pe-4"
+                  <td
+                    colSpan="8"
+                    style={{
+                      textAlign: "center",
+                      padding: "40px",
+                      color: "#6c757d",
+                    }}
                   >
-                    Actions
-                  </th>
+                    Loading workers data...
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan="7" className="text-center py-5">
-                      <div
-                        className="spinner-border spinner-border-sm text-primary me-2"
-                        role="status"
-                      ></div>
-                      <span className="text-muted">
-                        Loading workers data...
+              ) : filteredWorkers.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan="8"
+                    style={{
+                      textAlign: "center",
+                      padding: "40px",
+                      color: "#6c757d",
+                    }}
+                  >
+                    No matching records found.
+                  </td>
+                </tr>
+              ) : (
+                filteredWorkers.map((worker, idx) => (
+                  <tr
+                    key={worker.id}
+                    style={{
+                      borderBottom:
+                        idx < filteredWorkers.length - 1
+                          ? "1px solid #f1f3f5"
+                          : "none",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background = "#f8f9fa")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "#fff")
+                    }
+                  >
+                    <td
+                      style={{
+                        padding: "11px 16px",
+                        fontWeight: 600,
+                        color: "#6c757d",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {worker.empCode}
+                    </td>
+                    <td style={{ padding: "11px 16px" }}>
+                      <span
+                        style={{
+                          color: "#0d6efd",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                        onClick={() => navigate(`/admin/workers/${worker.id}`)}
+                      >
+                        {worker.fullName}
                       </span>
                     </td>
-                  </tr>
-                ) : filteredWorkers.length === 0 ? (
-                  <tr>
-                    <td colSpan="7" className="text-center py-5 text-muted">
-                      No matching records found.
+                    <td style={{ padding: "11px 16px" }}>
+                      {worker.position?.name || "—"}
+                    </td>
+                    <td style={{ padding: "11px 16px", color: "#6c757d" }}>
+                      {worker.division || "—"}
+                    </td>
+                    <td
+                      style={{
+                        padding: "11px 16px",
+                        textAlign: "center",
+                      }}
+                    >
+                      {renderStatus(worker.status)}
+                    </td>
+                    <td
+                      style={{
+                        padding: "11px 16px",
+                        textAlign: "center",
+                      }}
+                    >
+                      {renderAvailability(worker.availabilityStatus)}
+                    </td>
+
+                    <td
+                      style={{
+                        padding: "11px 16px",
+                        textAlign: "center",
+                      }}
+                    >
+                      {renderMobilization(worker.mobilizationStatus)}
+                    </td>
+                    <td style={{ padding: "11px 16px", textAlign: "center" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <button
+                          onClick={() =>
+                            navigate(`/admin/workers/${worker.id}`)
+                          }
+                          style={{
+                            background: "#fff",
+                            border: "1px solid #dee2e6",
+                            borderRadius: "6px",
+                            padding: "4px 8px",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                            lineHeight: 1,
+                          }}
+                        >
+                          👁
+                        </button>
+                        <button
+                          onClick={() =>
+                            navigate(`/admin/workers/${worker.id}/edit`)
+                          }
+                          style={{
+                            background: "#fff",
+                            border: "1px solid #dee2e6",
+                            borderRadius: "6px",
+                            padding: "4px 8px",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                            lineHeight: 1,
+                          }}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => handleDelete(worker.id)}
+                          style={{
+                            background: "#fff",
+                            border: "1px solid #f5c6cb",
+                            borderRadius: "6px",
+                            padding: "4px 8px",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                            lineHeight: 1,
+                          }}
+                        >
+                          🗑
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ) : (
-                  filteredWorkers.map((worker) => (
-                    <tr key={worker.id}>
-                      <td className="ps-4 fw-medium text-dark py-2 pe-3">
-                        {worker.empCode}
-                      </td>
-                      <td className="text-dark py-2 pe-3">{worker.fullName}</td>
-                      <td className="text-dark py-2 pe-3">
-                        {worker.position?.name || "-"}
-                      </td>
-                      <td className="text-dark py-2 pe-3">
-                        {worker.division || "-"}
-                      </td>
-                      <td className="text-center py-2 pe-3">
-                        {/* 💡 ลด padding ของ badge ลงเป็น px-2 py-1 เพื่อให้พอดีกับตารางตัวเล็ก */}
-                        <span
-                          className={`badge ${getAvailabilityBadge(worker.availabilityStatus)} px-2 py-1`}
-                          style={{ fontSize: "11px" }}
-                        >
-                          {worker.availabilityStatus}
-                        </span>
-                      </td>
-                      <td className="text-center py-2 pe-3">
-                        {/* 💡 ลด padding ของ badge ลงเป็น px-2 py-1 */}
-                        <span
-                          className={`badge ${getStatusBadge(worker.status)} px-2 py-1`}
-                          style={{ fontSize: "11px" }}
-                        >
-                          {worker.status}
-                        </span>
-                      </td>
-                      <td className="text-center py-2 pe-3">
-                        <span
-                          className={`badge ${getMobilizationBadge(worker.mobilizationStatus)} px-2 py-1`}
-                          style={{ fontSize: "11px" }}
-                        >
-                          {worker.mobilizationStatus || "pending"}
-                        </span>
-                      </td>
-                      <td className="text-center pe-3 py-2">
-                        <div className="d-flex justify-content-center gap-1">
-                          <button
-                            className="btn btn-sm btn-outline-primary px-2 py-1"
-                            style={{ fontSize: "12px" }}
-                            onClick={() =>
-                              navigate(`/admin/workers/${worker.id}`)
-                            }
-                          >
-                            <i className="bi bi-eye me-1"></i>View
-                          </button>
-
-                          <button
-                            className="btn btn-sm btn-outline-secondary px-2 py-1"
-                            style={{ fontSize: "12px" }}
-                            onClick={() =>
-                              navigate(`/admin/workers/${worker.id}/edit`)
-                            }
-                          >
-                            <i className="bi bi-pencil me-1"></i>Edit
-                          </button>
-
-                          <button
-                            className="btn btn-sm btn-outline-danger px-2 py-1"
-                            style={{ fontSize: "12px" }}
-                            onClick={() => handleDelete(worker.id)}
-                          >
-                            <i className="bi bi-slash-circle me-1"></i>
-                            Deactivate
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
