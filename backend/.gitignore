@@ -3,3 +3,13 @@ node_modules
 .env
 
 /generated/prisma
+
+# Prisma generated client (gen ใหม่ตอน build ทุกครั้ง ไม่ควร commit)
+node_modules/.prisma
+
+# logs / OS / editor
+*.log
+.DS_Store
+
+# uploads (ถ้ามี runtime uploads)
+uploads/
