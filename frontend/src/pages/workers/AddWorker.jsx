@@ -416,7 +416,7 @@ export default function AddWorker() {
                   <input
                     type="text"
                     name="empCode"
-                    placeholder="e.g., PTT-0001"
+                    placeholder="e.g., EXPT-0001"
                     value={formData.empCode}
                     onChange={handleChange}
                     required
