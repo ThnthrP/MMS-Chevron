@@ -27,7 +27,7 @@ export const APP_MENU = [
   },
 
   // ========================================================
-  // WORKFORCE: ข้อมูลกำลังพลทั้งหมด (พนักงานประจำ, พนักงานใหม่, ซับคอน)
+  // WORKFORCE: ข้อมูลกำลังพล (รายคน)
   // ========================================================
   {
     section: "WORKFORCE",
@@ -42,21 +42,11 @@ export const APP_MENU = [
         path: "/admin/workers/add",
         roles: ["admin", "hr"],
       },
-      {
-        name: "Manage Positions",
-        path: "/admin/positions",
-        roles: ["admin", "hr", "manpower"],
-      },
-      {
-        name: "Manage Divisions",
-        path: "/admin/divisions",
-        roles: ["admin", "hr", "manpower"],
-      },
     ],
   },
 
   // ========================================================
-  // COMPLIANCE: เกณฑ์มาตรฐาน และใบรับรอง/ผลตรวจแพทย์
+  // COMPLIANCE: ใบรับรอง/ผลตรวจแพทย์ (งานดู/ใช้รายวัน)
   // ========================================================
   {
     section: "COMPLIANCE",
@@ -65,11 +55,6 @@ export const APP_MENU = [
         name: "Training Matrix",
         path: "/admin/training-matrix",
         roles: ["admin", "hr", "manpower", "pe", "expert"], // PE และ Expert เข้ามาดูเป็น Knowledge Base ได้เลยจากตรงนี้
-      },
-      {
-        name: "Matrix Editor",
-        path: "/admin/positions/matrix",
-        roles: ["admin", "hr", "manpower"],
       },
       {
         name: "Compliance Center",
@@ -119,7 +104,7 @@ export const APP_MENU = [
   },
 
   // ========================================================
-  // REPORTS & SYSTEM: รายงานภาพรวมและการจัดการระบบ
+  // REPORTS: รายงานภาพรวม
   // ========================================================
   {
     section: "REPORTS",
@@ -132,6 +117,33 @@ export const APP_MENU = [
     ],
   },
 
+  // ========================================================
+  // SETTINGS: master data / config — เซ็ตตอนเริ่ม, นานๆ แก้ที
+  // ========================================================
+  {
+    section: "SETTINGS",
+    items: [
+      {
+        name: "Manage Positions",
+        path: "/admin/positions",
+        roles: ["admin", "hr", "manpower"],
+      },
+      {
+        name: "Manage Divisions",
+        path: "/admin/divisions",
+        roles: ["admin", "hr", "manpower"],
+      },
+      {
+        name: "Matrix Editor",
+        path: "/admin/positions/matrix",
+        roles: ["admin", "hr", "manpower"],
+      },
+    ],
+  },
+
+  // ========================================================
+  // SYSTEM: จัดการระบบ/ผู้ใช้ (admin only)
+  // ========================================================
   {
     section: "SYSTEM",
     items: [
