@@ -40,7 +40,7 @@ export const register = async (req, res) => {
 
     const userRole = await prisma.role.findUnique({
       where: {
-        name: "pe",
+        name: "manpower",
       },
     });
 

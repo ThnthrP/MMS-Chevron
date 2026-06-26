@@ -40,7 +40,7 @@ export const APP_MENU = [
       {
         name: "Add Worker",
         path: "/admin/workers/add",
-        roles: ["admin", "hr"],
+        roles: ["admin", "hr", "manpower"],
       },
     ],
   },
@@ -98,7 +98,7 @@ export const APP_MENU = [
       {
         name: "Post-Project Review",
         path: "/admin/review", // บันทึกประวัติและ Log ผลงาน เพื่อให้ Manpower ค้นหา "คนเดิม" มาทำงานซ้ำได้แม่นยำ
-        roles: ["admin", "pe", "pe_head"],
+        roles: ["admin", "pe", "pe_head", "manpower"],
       },
     ],
   },
@@ -112,7 +112,7 @@ export const APP_MENU = [
       {
         name: "Analytics & Reports",
         path: "/admin/reports",
-        roles: ["admin", "pe_head", "bd", "manager"],
+        roles: ["admin", "pe_head", "bd", "manager", "manpower"],
       },
     ],
   },
