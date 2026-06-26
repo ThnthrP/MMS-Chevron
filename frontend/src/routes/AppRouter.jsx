@@ -7,7 +7,6 @@ import Layout from "../components/layout/Layout";
 import ProtectedRoute from "../components/ProtectedRoute";
 
 import AdminDashboard from "../pages/dashboard/AdminDashboard";
-import PeDashboard from "../pages/dashboard/PeDashboard";
 
 import AdminUsers from "../pages/admin/AdminUsers";
 
@@ -40,27 +39,12 @@ const AppRouter = () => {
     return <div>Loading...</div>;
   }
 
-  const role = userData?.role?.name;
-
-  const getDashboard = () => {
-    switch (role) {
-      case "admin":
-        return <AdminDashboard />;
-
-      case "pe":
-        return <PeDashboard />;
-
-      default:
-        return <div>No dashboard assigned</div>;
-    }
-  };
-
   return (
     <ProtectedRoute>
       <Layout>
         <Routes>
           {/* Dashboard */}
-          <Route path="/" element={getDashboard()} />
+          <Route path="/" element={<AdminDashboard />} />
           {/* Training Matrix */}
           <Route
             path="/training-matrix"
@@ -92,7 +76,7 @@ const AppRouter = () => {
           <Route
             path="/workers/add"
             element={
-              <ProtectedRoute allowRoles={["admin", "hr"]}>
+              <ProtectedRoute allowRoles={["admin", "hr", "manpower"]}>
                 <AddWorker />
               </ProtectedRoute>
             }
@@ -117,7 +101,7 @@ const AppRouter = () => {
           <Route
             path="/workers/:id/edit"
             element={
-              <ProtectedRoute allowRoles={["admin", "hr"]}>
+              <ProtectedRoute allowRoles={["admin", "hr", "manpower"]}>
                 <EditWorker />
               </ProtectedRoute>
             }
