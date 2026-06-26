@@ -213,7 +213,7 @@ const AppRouter = () => {
           <Route
             path="/divisions"
             element={
-              <ProtectedRoute allowRoles={["admin"]}>
+              <ProtectedRoute allowRoles={["admin", "manpower"]}>
                 <ManageDivisions />
               </ProtectedRoute>
             }
