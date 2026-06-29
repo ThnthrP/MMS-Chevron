@@ -961,7 +961,7 @@ export default function Allocation() {
                     <table
                       style={{
                         width: "100%",
-                        minWidth: "820px",
+                        minWidth: "1200px",
                         borderCollapse: "collapse",
                         fontSize: "13px",
                       }}
@@ -1183,7 +1183,7 @@ export default function Allocation() {
                                         display: "flex",
                                         flexDirection: "column",
                                         gap: "2px",
-                                        maxWidth: "100px",
+                                        maxWidth: "120px",
                                       }}
                                     >
                                       {health && (
@@ -1221,7 +1221,7 @@ export default function Allocation() {
                                             whiteSpace: "nowrap",
                                             overflow: "hidden",
                                             textOverflow: "ellipsis",
-                                            maxWidth: "100px",
+                                            maxWidth: "120px",
                                             textDecorationLine: "underline",
                                             textDecorationStyle: "dotted",
                                           }}
