@@ -961,9 +961,9 @@ export default function Allocation() {
                     <table
                       style={{
                         width: "100%",
-                        minWidth: "760px",
                         borderCollapse: "collapse",
                         fontSize: "13px",
+                        tableLayout: "fixed",
                       }}
                     >
                       <thead>
@@ -1298,10 +1298,9 @@ export default function Allocation() {
                                 {/* % MATCH (matching training certs) */}
                                 <td
                                   style={{
-                                    padding: "12px 12px",
+                                    padding: "12px 8px",
                                     textAlign: "center",
                                     whiteSpace: "nowrap",
-                                    minWidth: "90px",
                                   }}
                                 >
                                   {w.matchPct === null ? (
