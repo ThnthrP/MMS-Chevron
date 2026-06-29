@@ -1221,7 +1221,7 @@ export default function Allocation() {
                                             whiteSpace: "nowrap",
                                             overflow: "hidden",
                                             textOverflow: "ellipsis",
-                                            maxWidth: "170px",
+                                            maxWidth: "130px",
                                             textDecorationLine: "underline",
                                             textDecorationStyle: "dotted",
                                           }}
