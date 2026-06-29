@@ -534,7 +534,7 @@ export default function ManagePositions() {
                   />
                 </div>
                 <div>
-                  <label style={labelStyle}>DEPARTMENT</label>
+                  <label style={labelStyle}>Department</label>
                   <select
                     value={form.category}
                     onChange={(e) =>
