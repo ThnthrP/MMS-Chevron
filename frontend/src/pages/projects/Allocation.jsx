@@ -1175,18 +1175,21 @@ export default function Allocation() {
                                   )}
                                 </td>
                                 {/* HEALTH (risk badge + note icon) */}
+                                {/* HEALTH (risk badge + note preview) */}
                                 <td style={{ padding: "12px 12px" }}>
                                   {health || w.healthNote ? (
                                     <div
                                       style={{
                                         display: "flex",
-                                        alignItems: "center",
-                                        gap: "6px",
+                                        flexDirection: "column",
+                                        gap: "2px",
+                                        maxWidth: "170px",
                                       }}
                                     >
                                       {health && (
                                         <span
                                           style={{
+                                            alignSelf: "flex-start",
                                             background: health.bg,
                                             color: health.color,
                                             borderRadius: "6px",
@@ -1201,7 +1204,9 @@ export default function Allocation() {
                                       )}
                                       {w.healthNote && (
                                         <span
-                                          title="ดู Health Note"
+                                          title={
+                                            w.healthNote
+                                          } /* hover เห็นเต็ม */
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             setHealthNoteModal({
@@ -1210,11 +1215,18 @@ export default function Allocation() {
                                             });
                                           }}
                                           style={{
+                                            fontSize: "10px",
+                                            color: "#6c757d",
                                             cursor: "pointer",
-                                            fontSize: "14px",
+                                            whiteSpace: "nowrap",
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis",
+                                            maxWidth: "170px",
+                                            textDecorationLine: "underline",
+                                            textDecorationStyle: "dotted",
                                           }}
                                         >
-                                          📄
+                                          📄 {w.healthNote}
                                         </span>
                                       )}
                                     </div>
