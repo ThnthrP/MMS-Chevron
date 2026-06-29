@@ -961,7 +961,7 @@ export default function Allocation() {
                     <table
                       style={{
                         width: "100%",
-                        minWidth: "760px",
+                        minWidth: "820px",
                         borderCollapse: "collapse",
                         fontSize: "13px",
                       }}
@@ -1174,7 +1174,7 @@ export default function Allocation() {
                                     </span>
                                   )}
                                 </td>
-                                {/* HEALTH (risk badge + note icon) */}
+
                                 {/* HEALTH (risk badge + note preview) */}
                                 <td style={{ padding: "12px 12px" }}>
                                   {health || w.healthNote ? (
@@ -1183,7 +1183,7 @@ export default function Allocation() {
                                         display: "flex",
                                         flexDirection: "column",
                                         gap: "2px",
-                                        maxWidth: "170px",
+                                        maxWidth: "130px",
                                       }}
                                     >
                                       {health && (
@@ -1300,6 +1300,8 @@ export default function Allocation() {
                                   style={{
                                     padding: "12px 12px",
                                     textAlign: "center",
+                                    whiteSpace: "nowrap",
+                                    minWidth: "90px",
                                   }}
                                 >
                                   {w.matchPct === null ? (

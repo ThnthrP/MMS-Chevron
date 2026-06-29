@@ -25,7 +25,7 @@ export default function ManageDivisions() {
       setDivisions(res.data);
     } catch (err) {
       console.error(err);
-      toast.error("โหลด divisions ไม่สำเร็จ");
+      toast.error("โหลด departments ไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
@@ -38,7 +38,7 @@ export default function ManageDivisions() {
   const handleAdd = async () => {
     const name = newName.trim();
     if (!name) {
-      toast.error("กรอกชื่อ division");
+      toast.error("กรอกชื่อ department");
       return;
     }
     try {
@@ -88,7 +88,7 @@ export default function ManageDivisions() {
   };
 
   const handleDelete = async (d) => {
-    if (!window.confirm(`ลบ division "${d.name}"?`)) return;
+    if (!window.confirm(`ลบ department "${d.name}"?`)) return;
     try {
       await axios.delete(`${backendUrl}/api/divisions/${d.id}`, {
         withCredentials: true,
@@ -161,7 +161,7 @@ export default function ManageDivisions() {
       {/* header */}
       <div style={{ ...card, padding: "18px" }}>
         <div style={{ fontSize: "20px", fontWeight: 800 }}>
-          🗂 Manage Divisions
+          🗂 Manage Departments
         </div>
         <div style={{ marginTop: "4px", fontSize: "12px", color: "#6c757d" }}>
           รายการแผนก/ดิวิชั่น ใช้เป็นตัวเลือกตอน Add/Edit Worker
@@ -181,7 +181,7 @@ export default function ManageDivisions() {
       >
         <input
           type="text"
-          placeholder="ชื่อ division ใหม่…"
+          placeholder="ชื่อ department ใหม่…"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}
@@ -220,13 +220,13 @@ export default function ManageDivisions() {
           <div
             style={{ padding: "28px", textAlign: "center", color: "#6c757d" }}
           >
-            {search ? "ไม่พบ" : "ยังไม่มี division — เพิ่มด้านบนได้เลย"}
+            {search ? "ไม่พบ" : "ยังไม่มี department — เพิ่มด้านบนได้เลย"}
           </div>
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={th}>Division</th>
+                <th style={th}>Department</th>
                 <th style={{ ...th, textAlign: "right", width: "200px" }}>
                   Actions
                 </th>
@@ -303,7 +303,7 @@ export default function ManageDivisions() {
       </div>
 
       <div style={{ fontSize: "11px", color: "#adb5bd", paddingLeft: "4px" }}>
-        * ลบ division ที่ยังมีพนักงานใช้อยู่ไม่ได้ (ระบบจะแจ้งเตือน) ·
+        * ลบ department ที่ยังมีพนักงานใช้อยู่ไม่ได้ (ระบบจะแจ้งเตือน) ·
         เปลี่ยนชื่อจะอัปเดตให้พนักงานที่ใช้ชื่อเดิมโดยอัตโนมัติ
       </div>
     </div>

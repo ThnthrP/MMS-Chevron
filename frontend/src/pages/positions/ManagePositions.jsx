@@ -176,7 +176,7 @@ export default function ManagePositions() {
         </div>
 
         {/* Info note */}
-        <div
+        {/* <div
           style={{
             background: "#e9f5fb",
             border: "1px solid #bee3f8",
@@ -191,7 +191,7 @@ export default function ManagePositions() {
           ทันที — แต่ถ้าจะให้ระบบ **คัดเลือก/เช็ค eligibility** ได้ ต้องสร้าง
           <strong> training matrix</strong> ของตำแหน่งนั้นต่อ contract ด้วย
           (ตัวจัดการ matrix จะมาเฟสถัดไป — ตอนนี้ matrix มาจากการ import)
-        </div>
+        </div> */}
 
         {/* Table */}
         <div
@@ -213,7 +213,7 @@ export default function ManagePositions() {
               <tr style={{ borderBottom: "1px solid #dee2e6" }}>
                 {[
                   ["POSITION", "left"],
-                  ["CATEGORY", "left"],
+                  ["DEPARTMENT", "left"],
                   ["OFFSHORE", "center"],
                   ["WORKERS", "center"],
                   ["MATRIX", "center"],
@@ -534,7 +534,7 @@ export default function ManagePositions() {
                   />
                 </div>
                 <div>
-                  <label style={labelStyle}>Category</label>
+                  <label style={labelStyle}>DEPARTMENT</label>
                   <select
                     value={form.category}
                     onChange={(e) =>

@@ -129,7 +129,7 @@ export const APP_MENU = [
         roles: ["admin", "hr", "manpower"],
       },
       {
-        name: "Manage Divisions",
+        name: "Manage Departments",
         path: "/admin/divisions",
         roles: ["admin", "hr", "manpower"],
       },
