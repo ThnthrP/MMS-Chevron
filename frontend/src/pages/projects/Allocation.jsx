@@ -1183,7 +1183,7 @@ export default function Allocation() {
                                         display: "flex",
                                         flexDirection: "column",
                                         gap: "2px",
-                                        maxWidth: "130px",
+                                        maxWidth: "100px",
                                       }}
                                     >
                                       {health && (
@@ -1221,7 +1221,7 @@ export default function Allocation() {
                                             whiteSpace: "nowrap",
                                             overflow: "hidden",
                                             textOverflow: "ellipsis",
-                                            maxWidth: "130px",
+                                            maxWidth: "100px",
                                             textDecorationLine: "underline",
                                             textDecorationStyle: "dotted",
                                           }}
