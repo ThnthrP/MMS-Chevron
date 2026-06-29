@@ -961,7 +961,7 @@ export default function Allocation() {
                     <table
                       style={{
                         width: "100%",
-                        minWidth: "1200px",
+                        minWidth: "760px",
                         borderCollapse: "collapse",
                         fontSize: "13px",
                       }}
