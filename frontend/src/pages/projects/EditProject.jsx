@@ -161,7 +161,7 @@ export default function EditProject() {
               marginBottom: "12px",
             }}
           >
-            ← Back to Projects
+            ← Back to Project
           </button>
           <div
             style={{
@@ -189,7 +189,7 @@ export default function EditProject() {
       <div style={{ maxWidth: "760px", margin: "0 auto" }}>
         {/* Back */}
         <button
-          onClick={() => navigate(`/admin/projects/${id}`)}
+          onClick={() => navigate(`/admin/projects`)}
           style={{
             background: "none",
             border: "none",
@@ -419,7 +419,7 @@ export default function EditProject() {
             }}
           >
             <button
-              onClick={() => navigate(`/admin/projects/${id}`)}
+              onClick={() => navigate(`/admin/projects`)}
               disabled={submitting}
               style={{
                 padding: "8px 20px",
