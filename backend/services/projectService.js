@@ -38,7 +38,8 @@ export async function getProjectById(id) {
 }
 
 export async function createProject(data) {
-  const { name, contractId, location, notes, startDate, endDate } = data;
+  const { name, contractId, location, notes, startDate, endDate, isOffshore } =
+    data;
   return prisma.project.create({
     data: {
       name,
@@ -47,6 +48,7 @@ export async function createProject(data) {
       notes: notes || null,
       startDate: startDate ? new Date(startDate) : null,
       endDate: endDate ? new Date(endDate) : null,
+      isOffshore: isOffshore ?? false, // ← เพิ่มบรรทัดนี้
     },
     include: {
       contract: { include: { client: true } },

@@ -306,7 +306,7 @@ export default function Workers() {
               </span>
               <input
                 type="text"
-                placeholder="Search name, ID, position..."
+                placeholder="Search name, ID, or position..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 style={{

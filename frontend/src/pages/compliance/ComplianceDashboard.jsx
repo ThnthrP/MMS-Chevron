@@ -132,6 +132,7 @@ export default function ComplianceDashboard() {
   const filteredWorkers = workers.filter((w) => {
     const search = searchTerm.toLowerCase();
     const matchSearch =
+      w.empCode?.toLowerCase().includes(search) ||
       w.fullName?.toLowerCase().includes(search) ||
       w.position?.name?.toLowerCase().includes(search);
     const expired = w.alerts?.expired ?? 0;
@@ -365,7 +366,7 @@ export default function ComplianceDashboard() {
             </span>
             <input
               type="text"
-              placeholder="Search worker or position..."
+              placeholder="Search name, ID, or position..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{

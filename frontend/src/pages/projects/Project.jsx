@@ -9,6 +9,7 @@ export default function Project() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [clients, setClients] = useState([]);
+
   const [form, setForm] = useState({
     name: "",
     contractId: "",
@@ -16,6 +17,7 @@ export default function Project() {
     notes: "",
     startDate: "",
     endDate: "",
+    isOffshore: false, // ← เพิ่มบรรทัดนี้
   });
 
   const navigate = useNavigate();
@@ -72,6 +74,7 @@ export default function Project() {
           notes: form.notes || null,
           startDate: form.startDate || null,
           endDate: form.endDate || null,
+          isOffshore: form.isOffshore, // ← เพิ่มบรรทัดนี้
         },
         { withCredentials: true },
       );
@@ -83,6 +86,7 @@ export default function Project() {
         notes: "",
         startDate: "",
         endDate: "",
+        isOffshore: false, // ← เพิ่มบรรทัดนี้ (reset ตอนปิด modal)
       });
       fetchProjects();
     } catch (error) {
@@ -565,7 +569,23 @@ export default function Project() {
                     gap: "8px",
                     paddingTop: "28px",
                   }}
-                ></div>
+                >
+                  <input
+                    type="checkbox"
+                    id="isOffshore"
+                    checked={form.isOffshore}
+                    onChange={(e) =>
+                      setForm({ ...form, isOffshore: e.target.checked })
+                    }
+                    style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                  />
+                  <label
+                    htmlFor="isOffshore"
+                    style={{ fontSize: "13px", cursor: "pointer" }}
+                  >
+                    Offshore Project (โครงการนอกชายฝั่ง)
+                  </label>
+                </div>
               </div>
 
               {/* Notes */}
