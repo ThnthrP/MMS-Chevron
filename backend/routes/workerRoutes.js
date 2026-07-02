@@ -4,7 +4,8 @@ import * as controller from "../controllers/workerController.js";
 const router = express.Router();
 
 router.get("/", controller.getWorkers);
-router.get("/divisions", controller.getDivisions);   // → GET /api/workers/divisions
+router.get("/next-code", controller.getNextEmpCode); // ← ต้องมาก่อน /:id
+router.get("/divisions", controller.getDivisions); // ← ต้องมาก่อน /:id
 router.get("/:id", controller.getWorkerById);
 router.post("/", controller.createWorker);
 

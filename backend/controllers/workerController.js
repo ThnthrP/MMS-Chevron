@@ -10,6 +10,17 @@ export async function getWorkers(req, res) {
   }
 }
 
+// ── รหัสพนักงาน EXPT ถัดไป สำหรับ prefill ในฟอร์ม Add Worker ──
+export async function getNextEmpCode(req, res) {
+  try {
+    const nextCode = await service.getNextEmpCode();
+    res.json({ nextCode });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to generate employee code" });
+  }
+}
+
 export async function getWorkerById(req, res) {
   try {
     const worker = await service.getWorkerById(req.params.id);
@@ -26,7 +37,6 @@ export async function createWorker(req, res) {
     const worker = await service.createWorker(req.body);
     res.status(201).json(worker);
   } catch (error) {
-    // P2002 = Unique constraint violation
     if (error.code === "P2002") {
       const field = error.meta?.target?.[0];
       if (field === "empCode") {

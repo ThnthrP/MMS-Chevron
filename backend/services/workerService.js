@@ -9,15 +9,39 @@ function buildRosterData(data) {
   if ("birthDate" in data)
     out.birthDate = data.birthDate ? new Date(data.birthDate) : null;
   if ("isPermanent" in data) out.isPermanent = !!data.isPermanent;
-  if ("healthRisk" in data) out.healthRisk = data.healthRisk || null; // low|medium|high|null
+  if ("healthRisk" in data) out.healthRisk = data.healthRisk || null;
   if ("healthNote" in data) out.healthNote = data.healthNote || null;
-  if ("sseLevel" in data) out.sseLevel = data.sseLevel || null; // new_sse|sse1|sse2|null
+  if ("sseLevel" in data) out.sseLevel = data.sseLevel || null;
   if ("sseCompleted" in data)
     out.sseCompleted =
       data.sseCompleted === null || data.sseCompleted === undefined
         ? null
         : !!data.sseCompleted;
   return out;
+}
+
+// ── helper: หาเลข EXPT สูงสุดใน DB ──
+async function computeNextExptNumber() {
+  const emps = await prisma.employee.findMany({
+    where: { empCode: { startsWith: "EXPT-" } },
+    select: { empCode: true },
+  });
+  let max = 0;
+  for (const e of emps) {
+    const m = /^EXPT-(\d+)$/.exec(e.empCode || "");
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return max + 1;
+}
+
+function formatEmpCode(n) {
+  return `EXPT-${String(n).padStart(3, "0")}`;
+}
+
+// ── ส่งรหัส EXPT ถัดไปให้ frontend แสดงในฟอร์ม ──
+export async function getNextEmpCode() {
+  const next = await computeNextExptNumber();
+  return formatEmpCode(next);
 }
 
 export async function getWorkers() {
@@ -43,24 +67,47 @@ export async function getWorkerById(id) {
 }
 
 export async function createWorker(data) {
-  return prisma.employee.create({
-    data: {
-      empCode: data.empCode,
-      fullName: data.fullName,
-      nationality: data.nationality || null,
-      phone: data.phone || null,
-      email: data.email || null,
-      notes: data.notes || null,
-      positionId: data.positionId || null,
-      division: data.division || null,
-      startWorkDate: data.startWorkDate ? new Date(data.startWorkDate) : null,
-      status: data.status || "active",
-      availabilityStatus: data.availabilityStatus || "available",
-      mobilizationStatus: data.mobilizationStatus || "pending",
-      isOffshore: data.isOffshore || false,
-      ...buildRosterData(data), // birthDate / isPermanent / healthRisk / healthNote / sseLevel / sseCompleted
-    },
+  let empCode = (data.empCode || "").trim();
+  if (!empCode) {
+    empCode = formatEmpCode(await computeNextExptNumber());
+  }
+
+  const buildData = (code) => ({
+    empCode: code,
+    fullName: data.fullName,
+    nationality: data.nationality || null,
+    phone: data.phone || null,
+    email: data.email || null,
+    notes: data.notes || null,
+    positionId: data.positionId || null,
+    division: data.division || null,
+    startWorkDate: data.startWorkDate ? new Date(data.startWorkDate) : null,
+    status: data.status || "active",
+    availabilityStatus: data.availabilityStatus || "available",
+    mobilizationStatus: data.mobilizationStatus || "pending",
+    isOffshore: data.isOffshore || false,
+    ...buildRosterData(data),
   });
+
+  const MAX_RETRY = 5;
+  for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
+    try {
+      return await prisma.employee.create({ data: buildData(empCode) });
+    } catch (error) {
+      const isEmpCodeClash =
+        error.code === "P2002" &&
+        (error.meta?.target?.includes?.("empCode") ||
+          error.meta?.target?.[0] === "empCode");
+
+      if (isEmpCodeClash && /^EXPT-\d+$/.test(empCode)) {
+        empCode = formatEmpCode(await computeNextExptNumber());
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error("ไม่สามารถสร้างรหัสพนักงานที่ไม่ซ้ำได้ กรุณาลองอีกครั้ง");
 }
 
 // upsert เพราะ Passport ผูกกับ employee 1-to-1
@@ -102,7 +149,6 @@ export async function createTraining(employeeId, data) {
   });
 }
 
-// อัปเดต training record เดิม (ตาม id)
 export async function updateTraining(trainingId, data) {
   return prisma.employeeTraining.update({
     where: { id: trainingId },
@@ -134,7 +180,6 @@ export async function createMedical(employeeId, data) {
   });
 }
 
-// อัปเดต medical record เดิม (ตาม id)
 export async function updateMedical(medicalId, data) {
   return prisma.medicalCheck.update({
     where: { id: medicalId },
@@ -166,7 +211,7 @@ export async function updateWorker(id, data) {
       availabilityStatus: data.availabilityStatus || "available",
       mobilizationStatus: data.mobilizationStatus || "pending",
       isOffshore: data.isOffshore || false,
-      ...buildRosterData(data), // birthDate / isPermanent / healthRisk / healthNote / sseLevel / sseCompleted
+      ...buildRosterData(data),
     },
   });
 }
@@ -185,5 +230,5 @@ export async function getDivisions() {
     select: { division: true },
     orderBy: { division: "asc" },
   });
-  return rows.map((r) => r.division).filter(Boolean); // filter ตัด "" ทิ้งด้วย
+  return rows.map((r) => r.division).filter(Boolean);
 }

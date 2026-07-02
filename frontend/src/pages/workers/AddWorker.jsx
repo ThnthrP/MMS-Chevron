@@ -89,6 +89,16 @@ export default function AddWorker() {
       .catch((err) => console.error(err));
   }, [backendUrl]);
 
+  // prefill empCode ด้วยรหัส EXPT ถัดไปจาก backend
+  useEffect(() => {
+    axios
+      .get(`${backendUrl}/api/workers/next-code`, { withCredentials: true })
+      .then((res) =>
+        setFormData((prev) => ({ ...prev, empCode: res.data.nextCode })),
+      )
+      .catch((err) => console.error(err));
+  }, [backendUrl]);
+
   const addCertification = () => {
     setCertifications((prev) => [
       ...prev,
@@ -416,7 +426,7 @@ export default function AddWorker() {
                   <input
                     type="text"
                     name="empCode"
-                    placeholder="e.g., EXPT-0001"
+                    placeholder="e.g., EXPT-001"
                     value={formData.empCode}
                     onChange={handleChange}
                     required
