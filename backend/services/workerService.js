@@ -44,6 +44,96 @@ export async function getNextEmpCode() {
   return formatEmpCode(next);
 }
 
+// ============================================================
+// Cert matching → mobilizationStatus / availabilityStatus
+// ============================================================
+// เกณฑ์: match กับ training matrix ของ "Chevron" (ตัวเดียวกับที่
+// ComplianceDashboard ใช้แสดงคอลัมน์ CHEVRON MATCH)
+//   score = 100%  → mobilizationStatus = "ready"
+//   score < 100%  → mobilizationStatus = "pending"
+//   ตำแหน่งที่ไม่มี matrix (ไม่มี PositionRequirement เลย) → ไม่แตะสถานะเดิม
+//   ถ้า mobilizationStatus ปัจจุบันเป็น "on_site" → ไม่ auto-overwrite
+//     (on_site มาจาก flow มือ/มือถือหน้างาน ไม่ใช่ผลจาก cert matching)
+// availabilityStatus derive จาก mobilizationStatus:
+//   pending / ready → available
+//   on_site         → unavailable
+// ============================================================
+
+const PRIMARY_CLIENT_NAME = "Chevron";
+
+// คืน { required, completed, score } หรือ null ถ้าคำนวณไม่ได้
+// (ไม่มีตำแหน่ง / ไม่มี matrix ของตำแหน่งนั้น)
+export async function computeMatchPercent(employeeId) {
+  const employee = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    include: {
+      trainings: {
+        where: { isLatest: true },
+        select: { globalTrainingId: true },
+      },
+    },
+  });
+
+  if (!employee || !employee.positionId) return null;
+
+  const client = await prisma.client.findFirst({
+    where: { name: PRIMARY_CLIENT_NAME },
+  });
+  if (!client) return null;
+
+  const contract = await prisma.contract.findFirst({
+    where: { clientId: client.id, isActive: true },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!contract) return null;
+
+  const requirements = await prisma.positionRequirement.findMany({
+    where: { positionId: employee.positionId, contractId: contract.id },
+    include: { clientTraining: { select: { globalTrainingId: true } } },
+  });
+
+  if (requirements.length === 0) return null; // ไม่มี matrix ของตำแหน่งนี้
+
+  const requiredIds = new Set(
+    requirements.map((r) => r.clientTraining.globalTrainingId),
+  );
+  const completedIds = new Set(
+    employee.trainings.map((t) => t.globalTrainingId).filter(Boolean),
+  );
+
+  const required = requiredIds.size;
+  const completed = [...requiredIds].filter((id) =>
+    completedIds.has(id),
+  ).length;
+  const score = required > 0 ? Math.round((completed / required) * 100) : 0;
+
+  return { required, completed, score };
+}
+
+// คำนวณแล้ว update mobilizationStatus + availabilityStatus ให้ employee คนเดียว
+// เรียกใช้ได้ตรงๆ (batch script) หรือถูกเรียกอัตโนมัติจาก hook ด้านล่าง
+export async function recomputeMobilizationAndAvailability(employeeId) {
+  const current = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: { mobilizationStatus: true },
+  });
+  if (!current) return;
+
+  // on_site = ลงพื้นที่จริงแล้ว → ไม่ให้ cert matching ทับสถานะนี้อัตโนมัติ
+  if (current.mobilizationStatus === "on_site") return;
+
+  const match = await computeMatchPercent(employeeId);
+  if (!match) return; // ไม่มีตำแหน่ง/ไม่มี matrix → คงสถานะเดิมไว้
+
+  const mobilizationStatus = match.score === 100 ? "ready" : "pending";
+  const availabilityStatus = "available"; // pending/ready ทั้งคู่ = available
+
+  await prisma.employee.update({
+    where: { id: employeeId },
+    data: { mobilizationStatus, availabilityStatus },
+  });
+}
+
 export async function getWorkers() {
   return prisma.employee.findMany({
     include: { position: true },
@@ -135,7 +225,7 @@ export async function createPassport(employeeId, data) {
 }
 
 export async function createTraining(employeeId, data) {
-  return prisma.employeeTraining.create({
+  const result = await prisma.employeeTraining.create({
     data: {
       employeeId,
       globalTrainingId: data.globalTrainingId || null,
@@ -147,10 +237,12 @@ export async function createTraining(employeeId, data) {
       version: 1,
     },
   });
+  await recomputeMobilizationAndAvailability(employeeId);
+  return result;
 }
 
 export async function updateTraining(trainingId, data) {
-  return prisma.employeeTraining.update({
+  const result = await prisma.employeeTraining.update({
     where: { id: trainingId },
     data: {
       globalTrainingId: data.globalTrainingId || null,
@@ -158,12 +250,22 @@ export async function updateTraining(trainingId, data) {
       expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
     },
   });
+  await recomputeMobilizationAndAvailability(result.employeeId);
+  return result;
 }
 
 export async function deleteTraining(trainingId) {
-  return prisma.employeeTraining.delete({
+  const existing = await prisma.employeeTraining.findUnique({
+    where: { id: trainingId },
+    select: { employeeId: true },
+  });
+  const result = await prisma.employeeTraining.delete({
     where: { id: trainingId },
   });
+  if (existing) {
+    await recomputeMobilizationAndAvailability(existing.employeeId);
+  }
+  return result;
 }
 
 export async function createMedical(employeeId, data) {
@@ -195,7 +297,7 @@ export async function updateMedical(medicalId, data) {
 }
 
 export async function updateWorker(id, data) {
-  return prisma.employee.update({
+  const result = await prisma.employee.update({
     where: { id },
     data: {
       empCode: data.empCode,
@@ -214,6 +316,9 @@ export async function updateWorker(id, data) {
       ...buildRosterData(data),
     },
   });
+  // ตำแหน่งอาจเปลี่ยน → matrix ที่ใช้เทียบเปลี่ยนตาม ต้องคำนวณสถานะใหม่
+  await recomputeMobilizationAndAvailability(id);
+  return result;
 }
 
 export async function deleteWorker(id) {
