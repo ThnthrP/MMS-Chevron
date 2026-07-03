@@ -742,22 +742,21 @@ export default function Workers() {
                     >
                       {renderStatus(worker.status)}
                     </td>
-                    <td
-                      style={{
-                        padding: "11px 16px",
-                        textAlign: "center",
-                      }}
-                    >
-                      {renderAvailability(worker.availabilityStatus)}
+
+                    <td style={{ padding: "11px 16px", textAlign: "center" }}>
+                      {worker.status === "inactive" ? (
+                        <span style={{ color: "#adb5bd" }}>—</span>
+                      ) : (
+                        renderAvailability(worker.availabilityStatus)
+                      )}
                     </td>
 
-                    <td
-                      style={{
-                        padding: "11px 16px",
-                        textAlign: "center",
-                      }}
-                    >
-                      {renderMobilization(worker.mobilizationStatus)}
+                    <td style={{ padding: "11px 16px", textAlign: "center" }}>
+                      {worker.status === "inactive" ? (
+                        <span style={{ color: "#adb5bd" }}>—</span>
+                      ) : (
+                        renderMobilization(worker.mobilizationStatus)
+                      )}
                     </td>
                     <td style={{ padding: "11px 16px", textAlign: "center" }}>
                       <div

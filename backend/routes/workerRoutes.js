@@ -21,4 +21,6 @@ router.put("/:id/medical/:medicalId", controller.updateMedical);
 router.put("/:id", controller.updateWorker);
 router.delete("/:id", controller.deleteWorker);
 
+router.delete("/:id/medical/:medicalId", controller.deleteMedical);
+
 export default router;

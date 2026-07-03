@@ -153,3 +153,13 @@ export async function getDivisions(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
+
+export async function deleteMedical(req, res) {
+  try {
+    await service.deleteMedical(req.params.medicalId);
+    res.json({ message: "Medical record deleted" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to delete medical record" });
+  }
+}

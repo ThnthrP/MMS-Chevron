@@ -612,7 +612,19 @@ export default function AddWorker() {
                   <select
                     name="availabilityStatus"
                     value={formData.availabilityStatus}
-                    onChange={handleChange}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData((prev) => ({
+                        ...prev,
+                        availabilityStatus: value,
+                        mobilizationStatus:
+                          value === "unavailable"
+                            ? "on_site"
+                            : prev.mobilizationStatus === "on_site"
+                              ? "pending"
+                              : prev.mobilizationStatus,
+                      }));
+                    }}
                     style={inputStyle}
                   >
                     <option value="available">Available</option>
@@ -624,12 +636,25 @@ export default function AddWorker() {
                   <select
                     name="mobilizationStatus"
                     value={formData.mobilizationStatus}
-                    onChange={handleChange}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData((prev) => ({
+                        ...prev,
+                        mobilizationStatus: value,
+                        availabilityStatus:
+                          value === "on_site" ? "unavailable" : "available",
+                      }));
+                    }}
                     style={inputStyle}
                   >
-                    <option value="pending">Pending</option>
-                    <option value="ready">Ready</option>
-                    <option value="on_site">On-Site</option>
+                    {formData.availabilityStatus === "unavailable" ? (
+                      <option value="on_site">On-Site</option>
+                    ) : (
+                      <>
+                        <option value="pending">Pending</option>
+                        <option value="ready">Ready</option>
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
@@ -675,7 +700,6 @@ export default function AddWorker() {
               </div>
             </div>
           </div>
-
           {/* Section R: Offshore Roster (ติดตัวพนักงาน) */}
           <div style={sectionCard}>
             <SectionHeader

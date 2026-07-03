@@ -689,7 +689,7 @@ export default function WorkerDetail() {
 
         {/* Section 4: Medical */}
         <div style={sectionCard}>
-          <SectionHeader number="4" title="Medical Records" accent />
+          <SectionHeader number="4" title="Medical Check-up Record" accent />
           <div style={sectionBody}>
             {!medCheck && !confinedSpace ? (
               <div
@@ -706,88 +706,86 @@ export default function WorkerDetail() {
                 No medical records on record.
               </div>
             ) : (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "16px",
-                }}
-              >
-                {[
-                  { label: "Medical Check up", rec: medCheck },
-                  { label: "Confined Space Entry", rec: confinedSpace },
-                ]
-                  .filter((x) => x.rec)
-                  .map(({ label, rec }) => {
-                    const info = medicalStatusInfo(rec.status);
-                    const exp = expiryInfo(rec.expiryDate);
+              <>
+                <div style={{ ...grid3, rowGap: "20px", marginBottom: "16px" }}>
+                  <Field
+                    label="Hospital / Clinic"
+                    value={medCheck?.hospital || confinedSpace?.hospital || "—"}
+                  />
+                  <Field
+                    label="Examination Date"
+                    value={fmtDate(
+                      medCheck?.issuedDate || confinedSpace?.issuedDate,
+                    )}
+                  />
+                  {(() => {
+                    const exp = expiryInfo(
+                      medCheck?.expiryDate || confinedSpace?.expiryDate,
+                    );
                     return (
-                      <div
-                        key={label}
-                        style={{
-                          border: "1px solid #e9ecef",
-                          borderRadius: "8px",
-                          padding: "16px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            marginBottom: "12px",
-                          }}
-                        >
-                          <span style={{ fontWeight: 600, fontSize: "14px" }}>
-                            {label}
-                          </span>
-                          {badge(info.bg, info.color, info.label)}
-                        </div>
-                        <div style={{ ...grid3, rowGap: "12px" }}>
-                          <Field
-                            label="Hospital / Clinic"
-                            value={rec.hospital || "—"}
-                          />
-                          <Field
-                            label="Examination Date"
-                            value={fmtDate(rec.issuedDate)}
-                          />
-                          <div>
-                            <span style={labelStyle}>Expiry Date</span>
-                            <div style={{ ...valueStyle, color: exp.color }}>
-                              {exp.text}
-                              {exp.note && (
-                                <span
-                                  style={{
-                                    fontSize: "11px",
-                                    marginLeft: "6px",
-                                  }}
-                                >
-                                  ({exp.note})
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        {rec.notes && (
-                          <div style={{ marginTop: "12px" }}>
-                            <span style={labelStyle}>Notes</span>
-                            <div
-                              style={{
-                                fontSize: "13px",
-                                color: "#495057",
-                                whiteSpace: "pre-wrap",
-                                lineHeight: 1.6,
-                              }}
+                      <div>
+                        <span style={labelStyle}>Expiry Date</span>
+                        <div style={{ ...valueStyle, color: exp.color }}>
+                          {exp.text}
+                          {exp.note && (
+                            <span
+                              style={{ fontSize: "11px", marginLeft: "6px" }}
                             >
-                              {rec.notes}
-                            </div>
-                          </div>
-                        )}
+                              ({exp.note})
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
-                  })}
-              </div>
+                  })()}
+                </div>
+
+                <div style={{ ...grid3, rowGap: "20px" }}>
+                  <div>
+                    <span style={labelStyle}>Medical Status</span>
+                    <div style={valueStyle}>
+                      {medCheck ? (
+                        (() => {
+                          const info = medicalStatusInfo(medCheck.status);
+                          return badge(info.bg, info.color, info.label);
+                        })()
+                      ) : (
+                        <span style={{ color: "#6c757d" }}>—</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <span style={labelStyle}>Confined Space Medical</span>
+                    <div style={valueStyle}>
+                      {confinedSpace
+                        ? (() => {
+                            const info = medicalStatusInfo(
+                              confinedSpace.status,
+                            );
+                            return badge(info.bg, info.color, info.label);
+                          })()
+                        : badge("#f1f3f5", "#6c757d", "N/A / Not assessed")}
+                    </div>
+                  </div>
+                  <div />
+                </div>
+
+                {(medCheck?.notes || confinedSpace?.notes) && (
+                  <div style={{ marginTop: "20px" }}>
+                    <span style={labelStyle}>Notes</span>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        color: "#495057",
+                        whiteSpace: "pre-wrap",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {medCheck?.notes || confinedSpace?.notes}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

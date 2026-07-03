@@ -367,3 +367,9 @@ export async function getDivisions() {
   });
   return rows.map((r) => r.division).filter(Boolean);
 }
+
+export async function deleteMedical(medicalId) {
+  return prisma.medicalCheck.delete({
+    where: { id: medicalId },
+  });
+}
