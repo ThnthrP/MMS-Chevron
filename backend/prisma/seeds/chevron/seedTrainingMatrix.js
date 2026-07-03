@@ -213,9 +213,10 @@ async function seedTrainingMatrix() {
 
     if (!position) {
       console.log(`⚠ Position not found: ${positionName}`);
-
+      console.log(
+        `   DEBUG length=${positionName.length}, hex=${Buffer.from(positionName, "utf8").toString("hex")}`,
+      );
       skipped++;
-
       continue;
     }
 
