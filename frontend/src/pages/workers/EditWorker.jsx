@@ -497,22 +497,29 @@ export default function EditWorker() {
 
   // ตัวเลือก Position — เฉพาะที่มีพนักงาน + ค้นหาได้
   // เผื่อ position ปัจจุบันของ worker ไม่อยู่ใน list (กันค่าหาย)
-  const hasPosCounts = positions.some((p) => p._count);
-  let positionPool = hasPosCounts
-    ? positions.filter((p) => (p._count?.employees ?? 0) > 0)
-    : positions;
-  if (
-    formData.positionId &&
-    !positionPool.some((p) => p.id === formData.positionId)
-  ) {
-    const cur = positions.find((p) => p.id === formData.positionId);
-    if (cur) positionPool = [cur, ...positionPool];
-  }
-  const positionOptions = positionPool.map((p) => ({
+  // const hasPosCounts = positions.some((p) => p._count);
+  // let positionPool = hasPosCounts
+  //   ? positions.filter((p) => (p._count?.employees ?? 0) > 0)
+  //   : positions;
+  // if (
+  //   formData.positionId &&
+  //   !positionPool.some((p) => p.id === formData.positionId)
+  // ) {
+  //   const cur = positions.find((p) => p.id === formData.positionId);
+  //   if (cur) positionPool = [cur, ...positionPool];
+  // }
+  // const positionOptions = positionPool.map((p) => ({
+  //   value: p.id,
+  //   label: `${p.name}${p._count ? ` (${p._count.employees})` : ""}`,
+  // }));
+  // const departmentOptions = DIVISIONS.map((d) => ({ value: d, label: d }));
+
+  // ตัวเลือก Position — แสดงทุกตำแหน่งเหมือนหน้า Add Worker
+  const positionOptions = positions.map((p) => ({
     value: p.id,
     label: `${p.name}${p._count ? ` (${p._count.employees})` : ""}`,
   }));
-  // const departmentOptions = DIVISIONS.map((d) => ({ value: d, label: d }));
+
   let divisionPool = [...divisions];
   if (formData.division && !divisionPool.includes(formData.division)) {
     divisionPool = [formData.division, ...divisionPool];
@@ -682,9 +689,10 @@ export default function EditWorker() {
                       }),
                       option: (b) => ({ ...b, fontSize: "13px" }),
                     }}
-                    noOptionsMessage={() =>
-                      hasPosCounts ? "ไม่มีตำแหน่งที่มีพนักงาน" : "ไม่มีตำแหน่ง"
-                    }
+                    // noOptionsMessage={() =>
+                    //   hasPosCounts ? "ไม่มีตำแหน่งที่มีพนักงาน" : "ไม่มีตำแหน่ง"
+                    // }
+                    noOptionsMessage={() => "ไม่มีตำแหน่ง"}
                   />
                 </div>
                 <div>
