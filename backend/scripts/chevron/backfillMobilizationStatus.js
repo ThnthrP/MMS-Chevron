@@ -13,6 +13,11 @@ const prisma = new PrismaClient();
 const DRY_RUN = !process.argv.includes("--apply");
 const PRIMARY_CLIENT_NAME = "Chevron";
 
+// ค่า requirementType ที่นับเป็น "Mandatory" (สัญลักษณ์ X)
+// "required" (bulk import) และ "mandatory" (แก้ผ่าน MatrixEditor) เป็น
+// ความหมายเดียวกันสำหรับ Chevron — เหมือนกับ workerService.js/complianceService.js
+const MANDATORY_REQUIREMENT_TYPES = ["required", "mandatory"];
+
 async function computeMatchPercent(employee, requirementsByPosition) {
   if (!employee.positionId) return null;
 
@@ -60,8 +65,13 @@ async function main() {
   if (!contract) throw new Error(`Contract not found: ${PRIMARY_CLIENT_NAME}`);
 
   // โหลด requirements ทั้งหมดของ contract นี้ จัดกลุ่มตาม positionId ไว้ล่วงหน้า
+  // นับเฉพาะ requirementType ที่เป็น Mandatory (required + mandatory) —
+  // ไม่รวม "assigned" ให้ตรงกับคอลัมน์ CHEVRON MATCH ในหน้า Compliance
   const allRequirements = await prisma.positionRequirement.findMany({
-    where: { contractId: contract.id },
+    where: {
+      contractId: contract.id,
+      requirementType: { in: MANDATORY_REQUIREMENT_TYPES },
+    },
     include: { clientTraining: { select: { globalTrainingId: true } } },
   });
   const requirementsByPosition = new Map();
@@ -70,7 +80,6 @@ async function main() {
     list.push({ globalTrainingId: r.clientTraining.globalTrainingId });
     requirementsByPosition.set(r.positionId, list);
   }
-
   const employees = await prisma.employee.findMany({
     where: { status: "active" },
     include: {

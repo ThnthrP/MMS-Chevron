@@ -49,6 +49,8 @@ export async function getNextEmpCode() {
 // ============================================================
 // เกณฑ์ mobilizationStatus = "ready" ต้องผ่านทั้ง 2 เงื่อนไข:
 //   1) match กับ training matrix ของ "Chevron" ครบ 100%
+//      (นับเฉพาะ requirementType ที่เป็น Mandatory — "required"+"mandatory"
+//       ไม่รวม "assigned" — ให้ตรงกับตรรกะเดียวกับ complianceService.js)
 //   2) ไม่มี training หรือ medical check ใบไหนหมดอายุแล้ว
 //      (เช็คทุกใบที่มี expiryDate — เหมือนที่ ComplianceDashboard/
 //       complianceService นับ "expired", ไม่ใช่แค่ตัวที่ required ใน matrix)
@@ -62,6 +64,11 @@ export async function getNextEmpCode() {
 // ============================================================
 
 const PRIMARY_CLIENT_NAME = "Chevron";
+
+// ค่า requirementType ที่นับเป็น "Mandatory" (สัญลักษณ์ X)
+// "required" (bulk import) และ "mandatory" (แก้ผ่าน MatrixEditor) เป็น
+// ความหมายเดียวกันสำหรับ Chevron — ดูหมายเหตุเดียวกันใน complianceService.js
+const MANDATORY_REQUIREMENT_TYPES = ["required", "mandatory"];
 
 // คืน { required, completed, score, hasExpiredCert } หรือ null ถ้าคำนวณไม่ได้
 // (ไม่มีตำแหน่ง / ไม่มี matrix ของตำแหน่งนั้น)
@@ -92,8 +99,14 @@ export async function computeMatchPercent(employeeId) {
   });
   if (!contract) return null;
 
+  // นับเฉพาะ requirementType ที่เป็น Mandatory (required + mandatory)
+  // ไม่รวม "assigned" — ตรงกับคอลัมน์ CHEVRON MATCH ในหน้า Compliance
   const requirements = await prisma.positionRequirement.findMany({
-    where: { positionId: employee.positionId, contractId: contract.id },
+    where: {
+      positionId: employee.positionId,
+      contractId: contract.id,
+      requirementType: { in: MANDATORY_REQUIREMENT_TYPES },
+    },
     include: { clientTraining: { select: { globalTrainingId: true } } },
   });
 
