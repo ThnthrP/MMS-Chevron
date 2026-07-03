@@ -5,6 +5,14 @@ import { AppContent } from "../../context/AppContext";
 
 const RETIREMENT_AGE = 60;
 
+// ── roster maps (เหมือนกับ Allocation.jsx) ──
+const HEALTH_MAP = {
+  low: { label: "Low (ต่ำ)", bg: "#d1e7dd", color: "#0f5132" },
+  medium: { label: "Medium (ปานกลาง)", bg: "#fff3cd", color: "#664d03" },
+  high: { label: "High (สูง)", bg: "#f8d7da", color: "#842029" },
+};
+const SSE_LABEL = { new_sse: "NEW SSE", sse1: "SSE1", sse2: "SSE2" };
+
 // ── helpers ───────────────────────────────────────────────
 const fmtDate = (val) => {
   if (!val) return "—";
@@ -145,7 +153,7 @@ export default function WorkerDetail() {
     gap: "20px",
   };
 
-  const SectionHeader = ({ number, title, accent }) => (
+  const SectionHeader = ({ number, title, subtitle, accent }) => (
     <div style={{ ...sectionHeader, background: accent ? "#fff5f5" : "#fff" }}>
       <div
         style={{
@@ -173,6 +181,9 @@ export default function WorkerDetail() {
       >
         {title}
       </span>
+      {subtitle && (
+        <span style={{ fontSize: "12px", color: "#6c757d" }}>{subtitle}</span>
+      )}
     </div>
   );
 
@@ -322,6 +333,10 @@ export default function WorkerDetail() {
   const ppExpiry = expiryInfo(w.passport?.expiryDate);
   const wpExpiry = expiryInfo(w.passport?.workPermitExpiryDate);
 
+  const health = w.healthRisk ? HEALTH_MAP[w.healthRisk] : null;
+  const hasRosterData =
+    w.isPermanent || w.healthRisk || w.healthNote || w.sseLevel;
+
   return (
     <div className="container-fluid p-4">
       <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
@@ -384,6 +399,7 @@ export default function WorkerDetail() {
                 </span>
               )}
               {w.isOffshore && badge("#cfe2ff", "#084298", "Offshore")}
+              {w.isPermanent && badge("#d1e7dd", "#0f5132", "Permanent")}
               {retireFlag}
             </div>
             <div style={{ fontSize: "13px", color: "#6c757d" }}>
@@ -459,6 +475,88 @@ export default function WorkerDetail() {
                   {w.notes}
                 </div>
               </div>
+            )}
+          </div>
+        </div>
+
+        {/* Section R: Offshore Roster (ข้อมูลติดตัวพนักงาน) */}
+        <div style={sectionCard}>
+          <SectionHeader
+            number="R"
+            title="Offshore Roster"
+            subtitle="(ข้อมูลติดตัวพนักงาน — Health / SSE / Permanent)"
+          />
+          <div style={sectionBody}>
+            {!hasRosterData ? (
+              <div
+                style={{
+                  background: "#f8f9fa",
+                  border: "1px dashed #dee2e6",
+                  borderRadius: "8px",
+                  padding: "28px",
+                  textAlign: "center",
+                  fontSize: "13px",
+                  color: "#6c757d",
+                }}
+              >
+                ยังไม่มีข้อมูล Offshore Roster สำหรับพนักงานคนนี้
+              </div>
+            ) : (
+              <>
+                <div style={{ ...grid3, rowGap: "20px", marginBottom: "16px" }}>
+                  <div>
+                    <span style={labelStyle}>Permanent Employee</span>
+                    <div style={valueStyle}>
+                      {w.isPermanent
+                        ? badge("#d1e7dd", "#0f5132", "🟩 Permanent")
+                        : badge("#f1f3f5", "#6c757d", "Non-Permanent")}
+                    </div>
+                  </div>
+                  <div>
+                    <span style={labelStyle}>Health Risk</span>
+                    <div style={valueStyle}>
+                      {health ? (
+                        badge(health.bg, health.color, health.label)
+                      ) : (
+                        <span style={{ color: "#6c757d" }}>—</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <span style={labelStyle}>SSE Level</span>
+                    <div style={valueStyle}>
+                      {w.sseLevel && SSE_LABEL[w.sseLevel] ? (
+                        badge(
+                          w.sseCompleted ? "#cfe2ff" : "#fff3cd",
+                          w.sseCompleted ? "#084298" : "#664d03",
+                          `${SSE_LABEL[w.sseLevel]}${w.sseCompleted ? " ✓ Completed" : " · Not yet"}`,
+                        )
+                      ) : (
+                        <span style={{ color: "#6c757d" }}>—</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {w.healthNote && (
+                  <div>
+                    <span style={labelStyle}>Health Note (หมายเหตุสุขภาพ)</span>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        color: "#495057",
+                        whiteSpace: "pre-wrap",
+                        lineHeight: 1.6,
+                        background: "#fffbea",
+                        border: "1px solid #ffe69c",
+                        borderRadius: "8px",
+                        padding: "12px 14px",
+                      }}
+                    >
+                      {w.healthNote}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
