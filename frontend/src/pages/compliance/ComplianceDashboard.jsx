@@ -192,6 +192,116 @@ export default function ComplianceDashboard() {
     }
   };
 
+  // ── Gap Modal: การ์ดสรุปตัวเลข (Required/Completed/Missing) ──
+  const GapCountCards = ({ required, completed, missing }) => (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(3, 1fr)",
+        gap: "12px",
+        marginBottom: "16px",
+      }}
+    >
+      {[
+        { label: "Required", value: required, bg: "#e8f0ff", color: "#0d6efd" },
+        {
+          label: "Completed",
+          value: completed,
+          bg: "#f0fff4",
+          color: "#198754",
+        },
+        { label: "Missing", value: missing, bg: "#fff5f5", color: "#dc3545" },
+      ].map((s) => (
+        <div
+          key={s.label}
+          style={{
+            background: s.bg,
+            borderRadius: "8px",
+            padding: "12px",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: "22px", fontWeight: 700, color: s.color }}>
+            {s.value}
+          </div>
+          <div style={{ fontSize: "12px", color: "#6c757d" }}>{s.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+
+  // ── Gap Modal: รายการ tag Missing / Completed ──
+  const GapTrainingTags = ({ missing, completed }) => (
+    <>
+      {missing.length > 0 ? (
+        <div>
+          <div
+            style={{
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "#dc3545",
+              marginBottom: "8px",
+            }}
+          >
+            Missing Training:
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+            {missing.map((t) => (
+              <span
+                key={t}
+                style={{
+                  background: "#fff5f5",
+                  color: "#dc3545",
+                  border: "1px solid #f5c6cb",
+                  borderRadius: "6px",
+                  padding: "3px 10px",
+                  fontSize: "12px",
+                }}
+              >
+                ✕ {t}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div style={{ fontSize: "13px", fontWeight: 600, color: "#198754" }}>
+          ✅ All training completed
+        </div>
+      )}
+      {completed.length > 0 && (
+        <div style={{ marginTop: "12px" }}>
+          <div
+            style={{
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "#198754",
+              marginBottom: "8px",
+            }}
+          >
+            Completed Training:
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+            {completed.map((t) => (
+              <span
+                key={t}
+                style={{
+                  background: "#f0fff4",
+                  color: "#198754",
+                  border: "1px solid #b2dfdb",
+                  borderRadius: "6px",
+                  padding: "3px 10px",
+                  fontSize: "12px",
+                }}
+              >
+                ✓ {t}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="container-fluid p-4">
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -399,7 +509,6 @@ export default function ComplianceDashboard() {
             <option value="expired">🔴 Expired</option>
             <option value="critical">🔥 Critical (&lt;30 days)</option>
             <option value="warning">🟡 Warning (30-60 days)</option>
-            {/* <option value="valid">✅ All Valid</option> */}
             <option value="valid">✅ No Alerts</option>
           </select>
           {(statusFilter !== "all" || searchTerm) && (
@@ -527,7 +636,6 @@ export default function ComplianceDashboard() {
                       return expired === 0 &&
                         critical === 0 &&
                         warning === 0 ? (
-                        // badge("#d1e7dd", "#0f5132", "✅ All Valid")
                         badge("#d1e7dd", "#0f5132", "✅ No Alerts")
                       ) : (
                         <div
@@ -673,7 +781,7 @@ export default function ComplianceDashboard() {
         </div>
       </div>
 
-      {/* Gap Modal */}
+      {/* Gap Modal — แบ่ง Mandatory / Assigned / Others */}
       {showGapModal && selectedGap && (
         <div
           style={{
@@ -735,202 +843,199 @@ export default function ComplianceDashboard() {
             </div>
             <div style={{ padding: "24px" }}>
               {Object.entries(selectedGap.clients).map(
-                ([clientName, client]) => (
-                  <div
-                    key={clientName}
-                    style={{
-                      border: "1px solid #dee2e6",
-                      borderRadius: "10px",
-                      padding: "20px",
-                      marginBottom: "16px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: "16px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontWeight: 700,
-                          fontSize: "14px",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        {clientName}
-                      </span>
-                      <span
-                        style={{
-                          borderRadius: "6px",
-                          padding: "4px 12px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          background:
-                            client.missing.length === 0
-                              ? "#d1e7dd"
-                              : client.completed.length /
-                                    client.required.length >=
-                                  0.8
-                                ? "#fff3cd"
-                                : "#f8d7da",
-                          color:
-                            client.missing.length === 0
-                              ? "#0f5132"
-                              : client.completed.length /
-                                    client.required.length >=
-                                  0.8
-                                ? "#664d03"
-                                : "#842029",
-                        }}
-                      >
-                        {Math.round(
-                          (client.completed.length / client.required.length) *
+                ([clientName, client]) => {
+                  const mandatory = client.mandatory ?? {
+                    required: [],
+                    completed: [],
+                    missing: [],
+                  };
+                  const assigned = client.assigned ?? {
+                    required: [],
+                    completed: [],
+                    missing: [],
+                  };
+                  const others = client.others ?? { completed: [] };
+
+                  // % Match ของ client นี้ = อิงจากกลุ่ม Mandatory เท่านั้น
+                  // (ตรงกับตัวเลขคอลัมน์ CHEVRON MATCH ในตาราง)
+                  const mandatoryScore =
+                    mandatory.required.length > 0
+                      ? Math.round(
+                          (mandatory.completed.length /
+                            mandatory.required.length) *
                             100,
-                        )}
-                        % Match
-                      </span>
-                    </div>
+                        )
+                      : 0;
+
+                  return (
                     <div
+                      key={clientName}
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(3, 1fr)",
-                        gap: "12px",
+                        border: "1px solid #dee2e6",
+                        borderRadius: "10px",
+                        padding: "20px",
                         marginBottom: "16px",
                       }}
                     >
-                      {[
-                        {
-                          label: "Required",
-                          value: client.required.length,
-                          bg: "#e8f0ff",
-                          color: "#0d6efd",
-                        },
-                        {
-                          label: "Completed",
-                          value: client.completed.length,
-                          bg: "#f0fff4",
-                          color: "#198754",
-                        },
-                        {
-                          label: "Missing",
-                          value: client.missing.length,
-                          bg: "#fff5f5",
-                          color: "#dc3545",
-                        },
-                      ].map((s) => (
-                        <div
-                          key={s.label}
+                      {/* Header ของ client + % Match รวม (จาก Mandatory) */}
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: "20px",
+                        }}
+                      >
+                        <span
                           style={{
-                            background: s.bg,
-                            borderRadius: "8px",
-                            padding: "12px",
-                            textAlign: "center",
+                            fontWeight: 700,
+                            fontSize: "14px",
+                            textTransform: "uppercase",
                           }}
                         >
-                          <div
-                            style={{
-                              fontSize: "22px",
-                              fontWeight: 700,
-                              color: s.color,
-                            }}
-                          >
-                            {s.value}
-                          </div>
-                          <div style={{ fontSize: "12px", color: "#6c757d" }}>
-                            {s.label}
-                          </div>
+                          {clientName}
+                        </span>
+                        <span
+                          style={{
+                            borderRadius: "6px",
+                            padding: "4px 12px",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            background:
+                              mandatory.missing.length === 0
+                                ? "#d1e7dd"
+                                : mandatoryScore >= 80
+                                  ? "#fff3cd"
+                                  : "#f8d7da",
+                            color:
+                              mandatory.missing.length === 0
+                                ? "#0f5132"
+                                : mandatoryScore >= 80
+                                  ? "#664d03"
+                                  : "#842029",
+                          }}
+                        >
+                          {mandatoryScore}% Match
+                        </span>
+                      </div>
+
+                      {/* ── Mandatory ── */}
+                      <div style={{ marginBottom: "24px" }}>
+                        <div
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            color: "#212529",
+                            marginBottom: "12px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          🔴 Mandatory
                         </div>
-                      ))}
-                    </div>
-                    {client.missing.length > 0 ? (
+                        <GapCountCards
+                          required={mandatory.required.length}
+                          completed={mandatory.completed.length}
+                          missing={mandatory.missing.length}
+                        />
+                        <GapTrainingTags
+                          missing={mandatory.missing}
+                          completed={mandatory.completed}
+                        />
+                      </div>
+
+                      {/* ── Assigned ── */}
+                      <div style={{ marginBottom: "24px" }}>
+                        <div
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            color: "#212529",
+                            marginBottom: "12px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          🟠 Assigned
+                        </div>
+                        {assigned.required.length === 0 ? (
+                          <div style={{ fontSize: "13px", color: "#6c757d" }}>
+                            — ไม่มี Assigned training สำหรับตำแหน่งนี้
+                          </div>
+                        ) : (
+                          <>
+                            <GapCountCards
+                              required={assigned.required.length}
+                              completed={assigned.completed.length}
+                              missing={assigned.missing.length}
+                            />
+                            <GapTrainingTags
+                              missing={assigned.missing}
+                              completed={assigned.completed}
+                            />
+                          </>
+                        )}
+                      </div>
+
+                      {/* ── Others ── */}
                       <div>
                         <div
                           style={{
                             fontSize: "13px",
-                            fontWeight: 600,
-                            color: "#dc3545",
-                            marginBottom: "8px",
-                          }}
-                        >
-                          Missing Training:
-                        </div>
-                        <div
-                          style={{
+                            fontWeight: 700,
+                            color: "#212529",
+                            marginBottom: "12px",
                             display: "flex",
-                            flexWrap: "wrap",
+                            alignItems: "center",
                             gap: "6px",
                           }}
                         >
-                          {client.missing.map((t) => (
-                            <span
-                              key={t}
-                              style={{
-                                background: "#fff5f5",
-                                color: "#dc3545",
-                                border: "1px solid #f5c6cb",
-                                borderRadius: "6px",
-                                padding: "3px 10px",
-                                fontSize: "12px",
-                              }}
-                            >
-                              ✕ {t}
-                            </span>
-                          ))}
+                          ⚪ Others{" "}
+                          <span
+                            style={{
+                              fontWeight: 400,
+                              color: "#6c757d",
+                              fontSize: "11px",
+                            }}
+                          >
+                            (training ที่มีนอกเหนือจาก matrix ตำแหน่งนี้)
+                          </span>
                         </div>
+                        {others.completed.length === 0 ? (
+                          <div style={{ fontSize: "13px", color: "#6c757d" }}>
+                            — ไม่มี
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: "6px",
+                            }}
+                          >
+                            {others.completed.map((t) => (
+                              <span
+                                key={t}
+                                style={{
+                                  background: "#f1f3f5",
+                                  color: "#495057",
+                                  border: "1px solid #dee2e6",
+                                  borderRadius: "6px",
+                                  padding: "3px 10px",
+                                  fontSize: "12px",
+                                }}
+                              >
+                                ✓ {t}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <div
-                        style={{
-                          fontSize: "13px",
-                          fontWeight: 600,
-                          color: "#198754",
-                        }}
-                      >
-                        ✅ All training completed
-                      </div>
-                    )}
-                    {client.completed.length > 0 && (
-                      <div style={{ marginTop: "12px" }}>
-                        <div
-                          style={{
-                            fontSize: "13px",
-                            fontWeight: 600,
-                            color: "#198754",
-                            marginBottom: "8px",
-                          }}
-                        >
-                          Completed Training:
-                        </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: "6px",
-                          }}
-                        >
-                          {client.completed.map((t) => (
-                            <span
-                              key={t}
-                              style={{
-                                background: "#f0fff4",
-                                color: "#198754",
-                                border: "1px solid #b2dfdb",
-                                borderRadius: "6px",
-                                padding: "3px 10px",
-                                fontSize: "12px",
-                              }}
-                            >
-                              ✓ {t}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ),
+                    </div>
+                  );
+                },
               )}
             </div>
             <div

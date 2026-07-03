@@ -2,6 +2,16 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+// ── ค่า requirementType ที่นับเป็น "Mandatory" (สัญลักษณ์ X) ──
+// ข้อมูล Chevron มี 2 ค่าที่ความหมายเดียวกันแต่ enum ต่างกัน:
+//   "required"  — มาจาก symbol X ที่ import ผ่าน seedTrainingMatrix.js (bulk import)
+//   "mandatory" — มาจาก symbol X เหมือนกัน แต่ import/บันทึกอีกทาง (MatrixEditor UI
+//                 เขียนค่านี้เวลาเลือก "Mandatory (X)") — ยืนยันจาก sourceMatrixSheet
+//                 ว่าเป็น "Chevron Matrix 2025(14-11-25)" เดียวกันกับ "required"
+// ดังนั้นนับรวมทั้งสองค่าเป็นกลุ่มเดียว (Mandatory) เพื่อไม่ให้ 44 requirement
+// ที่ import มาจริงหายไปจากการคำนวณ % Match
+const MANDATORY_REQUIREMENT_TYPES = ["required", "mandatory"];
+
 export async function getComplianceDashboard() {
   const employees = await prisma.employee.findMany({
     where: {
@@ -25,7 +35,9 @@ export async function getComplianceDashboard() {
     },
   });
 
+  // นับ % Match เฉพาะ requirementType ที่เป็น Mandatory (required + mandatory)
   const requirements = await prisma.positionRequirement.findMany({
+    where: { requirementType: { in: MANDATORY_REQUIREMENT_TYPES } },
     include: {
       clientTraining: {
         include: {
@@ -106,7 +118,7 @@ export async function getComplianceDashboard() {
     );
 
     // =========================
-    // Gap Analysis Per Client
+    // Gap Analysis Per Client (เฉพาะ Mandatory/"required")
     // =========================
     const clients = {};
 
@@ -159,6 +171,12 @@ export async function getComplianceDashboard() {
   return dashboard;
 }
 
+// ============================================================
+// Gap Analysis รายคน — แยก 3 กลุ่มต่อ client
+//   mandatory : PositionRequirement ที่ requirementType = "required"
+//   assigned  : PositionRequirement ที่ requirementType = "assigned"
+//   others    : training ที่พนักงานมี แต่ไม่อยู่ใน matrix (mandatory+assigned) ของ client นั้นเลย
+// ============================================================
 export async function getWorkerGap(employeeId) {
   const employee = await prisma.employee.findUnique({
     where: {
@@ -204,21 +222,29 @@ export async function getWorkerGap(employeeId) {
     },
   });
 
-  const employeeTrainingIds = new Set(
-    employee.trainings.map((t) => t.globalTrainingId),
-  );
+  // globalTrainingId -> training record (เฉพาะที่มี globalTrainingId ผูกไว้)
+  const employeeTrainingByGlobalId = new Map();
+  for (const t of employee.trainings) {
+    if (t.globalTrainingId) {
+      employeeTrainingByGlobalId.set(t.globalTrainingId, t);
+    }
+  }
+  const employeeTrainingIds = new Set(employeeTrainingByGlobalId.keys());
 
   const result = {};
+  // เก็บ globalTrainingId ที่อยู่ใน matrix (mandatory+assigned) ของแต่ละ client — ใช้หา "Others"
+  const matrixTrainingIdsByClient = {};
 
   for (const req of requirements) {
-    const client = req.clientTraining.contract.client.name.toLowerCase();
+    const clientName = req.clientTraining.contract.client.name.toLowerCase();
 
-    if (!result[client]) {
-      result[client] = {
-        required: [],
-        completed: [],
-        missing: [],
+    if (!result[clientName]) {
+      result[clientName] = {
+        mandatory: { required: [], completed: [], missing: [] },
+        assigned: { required: [], completed: [], missing: [] },
+        others: { completed: [] },
       };
+      matrixTrainingIdsByClient[clientName] = new Set();
     }
 
     const trainingName =
@@ -226,12 +252,37 @@ export async function getWorkerGap(employeeId) {
       req.clientTraining.nameAlias ||
       "Unknown";
 
-    result[client].required.push(trainingName);
+    const trainingId = req.clientTraining.globalTrainingId;
+    matrixTrainingIdsByClient[clientName].add(trainingId);
 
-    if (employeeTrainingIds.has(req.clientTraining.globalTrainingId)) {
-      result[client].completed.push(trainingName);
+    // แยกกลุ่มตาม requirementType จริง — "required" และ "mandatory" ถือเป็นกลุ่ม
+    // Mandatory เดียวกัน (ดูหมายเหตุ MANDATORY_REQUIREMENT_TYPES ด้านบน)
+    let group = null;
+    if (MANDATORY_REQUIREMENT_TYPES.includes(req.requirementType)) {
+      group = result[clientName].mandatory;
+    } else if (req.requirementType === "assigned") {
+      group = result[clientName].assigned;
+    }
+    if (!group) continue;
+
+    group.required.push(trainingName);
+
+    if (employeeTrainingIds.has(trainingId)) {
+      group.completed.push(trainingName);
     } else {
-      result[client].missing.push(trainingName);
+      group.missing.push(trainingName);
+    }
+  }
+
+  // Others — training ที่พนักงานมีจริง แต่ไม่อยู่ใน matrix ของ client นั้นเลย
+  for (const clientName of Object.keys(result)) {
+    const matrixIds = matrixTrainingIdsByClient[clientName];
+    for (const [gtId, t] of employeeTrainingByGlobalId) {
+      if (!matrixIds.has(gtId)) {
+        result[clientName].others.completed.push(
+          t.globalTraining?.name || t.rawTrainingName || "Unknown",
+        );
+      }
     }
   }
 
