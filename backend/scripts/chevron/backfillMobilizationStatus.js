@@ -30,7 +30,17 @@ async function computeMatchPercent(employee, requirementsByPosition) {
   ).length;
   const score = required > 0 ? Math.round((completed / required) * 100) : 0;
 
-  return { required, completed, score };
+  // เช็คใบหมดอายุ — ทุกใบที่มี expiryDate ทั้ง training และ medical
+  const now = new Date();
+  const hasExpiredCert =
+    employee.trainings.some(
+      (t) => t.expiryDate && new Date(t.expiryDate) < now,
+    ) ||
+    employee.medicalChecks.some(
+      (m) => m.expiryDate && new Date(m.expiryDate) < now,
+    );
+
+  return { required, completed, score, hasExpiredCert };
 }
 
 async function main() {
@@ -66,7 +76,10 @@ async function main() {
     include: {
       trainings: {
         where: { isLatest: true },
-        select: { globalTrainingId: true },
+        select: { globalTrainingId: true, expiryDate: true },
+      },
+      medicalChecks: {
+        select: { expiryDate: true },
       },
     },
   });
@@ -94,7 +107,8 @@ async function main() {
       continue; // ไม่มีตำแหน่ง/ไม่มี matrix — คงสถานะเดิม
     }
 
-    const newMobilization = match.score === 100 ? "ready" : "pending";
+    const newMobilization =
+      match.score === 100 && !match.hasExpiredCert ? "ready" : "pending";
     const newAvailability = "available";
 
     if (newMobilization === "ready") stats.readyCount++;
@@ -109,7 +123,8 @@ async function main() {
       console.log(
         `${DRY_RUN ? "🔍" : "✔"} ${employee.empCode} ${employee.fullName}: ` +
           `${employee.mobilizationStatus} → ${newMobilization} ` +
-          `(${match.completed}/${match.required} = ${match.score}%)`,
+          `(${match.completed}/${match.required} = ${match.score}%` +
+          `${match.hasExpiredCert ? ", มีใบหมดอายุ" : ""})`,
       );
       if (!DRY_RUN) {
         await prisma.employee.update({

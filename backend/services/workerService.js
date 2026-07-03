@@ -47,10 +47,12 @@ export async function getNextEmpCode() {
 // ============================================================
 // Cert matching → mobilizationStatus / availabilityStatus
 // ============================================================
-// เกณฑ์: match กับ training matrix ของ "Chevron" (ตัวเดียวกับที่
-// ComplianceDashboard ใช้แสดงคอลัมน์ CHEVRON MATCH)
-//   score = 100%  → mobilizationStatus = "ready"
-//   score < 100%  → mobilizationStatus = "pending"
+// เกณฑ์ mobilizationStatus = "ready" ต้องผ่านทั้ง 2 เงื่อนไข:
+//   1) match กับ training matrix ของ "Chevron" ครบ 100%
+//   2) ไม่มี training หรือ medical check ใบไหนหมดอายุแล้ว
+//      (เช็คทุกใบที่มี expiryDate — เหมือนที่ ComplianceDashboard/
+//       complianceService นับ "expired", ไม่ใช่แค่ตัวที่ required ใน matrix)
+//   ไม่ผ่านข้อใดข้อหนึ่ง → mobilizationStatus = "pending"
 //   ตำแหน่งที่ไม่มี matrix (ไม่มี PositionRequirement เลย) → ไม่แตะสถานะเดิม
 //   ถ้า mobilizationStatus ปัจจุบันเป็น "on_site" → ไม่ auto-overwrite
 //     (on_site มาจาก flow มือ/มือถือหน้างาน ไม่ใช่ผลจาก cert matching)
@@ -61,7 +63,7 @@ export async function getNextEmpCode() {
 
 const PRIMARY_CLIENT_NAME = "Chevron";
 
-// คืน { required, completed, score } หรือ null ถ้าคำนวณไม่ได้
+// คืน { required, completed, score, hasExpiredCert } หรือ null ถ้าคำนวณไม่ได้
 // (ไม่มีตำแหน่ง / ไม่มี matrix ของตำแหน่งนั้น)
 export async function computeMatchPercent(employeeId) {
   const employee = await prisma.employee.findUnique({
@@ -69,7 +71,10 @@ export async function computeMatchPercent(employeeId) {
     include: {
       trainings: {
         where: { isLatest: true },
-        select: { globalTrainingId: true },
+        select: { globalTrainingId: true, expiryDate: true },
+      },
+      medicalChecks: {
+        select: { expiryDate: true },
       },
     },
   });
@@ -107,7 +112,18 @@ export async function computeMatchPercent(employeeId) {
   ).length;
   const score = required > 0 ? Math.round((completed / required) * 100) : 0;
 
-  return { required, completed, score };
+  // เช็คใบหมดอายุ — ทุกใบที่มี expiryDate ทั้ง training และ medical
+  // (ไม่นับใบที่ expiryDate = null เพราะแปลว่าไม่มีวันหมดอายุ)
+  const now = new Date();
+  const hasExpiredCert =
+    employee.trainings.some(
+      (t) => t.expiryDate && new Date(t.expiryDate) < now,
+    ) ||
+    employee.medicalChecks.some(
+      (m) => m.expiryDate && new Date(m.expiryDate) < now,
+    );
+
+  return { required, completed, score, hasExpiredCert };
 }
 
 // คำนวณแล้ว update mobilizationStatus + availabilityStatus ให้ employee คนเดียว
@@ -125,7 +141,8 @@ export async function recomputeMobilizationAndAvailability(employeeId) {
   const match = await computeMatchPercent(employeeId);
   if (!match) return; // ไม่มีตำแหน่ง/ไม่มี matrix → คงสถานะเดิมไว้
 
-  const mobilizationStatus = match.score === 100 ? "ready" : "pending";
+  const mobilizationStatus =
+    match.score === 100 && !match.hasExpiredCert ? "ready" : "pending";
   const availabilityStatus = "available"; // pending/ready ทั้งคู่ = available
 
   await prisma.employee.update({
