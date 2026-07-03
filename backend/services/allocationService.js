@@ -5,6 +5,11 @@ const prisma = new PrismaClient();
 // อายุเกษียณ (ให้ตรงกับ frontend Allocation.jsx)
 const RETIREMENT_AGE = 60;
 
+// ── ค่า requirementType ที่นับเป็น "Mandatory" (สัญลักษณ์ X) ──
+// เหมือนกับที่ใช้ใน complianceService.js — "required" (bulk import) และ
+// "mandatory" (แก้ผ่าน MatrixEditor) เป็นความหมายเดียวกันสำหรับ Chevron
+const MANDATORY_REQUIREMENT_TYPES = ["required", "mandatory"];
+
 export async function getProjectsForDropdown() {
   return prisma.project.findMany({
     include: {
@@ -103,11 +108,17 @@ export async function findWorkers({ positionId, requestId, contractId }) {
   });
 
   // ── required trainings จาก Training Matrix ──
+  // เฉพาะ requirementType ที่เป็น Mandatory (required + mandatory) — ไม่นับ assigned
+  // (ให้ % Match ที่นี่ตรงกับคอลัมน์ CHEVRON MATCH ในหน้า Compliance)
   let requiredTrainings = [];
 
   if (positionId && contractId) {
     const requirements = await prisma.positionRequirement.findMany({
-      where: { positionId, contractId },
+      where: {
+        positionId,
+        contractId,
+        requirementType: { in: MANDATORY_REQUIREMENT_TYPES },
+      },
       include: {
         clientTraining: { include: { globalTraining: true } },
       },
@@ -328,6 +339,14 @@ export async function removeFromShortlist(candidateId) {
   return prisma.candidate.delete({ where: { id: candidateId } });
 }
 
+// ============================================================
+// Eligibility check รายคน — แยก 3 กลุ่มต่อ client
+//   mandatory : PositionRequirement ที่ requirementType อยู่ใน MANDATORY_REQUIREMENT_TYPES
+//   assigned  : PositionRequirement ที่ requirementType = "assigned"
+//   others    : training ที่พนักงานมี แต่ไม่อยู่ใน matrix (mandatory+assigned) ของ client นั้นเลย
+// matchPct / eligible ของแต่ละ client อิงจากกลุ่ม mandatory เท่านั้น
+// (ตรงกับตรรกะเดียวกับ complianceService.js)
+// ============================================================
 export async function getWorkerEligibility(employeeId) {
   const employee = await prisma.employee.findUnique({
     where: { id: employeeId },
@@ -342,9 +361,17 @@ export async function getWorkerEligibility(employeeId) {
 
   if (!employee) return null;
 
-  const empTrainingIds = employee.trainings
-    .filter((t) => t.globalTraining)
-    .map((t) => t.globalTrainingId);
+  // globalTrainingId -> ชื่อ training (เฉพาะที่มี globalTraining ผูกไว้)
+  const employeeTrainingByGlobalId = new Map();
+  for (const t of employee.trainings) {
+    if (t.globalTrainingId) {
+      employeeTrainingByGlobalId.set(
+        t.globalTrainingId,
+        t.globalTraining?.name,
+      );
+    }
+  }
+  const empTrainingIds = new Set(employeeTrainingByGlobalId.keys());
 
   // ดึงทุก contract ที่มี position requirement ตรงกับ position ของ employee
   const contracts = await prisma.contract.findMany({
@@ -363,21 +390,45 @@ export async function getWorkerEligibility(employeeId) {
   const clientResults = contracts
     .filter((c) => c.positionRequirements.length > 0)
     .map((contract) => {
-      const required = contract.positionRequirements.map((r) => ({
-        globalTrainingId: r.clientTraining.globalTrainingId,
-        name:
-          r.clientTraining.globalTraining?.name ?? r.clientTraining.nameAlias,
-      }));
+      const mandatory = { required: [], completed: [], missing: [] };
+      const assigned = { required: [], completed: [], missing: [] };
+      const matrixIds = new Set();
 
-      const completed = required.filter((r) =>
-        empTrainingIds.includes(r.globalTrainingId),
-      );
-      const missing = required.filter(
-        (r) => !empTrainingIds.includes(r.globalTrainingId),
-      );
+      for (const r of contract.positionRequirements) {
+        const name =
+          r.clientTraining.globalTraining?.name ?? r.clientTraining.nameAlias;
+        const gtId = r.clientTraining.globalTrainingId;
+        matrixIds.add(gtId);
+
+        let group = null;
+        if (MANDATORY_REQUIREMENT_TYPES.includes(r.requirementType)) {
+          group = mandatory;
+        } else if (r.requirementType === "assigned") {
+          group = assigned;
+        }
+        if (!group) continue;
+
+        group.required.push(name);
+        if (empTrainingIds.has(gtId)) {
+          group.completed.push(name);
+        } else {
+          group.missing.push(name);
+        }
+      }
+
+      // Others — training ที่พนักงานมีจริง แต่ไม่อยู่ใน matrix ของ client นี้เลย
+      const others = { completed: [] };
+      for (const [gtId, name] of employeeTrainingByGlobalId) {
+        if (!matrixIds.has(gtId)) {
+          others.completed.push(name);
+        }
+      }
+
       const matchPct =
-        required.length > 0
-          ? Math.round((completed.length / required.length) * 100)
+        mandatory.required.length > 0
+          ? Math.round(
+              (mandatory.completed.length / mandatory.required.length) * 100,
+            )
           : 100;
 
       return {
@@ -385,11 +436,11 @@ export async function getWorkerEligibility(employeeId) {
         contractName: contract.name,
         clientName: contract.client.name,
         positionMatched: employee.position?.name,
-        required: required.length,
-        completed: completed.map((r) => r.name),
-        missing: missing.map((r) => r.name),
+        mandatory,
+        assigned,
+        others,
         matchPct,
-        eligible: missing.length === 0,
+        eligible: mandatory.missing.length === 0,
       };
     });
 
