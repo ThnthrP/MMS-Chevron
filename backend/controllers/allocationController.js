@@ -124,3 +124,29 @@ export async function cvSummary(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
+
+// GET /api/allocation/roster/:projectId
+// Roster (MOB/D-MOB) — export แยกต่างหากจาก CV Summary
+export async function roster(req, res) {
+  try {
+    const data = await service.getRoster(req.params.projectId);
+    if (!data) return res.status(404).json({ message: "Project not found" });
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+// GET /api/allocation/skill-matrix/:projectId
+// Skill Matrix (pivot: แถว=คน, คอลัมน์=training) — export แยกต่างหากจาก CV Summary
+export async function skillMatrix(req, res) {
+  try {
+    const data = await service.getSkillMatrix(req.params.projectId);
+    if (!data) return res.status(404).json({ message: "Project not found" });
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}

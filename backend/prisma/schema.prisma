@@ -837,6 +837,7 @@ model Assignment {
   mobDate    DateTime?  // MOB — วันลงแท่น
   demobDate  DateTime?  // D-MOB — วันกำหนดกลับ
   platform   String?    // แท่น เช่น BELQ, C5 (≠ Project.location)
+  remark     String?   // ← เพิ่มบรรทัดนี้ — "ขึ้นด่วน" / "ติดงาน Project" ฯลฯ
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt
 

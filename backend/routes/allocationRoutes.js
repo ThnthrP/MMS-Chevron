@@ -13,5 +13,7 @@ router.put("/unapprove", controller.unapproveWorkers);
 router.delete("/candidate/:candidateId", controller.removeFromShortlist);
 router.get("/eligibility/:employeeId", controller.getWorkerEligibility);
 router.get("/cv-summary/:projectId", controller.cvSummary);
+router.get("/roster/:projectId", controller.roster);
+router.get("/skill-matrix/:projectId", controller.skillMatrix);
 
 export default router;

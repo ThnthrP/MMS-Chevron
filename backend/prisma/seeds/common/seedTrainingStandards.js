@@ -241,6 +241,170 @@ async function main() {
       true,
     ],
 
+    // ============================================================
+    // เพิ่มเข้า DATA array ใน seedTrainingStandards.js
+    // (แทรกต่อจาก comment block "// Chevron" หรือเปิด section ใหม่ก็ได้)
+    //
+    // ค่า default ที่ร่างไว้: TrainingSource.CONTRACTOR, trainingHours=null,
+    // validityDays=null, isNoExpiry=true — ตาม pattern ที่ระบุ ("Marine Support")
+    // ไปแก้ source/hours/validity ที่ถูกต้องจริงต่อได้เลย
+    // ============================================================
+
+    // ======================================================
+    // Chevron - Assist Floor Operator Level 1-3
+    // ======================================================
+
+    [
+      "Oil&Gas operation knowledge",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+
+    [
+      "English skills (Basic Reading / Writing)",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+
+    ["CPP Process Overview", TrainingSource.CONTRACTOR, null, null, true],
+
+    [
+      "CPP Power System and Utility system",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+
+    ["LQ and Utility system", TrainingSource.CONTRACTOR, null, null, true],
+
+    [
+      "Fire and gas detection and Suppression system",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+    [
+      "Fire and Gas Detection and Suppression System",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+
+    [
+      "Operational Capability and General",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+
+    [
+      "Control system & Instrument",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+
+    ["Routine Lab work", TrainingSource.CONTRACTOR, null, null, true],
+
+    ["ODR & GVI all complexes", TrainingSource.CONTRACTOR, null, null, true],
+
+    [
+      "Safety & Lifesaving equipment inspection",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+
+    [
+      "Wellhead Platform fundamental",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+
+    ["ORDC remote P/F via SCADA", TrainingSource.CONTRACTOR, null, null, true],
+
+    ["Well test via SCADA", TrainingSource.CONTRACTOR, null, null, true],
+
+    ["Well B/D via SCADA", TrainingSource.CONTRACTOR, null, null, true],
+
+    ["BC Operation & Control", TrainingSource.CONTRACTOR, null, null, true],
+
+    [
+      "Monitor well integrity (PSM)",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+
+    [
+      "Chemical injection Control & Monitoring",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+
+    [
+      "SCADA system Operation & Control",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+
+    [
+      "Process Safety Management Technical Safety",
+      TrainingSource.CONTRACTOR,
+      null,
+      null,
+      true,
+    ],
+
+    ["Christmas Tree", TrainingSource.CONTRACTOR, null, null, true],
+
+    [
+      "Basis Offshore Safety Training (BOST)",
+      TrainingSource.CONTRACTOR,
+      null,
+      4 * YEAR,
+      false,
+    ],
+
+    [
+      "Tropical Further Offshore Emergency Training (T-FOET)",
+      TrainingSource.CONTRACTOR,
+      null,
+      4 * YEAR,
+      false,
+    ],
+
+    [
+      "Offshore Emergency Response Team Member (ERTM)",
+      TrainingSource.CONTRACTOR,
+      null,
+      2 * YEAR,
+      false,
+    ],
+
+    ["Area Controller (BCP)", TrainingSource.CONTRACTOR, null, 3 * YEAR, false],
+
+    ["H2S Awaness Level 1", TrainingSource.CONTRACTOR, null, 3 * YEAR, false],
+
+    ["H2S Awaness Level 2", TrainingSource.CONTRACTOR, null, 3 * YEAR, false],
+
     // ======================================================
     // Erawan
     // ======================================================

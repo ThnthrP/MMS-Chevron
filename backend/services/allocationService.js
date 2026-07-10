@@ -557,3 +557,238 @@ export async function getCvSummary(projectId) {
     groups,
   };
 }
+
+// ════════════════════════════════════════════════════════════════
+// Roster (MOB/D-MOB) — export แยกต่างหาก สำหรับสรุปรอบ mobilize
+// ตรงกับ sheet "Day off (x-x-xx)" ที่ HR ทำมือใน Excel ทุกวันนี้
+//
+// ⚠ 2 field ที่ยังไม่มีใน schema เลย — คืนเป็น null แล้วให้ frontend
+//   เปิดช่องกรอกเองก่อน export/print:
+//   - "from" (ในตัวอย่าง Excel เป็น "STH" — ยังไม่ทราบว่ามาจากไหน)
+//   - "remark" (เช่น "ขึ้นด่วน", "ติดงาน Project")
+// ════════════════════════════════════════════════════════════════
+export async function getRoster(projectId) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: { contract: { include: { client: true } } },
+  });
+  if (!project) return null;
+
+  const requests = await prisma.manpowerRequest.findMany({
+    where: { projectId },
+    include: {
+      position: true,
+      rounds: {
+        include: {
+          candidates: {
+            where: { status: { not: "rejected" } },
+            include: { employee: { include: { position: true } } },
+          },
+        },
+      },
+    },
+  });
+
+  // dedupe ต่อ employee เหมือน getCvSummary (round ใหม่ทับเก่า)
+  const employeeMap = new Map(); // employeeId -> { employee, positionName }
+  for (const req of requests) {
+    for (const round of [...req.rounds].sort((a, b) => a.round - b.round)) {
+      for (const c of round.candidates) {
+        employeeMap.set(c.employeeId, {
+          employee: c.employee,
+          positionName: c.employee.position?.name || req.position?.name || null,
+        });
+      }
+    }
+  }
+
+  const employeeIds = [...employeeMap.keys()];
+
+  if (employeeIds.length === 0) {
+    return {
+      project: {
+        name: project.name,
+        location: project.location || null,
+        client: project.contract?.client?.name || null,
+        startDate: project.startDate || null,
+      },
+      rows: [],
+    };
+  }
+
+  // โหลด Assignment ทั้งหมดของคนกลุ่มนี้ (ทั้งของ project นี้ + รอบก่อนหน้า)
+  // เรียง mobDate desc ล่วงหน้า เพื่อให้ .find() ด้านล่างได้ตัวล่าสุดเสมอ
+  const assignments = await prisma.assignment.findMany({
+    where: { employeeId: { in: employeeIds } },
+    orderBy: { mobDate: "desc" },
+  });
+
+  const workingDay = project.startDate || null;
+  const workingDayMs = workingDay ? new Date(workingDay).getTime() : Date.now();
+
+  const rows = employeeIds.map((empId) => {
+    const { employee, positionName } = employeeMap.get(empId);
+    const empAssignments = assignments.filter((a) => a.employeeId === empId);
+
+    // TO — assignment ที่ผูกกับ project นี้โดยตรง (ถ้ามีการสร้างไว้แล้ว)
+    const currentAssignment =
+      empAssignments.find((a) => a.projectId === projectId) || null;
+
+    // Previous — assignment ล่าสุดที่ "ไม่ใช่" ของ project นี้ และ demob ไปแล้วจริง
+    // (มาจาก array ที่เรียง mobDate desc แล้ว → เจอตัวแรกคือล่าสุด)
+    const previousAssignment =
+      empAssignments.find((a) => a.projectId !== projectId && a.demobDate) ||
+      null;
+
+    const dayOff = previousAssignment?.demobDate
+      ? Math.floor(
+          (workingDayMs - new Date(previousAssignment.demobDate).getTime()) /
+            86400000,
+        )
+      : null;
+
+    return {
+      employeeId: empId,
+      fullName: employee.fullName,
+      empCode: employee.empCode,
+      position: positionName,
+      company: "Experteam", // ค่าคงที่ตาม pattern เดิม — ยังไม่มี field แยกใน schema
+      from: null, // ยังไม่มีใน schema — ให้กรอกเองฝั่ง frontend
+      to: currentAssignment?.platform ?? null,
+      mobDate: previousAssignment?.mobDate ?? null,
+      demobDate: previousAssignment?.demobDate ?? null,
+      workingDay,
+      dayOff,
+      previousLocation: previousAssignment?.platform ?? null,
+      remark: null, // ยังไม่มีใน schema — ให้กรอกเองฝั่ง frontend
+    };
+  });
+
+  return {
+    project: {
+      name: project.name,
+      location: project.location || null,
+      client: project.contract?.client?.name || null,
+      startDate: workingDay,
+    },
+    rows,
+  };
+}
+
+// ════════════════════════════════════════════════════════════════
+// Skill Matrix — export แยกต่างหาก แบบ pivot (แถว=คน, คอลัมน์=training)
+// ตรงกับ sheet "Skill matrix (All)" — columns มาจาก union ของ
+// PositionRequirement (mandatory+assigned) ของทุกตำแหน่งที่มีคนอยู่ใน
+// shortlist รอบนี้ ภายใต้ contract ของ project นี้
+// ════════════════════════════════════════════════════════════════
+export async function getSkillMatrix(projectId) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: { contract: { include: { client: true } } },
+  });
+  if (!project) return null;
+
+  const requests = await prisma.manpowerRequest.findMany({
+    where: { projectId },
+    include: {
+      position: true,
+      rounds: {
+        include: {
+          candidates: {
+            where: { status: { not: "rejected" } },
+            include: {
+              employee: {
+                include: {
+                  position: true,
+                  trainings: {
+                    where: { isLatest: true },
+                    include: { globalTraining: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // dedupe ต่อ employee + เก็บ positionId ไว้หา PositionRequirement
+  const employeeMap = new Map(); // employeeId -> employee (with trainings, position)
+  const positionIds = new Set();
+  for (const req of requests) {
+    for (const round of [...req.rounds].sort((a, b) => a.round - b.round)) {
+      for (const c of round.candidates) {
+        employeeMap.set(c.employeeId, c.employee);
+        if (c.employee.positionId) positionIds.add(c.employee.positionId);
+      }
+    }
+  }
+
+  if (employeeMap.size === 0) {
+    return {
+      project: {
+        name: project.name,
+        client: project.contract?.client?.name || null,
+      },
+      trainings: [],
+      rows: [],
+    };
+  }
+
+  // ── columns: union training (mandatory + assigned) ของทุกตำแหน่งในกลุ่มนี้ ──
+  const positionRequirements = await prisma.positionRequirement.findMany({
+    where: {
+      contractId: project.contractId,
+      positionId: { in: [...positionIds] },
+    },
+    include: { clientTraining: { include: { globalTraining: true } } },
+  });
+
+  const trainingMap = new Map(); // globalTrainingId -> name
+  for (const r of positionRequirements) {
+    const gtId = r.clientTraining.globalTrainingId;
+    const name =
+      r.clientTraining.globalTraining?.name ?? r.clientTraining.nameAlias;
+    if (gtId && !trainingMap.has(gtId)) trainingMap.set(gtId, name);
+  }
+  const trainings = [...trainingMap.entries()].map(([id, name]) => ({
+    id,
+    name,
+  }));
+
+  // ── rows: ต่อ employee — cell = completed/expiry/status ของ training นั้น (ถ้ามี) ──
+  const rows = [...employeeMap.entries()].map(([empId, employee]) => {
+    const byGlobalId = new Map();
+    for (const t of employee.trainings) {
+      if (t.globalTrainingId) byGlobalId.set(t.globalTrainingId, t);
+    }
+
+    const cells = trainings.map((tr) => {
+      const t = byGlobalId.get(tr.id);
+      return {
+        trainingId: tr.id,
+        completedDate: t?.completedDate ?? null,
+        expiryDate: t?.expiryDate ?? null,
+        status: t?.status ?? null, // completed | overdue | due_soon | if_required | null (ไม่มีข้อมูล)
+      };
+    });
+
+    return {
+      employeeId: empId,
+      fullName: employee.fullName,
+      empCode: employee.empCode,
+      position: employee.position?.name ?? null,
+      cells,
+    };
+  });
+
+  return {
+    project: {
+      name: project.name,
+      client: project.contract?.client?.name || null,
+    },
+    trainings,
+    rows,
+  };
+}

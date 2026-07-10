@@ -134,6 +134,11 @@ export const APP_MENU = [
         roles: ["admin", "hr", "manpower"],
       },
       {
+        name: "Manage Trainings",
+        path: "/admin/trainings",
+        roles: ["admin", "hr", "manpower"],
+      },
+      {
         name: "Matrix Editor",
         path: "/admin/positions/matrix",
         roles: ["admin", "hr", "manpower"],

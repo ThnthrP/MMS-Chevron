@@ -118,6 +118,76 @@ async function seedGlobalTrainings() {
 
     "Basic Rigging (by Settapat)",
 
+    // ============================================================
+    // ส่วนที่ต้องเพิ่มเข้า TRAININGS array ใน seedGlobalTrainings.js
+    // (แทรกต่อจาก comment block "// Chevron - add from matrix / employee records"
+    //  หรือเปิด section ใหม่ก็ได้ เพราะสคริปต์ dedupe + sort ให้อยู่แล้วผ่าน
+    //  [...new Set(TRAININGS)].sort())
+    // ============================================================
+
+    // ======================================================
+    // Chevron - Assist Floor Operator Level 1-3
+    // ======================================================
+
+    "Oil&Gas operation knowledge",
+
+    "English skills (Basic Reading / Writing)",
+
+    "CPP Process Overview",
+
+    "CPP Power System and Utility system",
+
+    "LQ and Utility system",
+
+    // NOTE: ตั้งใจแยกเป็น 2 training คนละตัว (ต่าง case) ตามที่ HR ระบุ
+    // ไม่ merge กัน — ถ้าพบว่าจริงๆ เป็นตัวเดียวกันในอนาคต ค่อยรวมทีหลัง
+    "Fire and gas detection and Suppression system",
+    "Fire and Gas Detection and Suppression System",
+
+    "Operational Capability and General",
+
+    "Control system & Instrument",
+
+    "Routine Lab work",
+
+    "ODR & GVI all complexes",
+
+    "Safety & Lifesaving equipment inspection",
+
+    "Wellhead Platform fundamental",
+
+    "ORDC remote P/F via SCADA",
+
+    "Well test via SCADA",
+
+    "Well B/D via SCADA",
+
+    "BC Operation & Control",
+
+    "Monitor well integrity (PSM)",
+
+    "Chemical injection Control & Monitoring",
+
+    "SCADA system Operation & Control",
+
+    "Process Safety Management Technical Safety",
+
+    "Christmas Tree",
+
+    "Basis Offshore Safety Training (BOST)",
+
+    "Tropical Further Offshore Emergency Training (T-FOET)",
+
+    "Offshore Emergency Response Team Member (ERTM)",
+
+    // NOTE: ตั้งใจใช้ (BCP) ซ้ำกับ "Bypassing Critical Protection (BCP)" ที่มีอยู่แล้ว
+    // เป็นคนละ training ที่บังเอิญมีตัวย่อเดียวกัน — คงชื่อไว้ตามที่ HR ใช้จริง
+    "Area Controller (BCP)",
+
+    "H2S Awaness Level 1",
+
+    "H2S Awaness Level 2",
+
     // ======================================================
     // Erawan
     // ======================================================

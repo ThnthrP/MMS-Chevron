@@ -21,7 +21,6 @@ export default function Allocation() {
   const navigate = useNavigate();
 
   const [projects, setProjects] = useState([]);
-  // const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useStickyState(
     "alloc_projectId",
     "",
@@ -30,41 +29,31 @@ export default function Allocation() {
   const [selectedRequestId, setSelectedRequestId] = useStickyState(
     "alloc_requestId",
     "",
-  ); // ← เพิ่มใหม่
+  );
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [workers, setWorkers] = useState([]);
   const [selectedWorkerIds, setSelectedWorkerIds] = useState([]);
   const [loadingWorkers, setLoadingWorkers] = useState(false);
   const [shortlist, setShortlist] = useState([]);
   const [loadingShortlist, setLoadingShortlist] = useState(false);
-  // state
   const [eligibilityModal, setEligibilityModal] = useState(null);
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
   const [activeClientTab, setActiveClientTab] = useState(0);
   const [completedExpanded, setCompletedExpanded] = useState({});
-  const [workerSearch, setWorkerSearch] = useState(""); // ค้นหาในผลลัพธ์ (ชื่อ / empCode)
-  // const [sortBy, setSortBy] = useState("dayoff"); // "match" | "dayoff"
+  const [workerSearch, setWorkerSearch] = useState("");
   const [sortBy, setSortBy] = useStickyState("alloc_sortBy", "dayoff");
-  // const [empType, setEmpType] = useState("permanent"); // "permanent" | "nonpermanent" | "all"
   const [empType, setEmpType] = useStickyState("alloc_empType", "permanent");
   const [healthNoteModal, setHealthNoteModal] = useState(null);
   const [cvModal, setCvModal] = useState(null);
   const [cvLoading, setCvLoading] = useState(false);
+  const [rosterModal, setRosterModal] = useState(null);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [skillMatrixModal, setSkillMatrixModal] = useState(null);
+  const [skillMatrixLoading, setSkillMatrixLoading] = useState(false);
 
   useEffect(() => {
     fetchProjects();
   }, []);
-
-  // useEffect(() => {
-  //   if (selectedProjectId) {
-  //     const proj = projects.find((p) => p.id === selectedProjectId);
-  //     setSelectedProject(proj || null);
-  //     setSelectedRequest(null);
-  //     setWorkers([]);
-  //     setSelectedWorkerIds([]);
-  //     fetchShortlist(selectedProjectId);
-  //   }
-  // }, [selectedProjectId, projects]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -75,7 +64,6 @@ export default function Allocation() {
     setSelectedProject(proj || null);
     if (proj) {
       fetchShortlist(selectedProjectId);
-      // restore request ที่เคยเลือก (จาก sessionStorage)
       if (selectedRequestId && !selectedRequest) {
         const req = proj.requests?.find((r) => r.id === selectedRequestId);
         if (req) setSelectedRequest(req);
@@ -83,7 +71,6 @@ export default function Allocation() {
     }
   }, [selectedProjectId, projects]);
 
-  // auto-fetch workers ครั้งเดียวตอน restore (project + request ครบ)
   const restoredRef = useRef(false);
   useEffect(() => {
     if (restoredRef.current) return;
@@ -129,7 +116,7 @@ export default function Allocation() {
         params: {
           positionId: selectedRequest.position?.id,
           requestId: selectedRequest.id,
-          contractId: selectedProject?.contractId, // ← ส่ง contractId เพื่อ check Training Matrix
+          contractId: selectedProject?.contractId,
         },
       });
       setWorkers(res.data);
@@ -148,7 +135,6 @@ export default function Allocation() {
 
   const permCount = workers.filter((w) => w.isPermanent).length;
 
-  // กรอง (type + คำค้น) แล้วเรียง: Permanent ก่อนเสมอ → ตามเกณฑ์ที่เลือก
   const displayedWorkers = [...workers]
     .filter((w) => {
       if (empType === "permanent" && !w.isPermanent) return false;
@@ -161,10 +147,8 @@ export default function Allocation() {
       );
     })
     .sort((a, b) => {
-      // Permanent ขึ้นก่อนเสมอ (แม้ในโหมด All)
       if (!!a.isPermanent !== !!b.isPermanent) return a.isPermanent ? -1 : 1;
       if (sortBy === "dayoff") {
-        // พักนานสุดขึ้นก่อน; คนไม่เคย deploy (null) ไปท้าย
         const av = a.dayOff ?? -Infinity;
         const bv = b.dayOff ?? -Infinity;
         return bv - av;
@@ -172,7 +156,6 @@ export default function Allocation() {
       return (b.matchPct ?? -1) - (a.matchPct ?? -1);
     });
 
-  // select-all ทำงานกับรายการที่แสดงอยู่ (หลังกรอง)
   const allDisplayedSelected =
     displayedWorkers.length > 0 &&
     displayedWorkers.every((w) => selectedWorkerIds.includes(w.id));
@@ -198,7 +181,7 @@ export default function Allocation() {
       );
       setSelectedWorkerIds([]);
       fetchShortlist(selectedProjectId);
-      handleFindWorkers(); // refresh workers list (exclude ที่เพิ่งเพิ่ม)
+      handleFindWorkers();
     } catch (error) {
       console.error(error);
     }
@@ -218,7 +201,6 @@ export default function Allocation() {
     }
   };
 
-  // ยกเลิก approve → กลับเป็น proposed
   const handleUnapprove = async (candidateIds, requestId) => {
     if (!candidateIds?.length) return;
     try {
@@ -262,7 +244,70 @@ export default function Allocation() {
     }
   };
 
-  // handler
+  const handleGenerateRoster = async () => {
+    if (!selectedProjectId || totalShortlisted === 0) return;
+    try {
+      setRosterLoading(true);
+      const res = await axios.get(
+        `${backendUrl}/api/allocation/roster/${selectedProjectId}`,
+        { withCredentials: true },
+      );
+      const rowsWithEditable = res.data.rows.map((r) => ({
+        ...r,
+        from: r.from ?? "",
+        remark: r.remark ?? "",
+      }));
+      setRosterModal({ ...res.data, rows: rowsWithEditable });
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setRosterLoading(false);
+    }
+  };
+
+  const handleGenerateSkillMatrix = async () => {
+    if (!selectedProjectId || totalShortlisted === 0) return;
+    try {
+      setSkillMatrixLoading(true);
+      const res = await axios.get(
+        `${backendUrl}/api/allocation/skill-matrix/${selectedProjectId}`,
+        { withCredentials: true },
+      );
+      setSkillMatrixModal(res.data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSkillMatrixLoading(false);
+    }
+  };
+
+  const updateRosterField = (employeeId, field, value) => {
+    setRosterModal((prev) => ({
+      ...prev,
+      rows: prev.rows.map((r) =>
+        r.employeeId === employeeId ? { ...r, [field]: value } : r,
+      ),
+    }));
+  };
+
+  const fmtShort = (d) =>
+    d
+      ? new Date(d).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+      : "—";
+
+  const skillCellLabel = (cell) => {
+    if (!cell.completedDate && !cell.expiryDate && !cell.status) return "N/A";
+    if (cell.status === "if_required") return "if required";
+    if (cell.status === "overdue") return "Over Due";
+    if (cell.expiryDate) return fmtShort(cell.expiryDate);
+    if (cell.completedDate) return fmtShort(cell.completedDate);
+    return "Pending";
+  };
+
   const handleViewEligibility = async (worker) => {
     try {
       setEligibilityLoading(true);
@@ -290,7 +335,6 @@ export default function Allocation() {
     return { bg: "#e9ecef", color: "#6c757d", label: s || "—" };
   };
 
-  // ── Experience: คำนวณอายุงานจาก startWorkDate ──
   const formatExperience = (startWorkDate) => {
     if (!startWorkDate) return null;
     const start = new Date(startWorkDate);
@@ -308,8 +352,6 @@ export default function Allocation() {
     return `${years}y ${remMonths}m`;
   };
 
-  // ── Retirement: เตือนเมื่อใกล้/เกินอายุเกษียณ (จาก birthDate) ──
-  // แสดง flag เฉพาะเมื่อเกษียณภายใน 12 เดือน หรือเกินอายุแล้ว
   const getRetirementInfo = (birthDate) => {
     if (!birthDate) return null;
     const dob = new Date(birthDate);
@@ -345,7 +387,6 @@ export default function Allocation() {
     return null;
   };
 
-  // ── Day Off (REST): จาก backend (today − demobDate ของ Assignment ล่าสุด) ──
   const renderDayOff = (dayOff) => {
     if (dayOff === null || dayOff === undefined)
       return <span style={{ color: "#adb5bd" }}>—</span>;
@@ -358,7 +399,6 @@ export default function Allocation() {
           {dayOff}d
         </span>
       );
-    // พักนาน = ว่างมาก: >30 เขียว, 15-30 น้ำเงิน, 0-14 เทา
     const color =
       dayOff > 30 ? "#198754" : dayOff >= 15 ? "#0d6efd" : "#6c757d";
     return (
@@ -371,7 +411,6 @@ export default function Allocation() {
     );
   };
 
-  // ── Medical: status + expiry (คิดจากวันหมดอายุ ให้เหมือนหน้า Compliance) ──
   const renderMedical = (expiry) => {
     if (!expiry) return <span style={{ color: "#adb5bd" }}>—</span>;
     const d = new Date(expiry);
@@ -429,7 +468,6 @@ export default function Allocation() {
     0,
   );
 
-  // หาจำนวน shortlisted ของ request ที่เลือกอยู่
   const currentRequestShortlisted = selectedRequest
     ? (shortlist.find((s) => s.requestId === selectedRequest.id)?.candidates
         ?.length ?? 0)
@@ -467,7 +505,6 @@ export default function Allocation() {
   return (
     <div className="container-fluid p-4">
       <div style={{ width: "100%" }}>
-        {/* Header Card */}
         <div
           style={{
             background: "#fff",
@@ -508,7 +545,6 @@ export default function Allocation() {
             alignItems: "start",
           }}
         >
-          {/* LEFT: Step 8 */}
           <div
             style={{
               background: "#fff",
@@ -528,7 +564,6 @@ export default function Allocation() {
               </span>
             </div>
             <div style={{ padding: "20px" }}>
-              {/* Filter Row */}
               <div
                 style={{
                   display: "grid",
@@ -554,7 +589,6 @@ export default function Allocation() {
                   </label>
                   <select
                     value={selectedProjectId}
-                    // onChange={(e) => setSelectedProjectId(e.target.value)}
                     onChange={(e) => {
                       setSelectedProjectId(e.target.value);
                       setSelectedRequestId("");
@@ -606,14 +640,9 @@ export default function Allocation() {
                         (o) => o.value === selectedRequest?.id,
                       ) || null
                     }
-                    // onChange={(o) => {
-                    //   setSelectedRequest(o ? o.request : null);
-                    //   setWorkers([]);
-                    //   setSelectedWorkerIds([]);
-                    // }}
                     onChange={(o) => {
                       setSelectedRequest(o ? o.request : null);
-                      setSelectedRequestId(o ? o.value : ""); // ← เพิ่มบรรทัดนี้
+                      setSelectedRequestId(o ? o.value : "");
                       setWorkers([]);
                       setSelectedWorkerIds([]);
                     }}
@@ -644,7 +673,6 @@ export default function Allocation() {
                 </button>
               </div>
 
-              {/* Empty-state hint: project เลือกแล้วแต่ไม่มี position request */}
               {selectedProjectId && requestOptions.length === 0 && (
                 <div
                   style={{
@@ -674,7 +702,6 @@ export default function Allocation() {
                 </div>
               )}
 
-              {/* Selected Request info — Need / Shortlisted / Remaining */}
               {selectedRequest && (
                 <div
                   style={{
@@ -726,7 +753,6 @@ export default function Allocation() {
                 </div>
               )}
 
-              {/* Workers Table */}
               {loadingWorkers ? (
                 <div
                   style={{
@@ -806,7 +832,6 @@ export default function Allocation() {
                     )}
                   </div>
 
-                  {/* Toggles + Search */}
                   <div
                     style={{
                       display: "flex",
@@ -825,7 +850,6 @@ export default function Allocation() {
                         flexWrap: "wrap",
                       }}
                     >
-                      {/* Type: Permanent | All */}
                       <div
                         style={{
                           display: "flex",
@@ -862,7 +886,6 @@ export default function Allocation() {
                         ))}
                       </div>
 
-                      {/* Sort by: % Match | Rest Days */}
                       <div
                         style={{
                           display: "flex",
@@ -899,7 +922,6 @@ export default function Allocation() {
                       </div>
                     </div>
 
-                    {/* Search ในผลลัพธ์: ชื่อ หรือ empCode */}
                     <div
                       style={{
                         position: "relative",
@@ -1067,7 +1089,6 @@ export default function Allocation() {
                                     }}
                                   />
                                 </td>
-                                {/* NAME (+ PERM / SSE / retire) */}
                                 <td style={{ padding: "12px 12px" }}>
                                   <div
                                     style={{
@@ -1129,7 +1150,6 @@ export default function Allocation() {
                                     {w.empCode}
                                   </div>
                                 </td>
-                                {/* RETIREMENT (เกษียณอายุ) */}
                                 <td
                                   style={{
                                     padding: "12px 12px",
@@ -1175,7 +1195,6 @@ export default function Allocation() {
                                   )}
                                 </td>
 
-                                {/* HEALTH (risk badge + note preview) */}
                                 <td style={{ padding: "12px 12px" }}>
                                   {health || w.healthNote ? (
                                     <div
@@ -1204,9 +1223,7 @@ export default function Allocation() {
                                       )}
                                       {w.healthNote && (
                                         <span
-                                          title={
-                                            w.healthNote
-                                          } /* hover เห็นเต็ม */
+                                          title={w.healthNote}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             setHealthNoteModal({
@@ -1234,11 +1251,9 @@ export default function Allocation() {
                                     <span style={{ color: "#6c757d" }}>—</span>
                                   )}
                                 </td>
-                                {/* MEDICAL (status + expiry) */}
                                 <td style={{ padding: "12px 12px" }}>
                                   {renderMedical(w.medicalExpiry)}
                                 </td>
-                                {/* CERTIFICATIONS */}
                                 <td style={{ padding: "12px 12px" }}>
                                   <div
                                     style={{
@@ -1280,7 +1295,6 @@ export default function Allocation() {
                                     )}
                                   </div>
                                 </td>
-                                {/* REST (Day Off) */}
                                 <td
                                   style={{
                                     padding: "12px 12px",
@@ -1295,7 +1309,6 @@ export default function Allocation() {
                                 >
                                   {renderDayOff(w.dayOff)}
                                 </td>
-                                {/* % MATCH (matching training certs) */}
                                 <td
                                   style={{
                                     padding: "12px 8px",
@@ -1341,7 +1354,6 @@ export default function Allocation() {
             </div>
           </div>
 
-          {/* RIGHT: Step 9 */}
           <div
             style={{
               background: "#fff",
@@ -1563,6 +1575,60 @@ export default function Allocation() {
                 >
                   {cvLoading ? "Generating..." : "📄 Generate CV Summary"}
                 </button>
+
+                <button
+                  onClick={handleGenerateRoster}
+                  disabled={totalShortlisted === 0 || rosterLoading}
+                  style={{
+                    width: "100%",
+                    padding: "9px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    border: "1px solid #dee2e6",
+                    borderRadius: "8px",
+                    background: totalShortlisted > 0 ? "#fff" : "#f8f9fa",
+                    color: totalShortlisted > 0 ? "#0d6efd" : "#adb5bd",
+                    cursor:
+                      totalShortlisted > 0 && !rosterLoading
+                        ? "pointer"
+                        : "not-allowed",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                  }}
+                >
+                  {rosterLoading
+                    ? "Generating..."
+                    : "🛫 Export Roster (MOB/D-MOB)"}
+                </button>
+
+                <button
+                  onClick={handleGenerateSkillMatrix}
+                  disabled={totalShortlisted === 0 || skillMatrixLoading}
+                  style={{
+                    width: "100%",
+                    padding: "9px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    border: "1px solid #dee2e6",
+                    borderRadius: "8px",
+                    background: totalShortlisted > 0 ? "#fff" : "#f8f9fa",
+                    color: totalShortlisted > 0 ? "#0d6efd" : "#adb5bd",
+                    cursor:
+                      totalShortlisted > 0 && !skillMatrixLoading
+                        ? "pointer"
+                        : "not-allowed",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                  }}
+                >
+                  {skillMatrixLoading
+                    ? "Generating..."
+                    : "📋 Export Skill Matrix"}
+                </button>
               </div>
             </div>
           </div>
@@ -1601,7 +1667,6 @@ export default function Allocation() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Toolbar — ไม่พิมพ์ */}
             <div
               className="cv-no-print"
               style={{
@@ -1647,9 +1712,7 @@ export default function Allocation() {
               </div>
             </div>
 
-            {/* เอกสาร */}
             <div style={{ padding: "28px 32px" }}>
-              {/* หัวเอกสาร */}
               <div
                 style={{
                   borderBottom: "2px solid #1e3a5f",
@@ -1822,6 +1885,436 @@ export default function Allocation() {
           </div>
         </div>
       )}
+      {rosterModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 999999,
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "center",
+            padding: "24px",
+            overflowY: "auto",
+          }}
+          onClick={() => setRosterModal(null)}
+        >
+          <style>{`@media print {
+            body * { visibility: hidden !important; }
+            #roster-print, #roster-print * { visibility: visible !important; }
+            #roster-print { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; border-radius: 0 !important; }
+            .cv-no-print { display: none !important; }
+            #roster-print input { border: none !important; background: transparent !important; }
+          }`}</style>
+          <div
+            id="roster-print"
+            style={{
+              background: "#fff",
+              borderRadius: "10px",
+              width: "100%",
+              maxWidth: "1100px",
+              overflow: "hidden",
+              boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="cv-no-print"
+              style={{
+                background: "#1e3a5f",
+                color: "#fff",
+                padding: "14px 24px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: "16px" }}>
+                🛫 Roster (MOB/D-MOB)
+              </span>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  onClick={() => window.print()}
+                  style={{
+                    background: "#fff",
+                    color: "#1e3a5f",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "6px 16px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  🖨 Print / Save PDF
+                </button>
+                <button
+                  onClick={() => setRosterModal(null)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#fff",
+                    fontSize: "20px",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: "24px" }}>
+              <div
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 700,
+                  marginBottom: "4px",
+                }}
+              >
+                {rosterModal.project?.name}
+                {rosterModal.project?.workingDay
+                  ? ` (${fmtShort(rosterModal.project.workingDay)})`
+                  : rosterModal.project?.startDate
+                    ? ` (${fmtShort(rosterModal.project.startDate)})`
+                    : ""}
+              </div>
+              <div
+                style={{
+                  fontSize: "13px",
+                  color: "#6c757d",
+                  marginBottom: "16px",
+                }}
+              >
+                {rosterModal.project?.client}{" "}
+                {rosterModal.project?.location
+                  ? `· ${rosterModal.project.location}`
+                  : ""}
+              </div>
+
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: "12px",
+                }}
+              >
+                <thead>
+                  <tr style={{ background: "#f1f3f5" }}>
+                    {[
+                      "Item",
+                      "Name (Eng)",
+                      "Position",
+                      "Company",
+                      "From",
+                      "To",
+                      "MOB",
+                      "D-MOB",
+                      "Working Day",
+                      "Day Off",
+                      "Previous Location",
+                      "Remark",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        style={{
+                          padding: "8px 6px",
+                          border: "1px solid #dee2e6",
+                          textAlign: "left",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rosterModal.rows.map((r, i) => (
+                    <tr key={r.employeeId}>
+                      <td
+                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
+                      >
+                        {i + 1}
+                      </td>
+                      <td
+                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
+                      >
+                        {r.fullName}
+                      </td>
+                      <td
+                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
+                      >
+                        {r.position}
+                      </td>
+                      <td
+                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
+                      >
+                        {r.company}
+                      </td>
+                      <td
+                        style={{ padding: "2px", border: "1px solid #dee2e6" }}
+                      >
+                        <input
+                          value={r.from}
+                          onChange={(e) =>
+                            updateRosterField(
+                              r.employeeId,
+                              "from",
+                              e.target.value,
+                            )
+                          }
+                          style={{
+                            width: "60px",
+                            border: "1px solid #dee2e6",
+                            padding: "4px",
+                            fontSize: "12px",
+                          }}
+                          placeholder="—"
+                        />
+                      </td>
+                      <td
+                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
+                      >
+                        {r.to ?? "—"}
+                      </td>
+                      <td
+                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
+                      >
+                        {fmtShort(r.mobDate)}
+                      </td>
+                      <td
+                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
+                      >
+                        {fmtShort(r.demobDate)}
+                      </td>
+                      <td
+                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
+                      >
+                        {fmtShort(r.workingDay)}
+                      </td>
+                      <td
+                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
+                      >
+                        {r.dayOff ?? "—"}
+                      </td>
+                      <td
+                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
+                      >
+                        {r.previousLocation ?? "—"}
+                      </td>
+                      <td
+                        style={{ padding: "2px", border: "1px solid #dee2e6" }}
+                      >
+                        <input
+                          value={r.remark}
+                          onChange={(e) =>
+                            updateRosterField(
+                              r.employeeId,
+                              "remark",
+                              e.target.value,
+                            )
+                          }
+                          style={{
+                            width: "120px",
+                            border: "1px solid #dee2e6",
+                            padding: "4px",
+                            fontSize: "12px",
+                          }}
+                          placeholder="—"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+      {skillMatrixModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 999999,
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "center",
+            padding: "24px",
+            overflowY: "auto",
+          }}
+          onClick={() => setSkillMatrixModal(null)}
+        >
+          <style>{`@media print {
+            body * { visibility: hidden !important; }
+            #matrix-print, #matrix-print * { visibility: visible !important; }
+            #matrix-print { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; border-radius: 0 !important; }
+            .cv-no-print { display: none !important; }
+          }`}</style>
+          <div
+            id="matrix-print"
+            style={{
+              background: "#fff",
+              borderRadius: "10px",
+              width: "100%",
+              maxWidth: "95vw",
+              overflow: "hidden",
+              boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="cv-no-print"
+              style={{
+                background: "#1e3a5f",
+                color: "#fff",
+                padding: "14px 24px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: "16px" }}>
+                📋 Skill Matrix
+              </span>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  onClick={() => window.print()}
+                  style={{
+                    background: "#fff",
+                    color: "#1e3a5f",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "6px 16px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  🖨 Print / Save PDF
+                </button>
+                <button
+                  onClick={() => setSkillMatrixModal(null)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#fff",
+                    fontSize: "20px",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: "24px", overflowX: "auto" }}>
+              <div
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 700,
+                  marginBottom: "16px",
+                }}
+              >
+                {skillMatrixModal.project?.name} —{" "}
+                {skillMatrixModal.project?.client}
+              </div>
+
+              {skillMatrixModal.trainings.length === 0 ? (
+                <div style={{ color: "#6c757d", fontSize: "13px" }}>
+                  ไม่พบ training requirement สำหรับตำแหน่งในกลุ่มนี้ (เช็คว่า
+                  Training Matrix ของตำแหน่งเหล่านี้ตั้งไว้แล้วหรือยัง)
+                </div>
+              ) : (
+                <table
+                  style={{
+                    borderCollapse: "collapse",
+                    fontSize: "11px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <thead>
+                    <tr style={{ background: "#f1f3f5" }}>
+                      <th
+                        style={{
+                          padding: "6px",
+                          border: "1px solid #dee2e6",
+                          position: "sticky",
+                          left: 0,
+                          background: "#f1f3f5",
+                        }}
+                      >
+                        Name
+                      </th>
+                      <th
+                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
+                      >
+                        Position
+                      </th>
+                      {skillMatrixModal.trainings.map((tr) => (
+                        <th
+                          key={tr.id}
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
+                            maxWidth: "90px",
+                          }}
+                        >
+                          {tr.name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {skillMatrixModal.rows.map((r) => (
+                      <tr key={r.employeeId}>
+                        <td
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
+                            position: "sticky",
+                            left: 0,
+                            background: "#fff",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {r.fullName}
+                        </td>
+                        <td
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
+                          }}
+                        >
+                          {r.position}
+                        </td>
+                        {r.cells.map((cell) => (
+                          <td
+                            key={cell.trainingId}
+                            style={{
+                              padding: "6px",
+                              border: "1px solid #dee2e6",
+                              textAlign: "center",
+                              color:
+                                cell.status === "overdue"
+                                  ? "#dc3545"
+                                  : "#212529",
+                            }}
+                          >
+                            {skillCellLabel(cell)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {healthNoteModal && (
         <div
           style={{
@@ -1913,7 +2406,6 @@ export default function Allocation() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
             <div
               style={{
                 background: "#1e3a5f",
@@ -1946,7 +2438,6 @@ export default function Allocation() {
               </button>
             </div>
 
-            {/* Worker Info */}
             <div
               style={{
                 padding: "16px 24px",
@@ -1987,7 +2478,6 @@ export default function Allocation() {
               </span>
             </div>
 
-            {/* Client Tabs */}
             <div
               style={{
                 borderBottom: "1px solid #dee2e6",
@@ -2021,7 +2511,6 @@ export default function Allocation() {
               ))}
             </div>
 
-            {/* Modal Body */}
             <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1 }}>
               {eligibilityModal.clients.length === 0 ? (
                 <div
@@ -2142,7 +2631,6 @@ export default function Allocation() {
 
                   return (
                     <div>
-                      {/* Client header */}
                       <div
                         style={{
                           display: "flex",
@@ -2179,7 +2667,6 @@ export default function Allocation() {
                         </span>
                       </div>
 
-                      {/* Progress bar (Mandatory เท่านั้น) */}
                       <div
                         style={{
                           background: "#e9ecef",
@@ -2210,7 +2697,6 @@ export default function Allocation() {
                         completed ({client.matchPct}%)
                       </div>
 
-                      {/* ── Mandatory ── */}
                       <div style={{ marginBottom: "20px" }}>
                         <div
                           style={{
@@ -2225,7 +2711,6 @@ export default function Allocation() {
                         {renderTags(mandatory.missing, mandatory.completed)}
                       </div>
 
-                      {/* ── Assigned ── */}
                       <div style={{ marginBottom: "20px" }}>
                         <div
                           style={{
@@ -2246,7 +2731,6 @@ export default function Allocation() {
                         )}
                       </div>
 
-                      {/* ── Others ── */}
                       <div>
                         <div
                           style={{
@@ -2303,7 +2787,6 @@ export default function Allocation() {
               )}
             </div>
 
-            {/* Footer */}
             <div
               style={{
                 padding: "14px 24px",
