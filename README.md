@@ -215,10 +215,10 @@ VITE_BACKEND_URL=http://localhost:4100
 | CV Summary / Roster / Skill Matrix export | ✅ Done (Skill Matrix data cleanup in progress) |
 | Mobilization (deploy to site) | ✅ Done |
 | Dashboard (on-site count, cert compliance chart) | ✅ Done |
-| Post-Project Review | 🔄 In progress |
-| Production build (nginx static, non-dev containers) | ⏳ Planned |
-| Nightly DB backup to on-prem NAS | ⏳ Planned |
-| Notification / email reminders | ⏳ Planned |
+| Post-Project Review | ✅ Done |
+| Production build (nginx static, non-dev containers) | ✅ Done |
+| Nightly DB backup to on-prem NAS | ✅ Done |
+| Notification / email reminders | ✅ Done |
 
 ---
 
