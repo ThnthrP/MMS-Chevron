@@ -34,8 +34,8 @@ mobilization/demobilization.
 ### 📋 Certifications
 ![Certifications](screenshots/certifications.png)
 
-### 🎓 Manage Trainings
-![Manage Trainings](screenshots/manage-trainings.png)
+### 🗂 Projects
+![Projects](screenshots/projects.png)
 
 ### 👥 Worker Allocation
 ![Allocation](screenshots/allocation.png)
@@ -46,8 +46,8 @@ mobilization/demobilization.
 ### 🚀 Mobilization
 ![Mobilization](screenshots/mobilization.png)
 
-### 🗂 Projects
-![Projects](screenshots/projects.png)
+### 🎓 Manage Trainings
+![Manage Trainings](screenshots/manage-trainings.png)
 
 ---
 
