@@ -16,10 +16,10 @@ export default function TrainingMatrix() {
     fetchContracts();
   }, []);
 
-  useEffect(() => {
-    if (!selectedContract) return;
-    loadRequirements();
-  }, [selectedContract, selectedPosition]);
+  // useEffect(() => {
+  //   if (!selectedContract) return;
+  //   loadRequirements();
+  // }, [selectedContract, selectedPosition]);
 
   const fetchContracts = async () => {
     try {
@@ -45,8 +45,8 @@ export default function TrainingMatrix() {
     }
   };
 
-  const loadRequirements = async () => {
-    if (!selectedContract) return;
+  const loadRequirements = async (contractId, positionId) => {
+    if (!contractId) return;
     try {
       setLoading(true);
       const res = await axios.get(
@@ -54,8 +54,8 @@ export default function TrainingMatrix() {
         {
           withCredentials: true,
           params: {
-            contractId: selectedContract,
-            positionId: selectedPosition || undefined,
+            contractId,
+            positionId: positionId || undefined,
           },
         },
       );
@@ -191,7 +191,10 @@ export default function TrainingMatrix() {
                   setSelectedContract(value);
                   setSelectedPosition("");
                   setPositionGroups([]);
-                  if (value) fetchPositions(value);
+                  if (value) {
+                    fetchPositions(value);
+                    loadRequirements(value, ""); // ← เรียกตรงๆ ไม่ต้องพึ่ง useEffect
+                  }
                 }}
                 placeholder="Type to search Client..."
                 isClearable
@@ -218,9 +221,13 @@ export default function TrainingMatrix() {
                     (opt) => opt.value === selectedPosition,
                   ) || null
                 }
-                onChange={(selectedOpt) =>
-                  setSelectedPosition(selectedOpt ? selectedOpt.value : "")
-                }
+                onChange={(selectedOpt) => {
+                  const value = selectedOpt ? selectedOpt.value : "";
+                  setSelectedPosition(value);
+                  if (selectedContract) {
+                    loadRequirements(selectedContract, value); // ← เรียกตรงๆ เช่นกัน
+                  }
+                }}
                 placeholder="🔍 e.g. Welder, Rigger, Scaffolder..."
                 isClearable
                 noOptionsMessage={() => "No positions found"}

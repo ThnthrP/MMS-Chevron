@@ -4,26 +4,35 @@ import { AppContent } from "../../context/AppContext";
 
 // ตรงกับ enum TrainingSource ใน schema.prisma
 const SOURCE_OPTIONS = [
-  { value: "CLIENT_INTERNAL", label: "Client Internal" },
+  { value: "COMPANY", label: "Company" },
+  { value: "COMPANY_ELEARNING", label: "Company e-learning" },
   { value: "TPTI", label: "TPTI" },
   { value: "CONTRACTOR", label: "Contractor" },
   { value: "PUBLIC", label: "Public" },
 ];
 
-const emptyStandardForm = {
-  id: null,
-  source: "PUBLIC",
-  clientId: "",
-  trainingHours: "",
-  validityDays: "",
-  isNoExpiry: false,
-};
-
-const emptyTrainingForm = {
+// รวม GlobalTraining + TrainingStandard (1 training = 1 standard) เป็นฟอร์มเดียว
+const emptyForm = {
   id: null,
   name: "",
   fullName: "",
   description: "",
+  standardId: null, // มีค่า = standard นี้มีอยู่แล้วใน DB (update) / null = ยังไม่มี (create ตอน save)
+  source: "PUBLIC",
+  clientId: "",
+  trainingHours: "",
+  validityYears: "", // เก็บเป็น "ปี" ในฟอร์ม แปลงเป็น/จาก validityDays ตอนโหลด-บันทึก
+  isNoExpiry: false,
+};
+
+const daysToYears = (days) => {
+  if (days == null) return "";
+  const y = days / 365;
+  return Number.isInteger(y) ? String(y) : String(Math.round(y * 10) / 10);
+};
+const yearsToDays = (years) => {
+  if (years === "" || years == null) return null;
+  return Math.round(Number(years) * 365);
 };
 
 export default function ManageTrainings() {
@@ -35,20 +44,15 @@ export default function ManageTrainings() {
   const [loadingList, setLoadingList] = useState(true);
   const [listMsg, setListMsg] = useState(null);
 
-  // ----- clients (สำหรับ dropdown source = CLIENT_INTERNAL) -----
+  // ----- clients (สำหรับ dropdown source = COMPANY) -----
   const [clients, setClients] = useState([]);
 
   // ----- edit panel state -----
   const [selectedId, setSelectedId] = useState(null); // null = ปิด panel, "new" = สร้างใหม่
-  const [trainingForm, setTrainingForm] = useState(emptyTrainingForm);
-  const [standards, setStandards] = useState([]);
+  const [form, setForm] = useState(emptyForm);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const [savingTraining, setSavingTraining] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [detailMsg, setDetailMsg] = useState(null);
-
-  // ----- standard sub-form (modal เล็กในหน้าเดียว) -----
-  const [standardForm, setStandardForm] = useState(null); // null = ปิด, object = เปิดฟอร์ม
-  const [savingStandard, setSavingStandard] = useState(false);
 
   // โหลด list trainings
   const loadTrainings = useCallback(async () => {
@@ -71,7 +75,7 @@ export default function ManageTrainings() {
     loadTrainings();
   }, [loadTrainings]);
 
-  // โหลด clients ครั้งเดียว (สำหรับ dropdown ใน standard form)
+  // โหลด clients ครั้งเดียว (สำหรับ dropdown ตอน source = COMPANY)
   useEffect(() => {
     (async () => {
       try {
@@ -86,23 +90,28 @@ export default function ManageTrainings() {
     })();
   }, [backendUrl]);
 
-  // เปิด edit panel ของ training ที่มีอยู่แล้ว
+  // เปิด edit panel ของ training ที่มีอยู่แล้ว — ดึง standard ตัวแรก (ตัวเดียว) มาเติมในฟอร์มเดียวกันเลย
   const openTraining = async (id) => {
     setSelectedId(id);
     setDetailMsg(null);
-    setStandardForm(null);
     try {
       setLoadingDetail(true);
       const res = await axios.get(`${backendUrl}/api/global-trainings/${id}`, {
         withCredentials: true,
       });
-      setTrainingForm({
+      const std = (res.data.trainingStandards || [])[0] || null;
+      setForm({
         id: res.data.id,
         name: res.data.name || "",
         fullName: res.data.fullName || "",
         description: res.data.description || "",
+        standardId: std?.id ?? null,
+        source: std?.source ?? "PUBLIC",
+        clientId: std?.clientId ?? "",
+        trainingHours: std?.trainingHours ?? "",
+        validityYears: std?.isNoExpiry ? "" : daysToYears(std?.validityDays),
+        isNoExpiry: !!std?.isNoExpiry,
       });
-      setStandards(res.data.trainingStandards || []);
     } catch (err) {
       console.error(err);
       setDetailMsg({ type: "err", text: "โหลดข้อมูล training ไม่สำเร็จ" });
@@ -114,75 +123,136 @@ export default function ManageTrainings() {
   // เปิด panel สำหรับสร้าง training ใหม่
   const openNewTraining = () => {
     setSelectedId("new");
-    setTrainingForm(emptyTrainingForm);
-    setStandards([]);
+    setForm(emptyForm);
     setDetailMsg(null);
-    setStandardForm(null);
   };
 
   const closePanel = () => {
     setSelectedId(null);
-    setTrainingForm(emptyTrainingForm);
-    setStandards([]);
-    setStandardForm(null);
+    setForm(emptyForm);
     setDetailMsg(null);
   };
 
-  // บันทึก GlobalTraining (create หรือ update)
-  const handleSaveTraining = async () => {
-    if (!trainingForm.name.trim()) {
+  // บันทึกทั้ง GlobalTraining + Standard พร้อมกันในปุ่มเดียว
+  const handleSave = async () => {
+    if (!form.name.trim()) {
       setDetailMsg({ type: "err", text: "กรุณากรอกชื่อ training (name)" });
       return;
     }
-    try {
-      setSavingTraining(true);
-      setDetailMsg(null);
-      const payload = {
-        name: trainingForm.name.trim(),
-        fullName: trainingForm.fullName.trim() || null,
-        description: trainingForm.description.trim() || null,
-      };
-
-      if (selectedId === "new") {
-        const res = await axios.post(
-          `${backendUrl}/api/global-trainings`,
-          payload,
-          { withCredentials: true },
-        );
-        setDetailMsg({ type: "ok", text: "สร้าง training ใหม่สำเร็จ" });
-        setSelectedId(res.data.id);
-        setTrainingForm((prev) => ({ ...prev, id: res.data.id }));
-      } else {
-        await axios.put(
-          `${backendUrl}/api/global-trainings/${selectedId}`,
-          payload,
-          { withCredentials: true },
-        );
-        setDetailMsg({ type: "ok", text: "บันทึกการแก้ไขสำเร็จ" });
-      }
-      loadTrainings();
-    } catch (err) {
+    if (form.source === "COMPANY" && !form.clientId) {
       setDetailMsg({
         type: "err",
-        text: err.response?.data?.message || "บันทึก training ไม่สำเร็จ",
-      });
-    } finally {
-      setSavingTraining(false);
-    }
-  };
-
-  // ลบ GlobalTraining — ปิดปุ่มถ้ามี standard ผูกอยู่ (guard ฝั่ง frontend, backend ควร guard ซ้ำด้วย)
-  const handleDeleteTraining = async () => {
-    if (standards.length > 0) {
-      setDetailMsg({
-        type: "err",
-        text: `ลบไม่ได้ — มี ${standards.length} training standard ผูกอยู่ กรุณาลบ standard ทั้งหมดก่อน`,
+        text: "source = Company ต้องเลือก client ด้วย",
       });
       return;
     }
-    if (!window.confirm(`ยืนยันลบ training "${trainingForm.name}" ?`)) return;
+
     try {
-      await axios.delete(`${backendUrl}/api/global-trainings/${selectedId}`, {
+      setSaving(true);
+      setDetailMsg(null);
+
+      // 1) save GlobalTraining ก่อน (create หรือ update)
+      const trainingPayload = {
+        name: form.name.trim(),
+        fullName: form.fullName.trim() || null,
+        description: form.description.trim() || null,
+      };
+
+      let trainingId = form.id;
+      if (selectedId === "new") {
+        const res = await axios.post(
+          `${backendUrl}/api/global-trainings`,
+          trainingPayload,
+          { withCredentials: true },
+        );
+        trainingId = res.data.id;
+      } else {
+        await axios.put(
+          `${backendUrl}/api/global-trainings/${trainingId}`,
+          trainingPayload,
+          { withCredentials: true },
+        );
+      }
+
+      // 2) save Standard (create ถ้ายังไม่มี / update ถ้ามีแล้ว)
+      const standardPayload = {
+        source: form.source,
+        clientId: form.source === "COMPANY" ? form.clientId : null,
+        trainingHours:
+          form.trainingHours === "" ? null : Number(form.trainingHours),
+        validityDays: form.isNoExpiry ? null : yearsToDays(form.validityYears),
+        isNoExpiry: form.isNoExpiry,
+      };
+
+      if (form.standardId) {
+        await axios.put(
+          `${backendUrl}/api/global-trainings/${trainingId}/standards/${form.standardId}`,
+          standardPayload,
+          { withCredentials: true },
+        );
+      } else {
+        await axios.post(
+          `${backendUrl}/api/global-trainings/${trainingId}/standards`,
+          standardPayload,
+          { withCredentials: true },
+        );
+      }
+
+      setDetailMsg({ type: "ok", text: "บันทึกสำเร็จ" });
+      loadTrainings();
+      await openTraining(trainingId); // reload ฟอร์มให้ตรงกับข้อมูลล่าสุด (ได้ standardId ใหม่ถ้าเพิ่งสร้าง)
+    } catch (err) {
+      setDetailMsg({
+        type: "err",
+        text: err.response?.data?.message || "บันทึกไม่สำเร็จ",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ลบ standard เดี่ยว (ถ้ามี) — ใช้ตอนอยากเปลี่ยนใจไม่ผูก standard กับ training นี้แล้ว
+  const handleDeleteStandard = async () => {
+    if (!form.standardId) return;
+    if (!window.confirm("ยืนยันลบ training standard นี้?")) return;
+    try {
+      await axios.delete(
+        `${backendUrl}/api/global-trainings/${form.id}/standards/${form.standardId}`,
+        { withCredentials: true },
+      );
+      setForm((f) => ({
+        ...f,
+        standardId: null,
+        source: "PUBLIC",
+        clientId: "",
+        trainingHours: "",
+        validityYears: "",
+        isNoExpiry: false,
+      }));
+      loadTrainings();
+      setDetailMsg({ type: "ok", text: "ลบ standard แล้ว" });
+    } catch (err) {
+      setDetailMsg({
+        type: "err",
+        text:
+          err.response?.data?.message ||
+          "ลบไม่สำเร็จ — standard นี้อาจถูกใช้งานอยู่ในบาง contract",
+      });
+    }
+  };
+
+  // ลบ GlobalTraining ทั้งตัว — guard ถ้ายังมี standard ผูกอยู่
+  const handleDeleteTraining = async () => {
+    if (form.standardId) {
+      setDetailMsg({
+        type: "err",
+        text: "ลบไม่ได้ — มี training standard ผูกอยู่ กรุณาลบ standard ก่อน",
+      });
+      return;
+    }
+    if (!window.confirm(`ยืนยันลบ training "${form.name}" ?`)) return;
+    try {
+      await axios.delete(`${backendUrl}/api/global-trainings/${form.id}`, {
         withCredentials: true,
       });
       closePanel();
@@ -197,134 +267,7 @@ export default function ManageTrainings() {
     }
   };
 
-  // ----- Standard sub-form -----
-
-  const openNewStandard = () => {
-    setStandardForm({ ...emptyStandardForm });
-  };
-
-  const openEditStandard = (std) => {
-    setStandardForm({
-      id: std.id,
-      source: std.source,
-      clientId: std.clientId || "",
-      trainingHours: std.trainingHours ?? "",
-      validityDays: std.validityDays ?? "",
-      isNoExpiry: !!std.isNoExpiry,
-    });
-  };
-
-  const closeStandardForm = () => setStandardForm(null);
-
-  // เช็ค unique constraint [globalTrainingId, source, clientId] ฝั่ง frontend ก่อนยิง save
-  const findDuplicateStandard = (form) => {
-    const clientIdNormalized =
-      form.source === "CLIENT_INTERNAL" ? form.clientId || null : null;
-    return standards.find(
-      (s) =>
-        s.id !== form.id &&
-        s.source === form.source &&
-        (s.clientId || null) === clientIdNormalized,
-    );
-  };
-
-  const handleSaveStandard = async () => {
-    if (standardForm.source === "CLIENT_INTERNAL" && !standardForm.clientId) {
-      setDetailMsg({
-        type: "err",
-        text: "source = Client Internal ต้องเลือก client ด้วย",
-      });
-      return;
-    }
-
-    const duplicate = findDuplicateStandard(standardForm);
-    if (duplicate) {
-      const clientLabel =
-        clients.find((c) => c.id === duplicate.clientId)?.name || "-";
-      setDetailMsg({
-        type: "err",
-        text: `มี standard สำหรับ source นี้${
-          standardForm.source === "CLIENT_INTERNAL"
-            ? ` + client "${clientLabel}"`
-            : ""
-        } อยู่แล้ว — แก้ standard เดิมแทนการสร้างซ้ำ`,
-      });
-      return;
-    }
-
-    try {
-      setSavingStandard(true);
-      setDetailMsg(null);
-      const payload = {
-        source: standardForm.source,
-        clientId:
-          standardForm.source === "CLIENT_INTERNAL"
-            ? standardForm.clientId
-            : null,
-        trainingHours:
-          standardForm.trainingHours === ""
-            ? null
-            : Number(standardForm.trainingHours),
-        validityDays: standardForm.isNoExpiry
-          ? null
-          : standardForm.validityDays === ""
-            ? null
-            : Number(standardForm.validityDays),
-        isNoExpiry: standardForm.isNoExpiry,
-      };
-
-      if (standardForm.id) {
-        await axios.put(
-          `${backendUrl}/api/global-trainings/${selectedId}/standards/${standardForm.id}`,
-          payload,
-          { withCredentials: true },
-        );
-      } else {
-        await axios.post(
-          `${backendUrl}/api/global-trainings/${selectedId}/standards`,
-          payload,
-          { withCredentials: true },
-        );
-      }
-      await openTraining(selectedId); // reload standards list
-      setStandardForm(null);
-      setDetailMsg({ type: "ok", text: "บันทึก standard สำเร็จ" });
-    } catch (err) {
-      setDetailMsg({
-        type: "err",
-        text: err.response?.data?.message || "บันทึก standard ไม่สำเร็จ",
-      });
-    } finally {
-      setSavingStandard(false);
-    }
-  };
-
-  const handleDeleteStandard = async (std) => {
-    if (std._clientTrainingCount > 0) {
-      setDetailMsg({
-        type: "err",
-        text: `ลบไม่ได้ — standard นี้ถูกใช้อยู่ใน ${std._clientTrainingCount} contract`,
-      });
-      return;
-    }
-    if (!window.confirm("ยืนยันลบ training standard นี้?")) return;
-    try {
-      await axios.delete(
-        `${backendUrl}/api/global-trainings/${selectedId}/standards/${std.id}`,
-        { withCredentials: true },
-      );
-      await openTraining(selectedId);
-    } catch (err) {
-      setDetailMsg({
-        type: "err",
-        text:
-          err.response?.data?.message ||
-          "ลบไม่สำเร็จ — standard นี้อาจถูกใช้งานอยู่ในบาง contract",
-      });
-    }
-  };
-
-  // ----- shared styles (ตามสไตล์ MatrixEditor.jsx) -----
+  // ----- shared styles -----
   const cardStyle = {
     background: "#fff",
     border: "1px solid #dee2e6",
@@ -411,8 +354,8 @@ export default function ManageTrainings() {
               Manage Trainings
             </span>
             <span style={{ color: "#6c757d", fontSize: "12px" }}>
-              จัดการ training กลาง (Global Training) และ standard ต่อ
-              client/source
+              จัดการ training กลาง (ชั่วโมงอบรม/อายุ cert/source) — 1 training
+              ต่อ 1 standard
             </span>
           </div>
         </div>
@@ -495,14 +438,15 @@ export default function ManageTrainings() {
                     </th>
                     <th
                       style={{
-                        textAlign: "right",
                         padding: "10px 20px",
                         fontSize: "11px",
                         color: "#6c757d",
-                        width: "120px",
+                        width: "80px",
+                        textAlign: "right",
+                        whiteSpace: "nowrap", // ← เพิ่มบรรทัดนี้
                       }}
                     >
-                      STANDARDS
+                      SET UP?
                     </th>
                   </tr>
                 </thead>
@@ -525,14 +469,23 @@ export default function ManageTrainings() {
                           </div>
                         )}
                       </td>
-                      <td
-                        style={{
-                          padding: "10px 20px",
-                          textAlign: "right",
-                          color: "#6c757d",
-                        }}
-                      >
-                        {t._count?.trainingStandards ?? t.standardsCount ?? 0}
+                      <td style={{ padding: "10px 20px", textAlign: "right" }}>
+                        {(t._count?.trainingStandards ?? 0) > 0 ? (
+                          <span style={{ color: "#198754", fontWeight: 600 }}>
+                            ✓
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              color: "#dc3545",
+                              fontWeight: 600,
+                              fontSize: "11px",
+                            }}
+                            title="ยังไม่ตั้งค่า standard"
+                          >
+                            —
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -541,7 +494,7 @@ export default function ManageTrainings() {
             )}
           </div>
 
-          {/* ---------- EDIT PANEL ---------- */}
+          {/* ---------- EDIT PANEL (Training + Standard รวมเป็นฟอร์มเดียว) ---------- */}
           {panelOpen && (
             <div style={cardStyle}>
               <div
@@ -584,12 +537,9 @@ export default function ManageTrainings() {
                       <label style={labelStyle}>NAME *</label>
                       <input
                         style={inputStyle}
-                        value={trainingForm.name}
+                        value={form.name}
                         onChange={(e) =>
-                          setTrainingForm((f) => ({
-                            ...f,
-                            name: e.target.value,
-                          }))
+                          setForm((f) => ({ ...f, name: e.target.value }))
                         }
                         placeholder="เช่น Basic Rigging"
                       />
@@ -598,12 +548,9 @@ export default function ManageTrainings() {
                       <label style={labelStyle}>FULL NAME (สำหรับแสดงผล)</label>
                       <input
                         style={inputStyle}
-                        value={trainingForm.fullName}
+                        value={form.fullName}
                         onChange={(e) =>
-                          setTrainingForm((f) => ({
-                            ...f,
-                            fullName: e.target.value,
-                          }))
+                          setForm((f) => ({ ...f, fullName: e.target.value }))
                         }
                         placeholder="ชื่อเต็มจาก Excel (ถ้ามี)"
                       />
@@ -613,12 +560,12 @@ export default function ManageTrainings() {
                       <textarea
                         style={{
                           ...inputStyle,
-                          minHeight: "70px",
+                          minHeight: "60px",
                           resize: "vertical",
                         }}
-                        value={trainingForm.description}
+                        value={form.description}
                         onChange={(e) =>
-                          setTrainingForm((f) => ({
+                          setForm((f) => ({
                             ...f,
                             description: e.target.value,
                           }))
@@ -626,19 +573,165 @@ export default function ManageTrainings() {
                       />
                     </div>
 
+                    {/* --- Standard fields — โชว์เลยไม่ต้องกด Edit --- */}
+                    <div
+                      style={{
+                        borderTop: "1px solid #f1f3f5",
+                        paddingTop: "16px",
+                        marginBottom: "20px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: "12px",
+                        }}
+                      >
+                        <span style={{ fontWeight: 700, fontSize: "13px" }}>
+                          Training Standard
+                        </span>
+                        {form.standardId && (
+                          <button
+                            style={{ ...btnDanger, padding: "4px 10px" }}
+                            onClick={handleDeleteStandard}
+                          >
+                            Remove Standard
+                          </button>
+                        )}
+                      </div>
+
+                      <div style={{ marginBottom: "12px" }}>
+                        <label style={labelStyle}>SOURCE</label>
+                        <select
+                          style={inputStyle}
+                          value={form.source}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              source: e.target.value,
+                              clientId:
+                                e.target.value === "COMPANY" ? f.clientId : "",
+                            }))
+                          }
+                        >
+                          {SOURCE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {form.source === "COMPANY" && (
+                        <div style={{ marginBottom: "12px" }}>
+                          <label style={labelStyle}>CLIENT *</label>
+                          <select
+                            style={inputStyle}
+                            value={form.clientId}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                clientId: e.target.value,
+                              }))
+                            }
+                          >
+                            <option value="">— เลือก client —</option>
+                            {clients.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "12px",
+                          marginBottom: "12px",
+                        }}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <label style={labelStyle}>TRAINING HOURS</label>
+                          <input
+                            type="number"
+                            min="0"
+                            style={inputStyle}
+                            value={form.trainingHours}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                trainingHours: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={labelStyle}>VALIDITY (YEARS)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            disabled={form.isNoExpiry}
+                            style={{
+                              ...inputStyle,
+                              background: form.isNoExpiry ? "#f1f3f5" : "#fff",
+                            }}
+                            value={form.validityYears}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                validityYears: e.target.value,
+                              }))
+                            }
+                            placeholder="เช่น 3 หรือ 0.5 (=6 เดือน)"
+                          />
+                        </div>
+                      </div>
+
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          fontSize: "12px",
+                          color: "#495057",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={form.isNoExpiry}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              isNoExpiry: e.target.checked,
+                              validityYears: e.target.checked
+                                ? ""
+                                : f.validityYears,
+                            }))
+                          }
+                        />
+                        No expiry (cert ไม่มีวันหมดอายุ)
+                      </label>
+                    </div>
+
+                    {/* --- Actions --- */}
                     <div
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
-                        marginBottom: "24px",
                       }}
                     >
                       <button
                         style={btnPrimary}
-                        onClick={handleSaveTraining}
-                        disabled={savingTraining}
+                        onClick={handleSave}
+                        disabled={saving}
                       >
-                        {savingTraining ? "Saving..." : "Save"}
+                        {saving ? "Saving..." : "Save"}
                       </button>
                       {selectedId !== "new" && (
                         <button
@@ -649,264 +742,6 @@ export default function ManageTrainings() {
                         </button>
                       )}
                     </div>
-
-                    {/* --- Training Standards sub-list --- */}
-                    {selectedId !== "new" && (
-                      <div
-                        style={{
-                          borderTop: "1px solid #f1f3f5",
-                          paddingTop: "16px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            marginBottom: "10px",
-                          }}
-                        >
-                          <span style={{ fontWeight: 700, fontSize: "13px" }}>
-                            Training Standards ({standards.length})
-                          </span>
-                          <button
-                            style={{ ...btnGhost, padding: "6px 12px" }}
-                            onClick={openNewStandard}
-                          >
-                            + Add Standard
-                          </button>
-                        </div>
-
-                        {standards.length === 0 ? (
-                          <div
-                            style={{
-                              color: "#adb5bd",
-                              fontSize: "12px",
-                              padding: "8px 0",
-                            }}
-                          >
-                            ยังไม่มี standard — training
-                            นี้ยังไม่ระบุชั่วโมง/อายุ cert
-                          </div>
-                        ) : (
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "8px",
-                            }}
-                          >
-                            {standards.map((std) => (
-                              <div
-                                key={std.id}
-                                style={{
-                                  border: "1px solid #f1f3f5",
-                                  borderRadius: "8px",
-                                  padding: "10px 14px",
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                  fontSize: "12px",
-                                }}
-                              >
-                                <div>
-                                  <span style={{ fontWeight: 600 }}>
-                                    {SOURCE_OPTIONS.find(
-                                      (s) => s.value === std.source,
-                                    )?.label || std.source}
-                                  </span>
-                                  {std.source === "CLIENT_INTERNAL" &&
-                                    std.client && (
-                                      <span style={{ color: "#6c757d" }}>
-                                        {" "}
-                                        · {std.client.name}
-                                      </span>
-                                    )}
-                                  <div
-                                    style={{
-                                      color: "#adb5bd",
-                                      marginTop: "2px",
-                                    }}
-                                  >
-                                    {std.trainingHours != null &&
-                                      `${std.trainingHours} hrs · `}
-                                    {std.isNoExpiry
-                                      ? "No expiry"
-                                      : std.validityDays != null
-                                        ? `${std.validityDays} days validity`
-                                        : "—"}
-                                  </div>
-                                </div>
-                                <div style={{ display: "flex", gap: "8px" }}>
-                                  <button
-                                    style={{ ...btnGhost, padding: "5px 10px" }}
-                                    onClick={() => openEditStandard(std)}
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    style={btnDanger}
-                                    onClick={() => handleDeleteStandard(std)}
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* --- Standard form --- */}
-                        {standardForm && (
-                          <div
-                            style={{
-                              marginTop: "14px",
-                              border: "1px solid #dee2e6",
-                              borderRadius: "8px",
-                              padding: "16px",
-                              background: "#f8fbff",
-                            }}
-                          >
-                            <div style={{ marginBottom: "12px" }}>
-                              <label style={labelStyle}>SOURCE</label>
-                              <select
-                                style={inputStyle}
-                                value={standardForm.source}
-                                onChange={(e) =>
-                                  setStandardForm((f) => ({
-                                    ...f,
-                                    source: e.target.value,
-                                    clientId:
-                                      e.target.value === "CLIENT_INTERNAL"
-                                        ? f.clientId
-                                        : "",
-                                  }))
-                                }
-                              >
-                                {SOURCE_OPTIONS.map((o) => (
-                                  <option key={o.value} value={o.value}>
-                                    {o.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            {standardForm.source === "CLIENT_INTERNAL" && (
-                              <div style={{ marginBottom: "12px" }}>
-                                <label style={labelStyle}>CLIENT *</label>
-                                <select
-                                  style={inputStyle}
-                                  value={standardForm.clientId}
-                                  onChange={(e) =>
-                                    setStandardForm((f) => ({
-                                      ...f,
-                                      clientId: e.target.value,
-                                    }))
-                                  }
-                                >
-                                  <option value="">— เลือก client —</option>
-                                  {clients.map((c) => (
-                                    <option key={c.id} value={c.id}>
-                                      {c.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            )}
-
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: "12px",
-                                marginBottom: "12px",
-                              }}
-                            >
-                              <div style={{ flex: 1 }}>
-                                <label style={labelStyle}>TRAINING HOURS</label>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  style={inputStyle}
-                                  value={standardForm.trainingHours}
-                                  onChange={(e) =>
-                                    setStandardForm((f) => ({
-                                      ...f,
-                                      trainingHours: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <label style={labelStyle}>
-                                  VALIDITY (DAYS)
-                                </label>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  disabled={standardForm.isNoExpiry}
-                                  style={{
-                                    ...inputStyle,
-                                    background: standardForm.isNoExpiry
-                                      ? "#f1f3f5"
-                                      : "#fff",
-                                  }}
-                                  value={standardForm.validityDays}
-                                  onChange={(e) =>
-                                    setStandardForm((f) => ({
-                                      ...f,
-                                      validityDays: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                            </div>
-
-                            <label
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                fontSize: "12px",
-                                color: "#495057",
-                                marginBottom: "16px",
-                                cursor: "pointer",
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={standardForm.isNoExpiry}
-                                onChange={(e) =>
-                                  setStandardForm((f) => ({
-                                    ...f,
-                                    isNoExpiry: e.target.checked,
-                                    validityDays: e.target.checked
-                                      ? ""
-                                      : f.validityDays,
-                                  }))
-                                }
-                              />
-                              No expiry (cert ไม่มีวันหมดอายุ)
-                            </label>
-
-                            <div style={{ display: "flex", gap: "10px" }}>
-                              <button
-                                style={btnPrimary}
-                                onClick={handleSaveStandard}
-                                disabled={savingStandard}
-                              >
-                                {savingStandard ? "Saving..." : "Save Standard"}
-                              </button>
-                              <button
-                                style={btnGhost}
-                                onClick={closeStandardForm}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </>
                 )}
               </div>

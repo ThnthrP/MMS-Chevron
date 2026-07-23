@@ -84,7 +84,7 @@ const Login = () => {
         return toast.error("Cannot fetch user data");
       }
 
-      navigate("/admin");
+      navigate("/");
     } catch (error) {
       toast.error(
         error.response?.data?.message || error.message || "Login failed",

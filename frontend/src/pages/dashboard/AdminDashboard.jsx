@@ -18,6 +18,21 @@ import { AppContent } from "../../context/AppContext";
 const CERT = { valid: "#198754", expiring: "#f5c518", expired: "#dc3545" };
 const MOB = { pending: "#f5c518", ready: "#198754", on_site: "#0d6efd" };
 
+// เพิ่มไว้นอก component (ใกล้ CERT/MOB const ด้านบนไฟล์)
+function truncate(str, max = 34) {
+  if (!str) return "";
+  return str.length > max ? str.slice(0, max - 1) + "…" : str;
+}
+
+function YAxisTick({ x, y, payload }) {
+  return (
+    <text x={x} y={y} dy={4} textAnchor="end" fontSize={11} fill="#495057">
+      <title>{payload.value}</title>
+      {truncate(payload.value)}
+    </text>
+  );
+}
+
 const tooltipStyle = {
   background: "#fff",
   border: "1px solid #dee2e6",
@@ -142,12 +157,12 @@ export default function AdminDashboard() {
   return (
     <div
       style={{
-        maxWidth: "1200px",
-        margin: "0 auto",
-        padding: "8px 4px",
+        width: "100%",
+        padding: "8px 20px",
         display: "flex",
         flexDirection: "column",
         gap: "16px",
+        boxSizing: "border-box",
       }}
     >
       {/* header */}
@@ -316,29 +331,41 @@ export default function AdminDashboard() {
 
         <Card title="Certification Compliance by Type">
           {data.certByType.length ? (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer
+              width="100%"
+              height={Math.max(300, data.certByType.length * 34)}
+            >
               <BarChart
                 data={data.certByType}
-                margin={{ top: 8, right: 8, left: -16, bottom: 60 }}
+                layout="vertical"
+                margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#eef0f2" />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 10, fill: "#6c757d" }}
-                  interval={0}
-                  angle={-30}
-                  textAnchor="end"
-                  height={70}
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#eef0f2"
+                  horizontal={false}
                 />
-                <YAxis
+                <XAxis
+                  type="number"
                   allowDecimals={false}
                   tick={{ fontSize: 11, fill: "#adb5bd" }}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={260} // ← เพิ่มจาก 190 เพราะตอนนี้มีพื้นที่กว้างขึ้น
+                  tick={<YAxisTick />} // ← ใช้ custom tick แทน default
+                  interval={0}
                 />
                 <Tooltip
                   contentStyle={tooltipStyle}
                   cursor={{ fill: "#f1f3f5" }}
                 />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: "12px" }} />
+                <Legend
+                  iconType="circle"
+                  verticalAlign="top"
+                  wrapperStyle={{ fontSize: "12px", paddingBottom: "8px" }}
+                />
                 <Bar
                   dataKey="valid"
                   stackId="a"
@@ -356,7 +383,7 @@ export default function AdminDashboard() {
                   stackId="a"
                   name="Expired"
                   fill={CERT.expired}
-                  radius={[3, 3, 0, 0]}
+                  radius={[0, 3, 3, 0]}
                 />
               </BarChart>
             </ResponsiveContainer>

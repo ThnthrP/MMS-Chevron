@@ -10,6 +10,8 @@ export async function getPositions() {
 }
 
 // สำหรับหน้า Manage — แนบจำนวน worker + matrix requirement
+// (responsibilities เป็น scalar field ธรรมดา — Prisma คืนมาให้อัตโนมัติอยู่แล้ว
+//  เพราะไม่ได้ใช้ `select` แบบจำกัด field ตรงนี้ ไม่ต้องแก้อะไรเพิ่ม)
 export async function getPositionsWithCounts() {
   return prisma.position.findMany({
     orderBy: { name: "asc" },
@@ -30,6 +32,8 @@ export async function createPosition(data) {
       nameTH: data.nameTH || null,
       category: data.category || null,
       isOffshore: data.isOffshore ?? false,
+      // ← เพิ่มใหม่: ใช้ตอน generate CV Summary (Allocation → Professional Experience)
+      responsibilities: data.responsibilities || null,
     },
   });
 }
@@ -42,6 +46,8 @@ export async function updatePosition(id, data) {
       nameTH: data.nameTH || null,
       category: data.category || null,
       isOffshore: data.isOffshore ?? false,
+      // ← เพิ่มใหม่
+      responsibilities: data.responsibilities || null,
     },
   });
 }

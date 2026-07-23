@@ -11,8 +11,12 @@ const ProtectedRoute = ({ children, allowRoles }) => {
   }
 
   // ยังไม่ login
+  // if (!isLoggedin) {
+  //   return <Navigate to="/" />;
+  // }
+
   if (!isLoggedin) {
-    return <Navigate to="/" />;
+    return <Navigate to="/login" />; // เปลี่ยนจาก "/" เป็น "/login"
   }
 
   const userRole = userData?.role?.name;

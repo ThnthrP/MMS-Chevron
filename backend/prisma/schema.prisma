@@ -339,6 +339,9 @@ model Position {
   category   String? // "Technical" / "Supervisory" / "Engineering"
   isOffshore Boolean @default(false)
 
+  responsibilities String? @db.Text  // บรรทัดละ 1 ข้อ, คั่นด้วย \n
+  assignments      Assignment[]      // ← เพิ่ม back-relation
+
   requirements          PositionRequirement[]
   employees             Employee[]             @relation("PrimaryPosition")
   requests              ManpowerRequest[]
@@ -401,6 +404,15 @@ model Employee {
   sseLevel     SSELevel?                    // NAME SSE
   sseCompleted Boolean?                     // NAME SSE Pass = Completed
   // birthDate, notes มีอยู่แล้ว — reuse
+
+  address   String? @db.Text
+  gender    String?
+  height    Float?
+  weight    Float?
+  religion  String?
+  language  String?
+  education String?
+  photoUrl  String?   // เก็บ path ก่อน — ระบบ upload ไฟล์จริงทำแยกทีหลัง
 
   reviews PerformanceReview[]
 
@@ -668,6 +680,8 @@ model Project {
   startDate  DateTime?
   endDate    DateTime?
 
+  cvLabel String?  // ข้อความแสดงในเรซูเม่ ถ้าว่างจะ fallback ไปใช้ name
+
   requests    ManpowerRequest[]
   assignments Assignment[]
 
@@ -840,6 +854,11 @@ model Assignment {
   remark     String?   // ← เพิ่มบรรทัดนี้ — "ขึ้นด่วน" / "ติดงาน Project" ฯลฯ
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt
+
+  positionId String?     // snapshot ตำแหน่งตอน deploy
+  position   Position?   @relation(fields: [positionId], references: [id])
+
+  projectLabel String?  // ← ใช้เมื่อ projectId = null (manual/historical entry จาก HR)
 
   booking  Booking?  @relation(fields: [bookingId], references: [id])
   employee Employee  @relation(fields: [employeeId], references: [id])

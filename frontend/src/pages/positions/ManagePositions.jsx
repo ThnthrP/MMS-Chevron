@@ -1,14 +1,22 @@
 import { useState, useEffect, useContext } from "react";
 import axios from "axios";
+import Select from "react-select"; // ← เพิ่มใหม่
 import { AppContent } from "../../context/AppContext";
 
-const CATEGORIES = ["Technical", "Supervisory", "Engineering"];
+// const CATEGORIES = ["Technical", "Supervisory", "Engineering"];
 
-const emptyForm = { name: "", nameTH: "", category: "", isOffshore: false };
+const emptyForm = {
+  name: "",
+  nameTH: "",
+  category: "",
+  isOffshore: false,
+  responsibilities: "", // ← เพิ่มใหม่
+};
 
 export default function ManagePositions() {
   const { backendUrl } = useContext(AppContent);
   const [positions, setPositions] = useState([]);
+  const [divisions, setDivisions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null); // position object หรือ null (create)
@@ -34,6 +42,13 @@ export default function ManagePositions() {
     fetchPositions();
   }, []);
 
+  useEffect(() => {
+    axios
+      .get(`${backendUrl}/api/divisions`, { withCredentials: true })
+      .then((res) => setDivisions(res.data)) // [{id, name}, ...]
+      .catch((err) => console.error(err));
+  }, [backendUrl]);
+
   // รวมจำนวนพนักงานทุกตำแหน่ง (โชว์ท้ายตาราง)
   const totalWorkers = positions.reduce(
     (sum, p) => sum + (p._count?.employees ?? 0),
@@ -54,6 +69,7 @@ export default function ManagePositions() {
       nameTH: p.nameTH || "",
       category: p.category || "",
       isOffshore: p.isOffshore || false,
+      responsibilities: p.responsibilities || "", // ← เพิ่มใหม่
     });
     setError("");
     setShowModal(true);
@@ -79,6 +95,7 @@ export default function ManagePositions() {
         nameTH: form.nameTH || null,
         category: form.category || null,
         isOffshore: form.isOffshore,
+        responsibilities: form.responsibilities.trim() || null, // ← เพิ่มใหม่
       };
       if (editing) {
         await axios.put(`${backendUrl}/api/positions/${editing.id}`, payload, {
@@ -126,6 +143,18 @@ export default function ManagePositions() {
     marginBottom: "6px",
     display: "block",
   };
+
+  // จำนวนบรรทัดที่กรอกไว้ (ใช้แสดงในตาราง + คำนวณ preview เลขข้อ)
+  const responsibilityLines = (text) =>
+    (text || "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+  const departmentOptions = divisions.map((d) => ({
+    value: d.name,
+    label: d.name,
+  }));
 
   return (
     <div className="container-fluid p-4">
@@ -175,24 +204,6 @@ export default function ManagePositions() {
           </div>
         </div>
 
-        {/* Info note */}
-        {/* <div
-          style={{
-            background: "#e9f5fb",
-            border: "1px solid #bee3f8",
-            borderRadius: "8px",
-            padding: "10px 14px",
-            marginBottom: "1.5rem",
-            fontSize: "12px",
-            color: "#055160",
-          }}
-        >
-          ℹ️ ตำแหน่งที่สร้างที่นี่จะเลือกได้ในฟอร์ม Add/Edit Worker และ Project
-          ทันที — แต่ถ้าจะให้ระบบ **คัดเลือก/เช็ค eligibility** ได้ ต้องสร้าง
-          <strong> training matrix</strong> ของตำแหน่งนั้นต่อ contract ด้วย
-          (ตัวจัดการ matrix จะมาเฟสถัดไป — ตอนนี้ matrix มาจากการ import)
-        </div> */}
-
         {/* Table */}
         <div
           style={{
@@ -217,6 +228,7 @@ export default function ManagePositions() {
                   ["OFFSHORE", "center"],
                   ["WORKERS", "center"],
                   ["MATRIX", "center"],
+                  ["CV RESPONSIBILITY", "center"],
                   ["ACTIONS", "center"],
                 ].map(([h, align]) => (
                   <th
@@ -241,7 +253,7 @@ export default function ManagePositions() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan="6"
+                    colSpan="7"
                     style={{
                       textAlign: "center",
                       padding: "40px",
@@ -254,7 +266,7 @@ export default function ManagePositions() {
               ) : positions.length === 0 ? (
                 <tr>
                   <td
-                    colSpan="6"
+                    colSpan="7"
                     style={{
                       textAlign: "center",
                       padding: "40px",
@@ -265,132 +277,164 @@ export default function ManagePositions() {
                   </td>
                 </tr>
               ) : (
-                positions.map((p, idx) => (
-                  <tr
-                    key={p.id}
-                    style={{
-                      borderBottom:
-                        idx < positions.length - 1
-                          ? "1px solid #f1f3f5"
-                          : "none",
-                      transition: "background 0.15s",
-                    }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = "#f8f9fa")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = "#fff")
-                    }
-                  >
-                    {/* POSITION */}
-                    <td style={{ padding: "12px 16px" }}>
-                      <div style={{ fontWeight: 600 }}>{p.name}</div>
-                      {p.nameTH && (
-                        <div style={{ fontSize: "12px", color: "#6c757d" }}>
-                          {p.nameTH}
+                positions.map((p, idx) => {
+                  const respLines = responsibilityLines(p.responsibilities);
+                  return (
+                    <tr
+                      key={p.id}
+                      style={{
+                        borderBottom:
+                          idx < positions.length - 1
+                            ? "1px solid #f1f3f5"
+                            : "none",
+                        transition: "background 0.15s",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = "#f8f9fa")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "#fff")
+                      }
+                    >
+                      {/* POSITION */}
+                      <td style={{ padding: "12px 16px" }}>
+                        <div style={{ fontWeight: 600 }}>{p.name}</div>
+                        {p.nameTH && (
+                          <div style={{ fontSize: "12px", color: "#6c757d" }}>
+                            {p.nameTH}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* CATEGORY */}
+                      <td style={{ padding: "12px 16px", color: "#6c757d" }}>
+                        {p.category || "—"}
+                      </td>
+
+                      {/* OFFSHORE */}
+                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                        {p.isOffshore ? (
+                          <span
+                            style={{
+                              background: "#cfe2ff",
+                              color: "#084298",
+                              borderRadius: "6px",
+                              padding: "2px 10px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Offshore
+                          </span>
+                        ) : (
+                          <span style={{ color: "#adb5bd" }}>—</span>
+                        )}
+                      </td>
+
+                      {/* WORKERS */}
+                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                        {p._count?.employees ?? 0}
+                      </td>
+
+                      {/* MATRIX */}
+                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                        {(p._count?.requirements ?? 0) > 0 ? (
+                          <span
+                            style={{ color: "#198754", fontWeight: 600 }}
+                            title="มี training requirement (รวมทุก contract)"
+                          >
+                            {p._count.requirements}
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              background: "#fff3cd",
+                              color: "#664d03",
+                              borderRadius: "6px",
+                              padding: "2px 8px",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                            }}
+                            title="ยังไม่มี matrix — ระบบจะคัดเลือกคนตำแหน่งนี้ไม่ได้"
+                          >
+                            no matrix
+                          </span>
+                        )}
+                      </td>
+
+                      {/* CV RESPONSIBILITY — เพิ่มใหม่ */}
+                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                        {respLines.length > 0 ? (
+                          <span
+                            style={{ color: "#198754", fontWeight: 600 }}
+                            title={respLines
+                              .map((l, i) => `${i + 1}. ${l}`)
+                              .join("\n")}
+                          >
+                            {respLines.length} item
+                            {respLines.length > 1 ? "s" : ""}
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              background: "#f1f3f5",
+                              color: "#6c757d",
+                              borderRadius: "6px",
+                              padding: "2px 8px",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                            }}
+                            title="ยังไม่กรอก — ส่วน Responsibility ในเรซูเม่ (Generate CV Summary) จะไม่โชว์"
+                          >
+                            not set
+                          </span>
+                        )}
+                      </td>
+
+                      {/* ACTIONS */}
+                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "center",
+                            gap: "8px",
+                          }}
+                        >
+                          <button
+                            title="Edit"
+                            onClick={() => openEdit(p)}
+                            style={{
+                              background: "#fff",
+                              border: "1px solid #dee2e6",
+                              borderRadius: "6px",
+                              padding: "4px 8px",
+                              cursor: "pointer",
+                              fontSize: "13px",
+                              lineHeight: 1,
+                            }}
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            title="Delete"
+                            onClick={() => handleDelete(p)}
+                            style={{
+                              background: "#fff",
+                              border: "1px solid #f5c6cb",
+                              borderRadius: "6px",
+                              padding: "4px 8px",
+                              cursor: "pointer",
+                              fontSize: "13px",
+                              lineHeight: 1,
+                            }}
+                          >
+                            🗑
+                          </button>
                         </div>
-                      )}
-                    </td>
-
-                    {/* CATEGORY */}
-                    <td style={{ padding: "12px 16px", color: "#6c757d" }}>
-                      {p.category || "—"}
-                    </td>
-
-                    {/* OFFSHORE */}
-                    <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                      {p.isOffshore ? (
-                        <span
-                          style={{
-                            background: "#cfe2ff",
-                            color: "#084298",
-                            borderRadius: "6px",
-                            padding: "2px 10px",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Offshore
-                        </span>
-                      ) : (
-                        <span style={{ color: "#adb5bd" }}>—</span>
-                      )}
-                    </td>
-
-                    {/* WORKERS */}
-                    <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                      {p._count?.employees ?? 0}
-                    </td>
-
-                    {/* MATRIX */}
-                    <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                      {(p._count?.requirements ?? 0) > 0 ? (
-                        <span
-                          style={{ color: "#198754", fontWeight: 600 }}
-                          title="มี training requirement (รวมทุก contract)"
-                        >
-                          {p._count.requirements}
-                        </span>
-                      ) : (
-                        <span
-                          style={{
-                            background: "#fff3cd",
-                            color: "#664d03",
-                            borderRadius: "6px",
-                            padding: "2px 8px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                          }}
-                          title="ยังไม่มี matrix — ระบบจะคัดเลือกคนตำแหน่งนี้ไม่ได้"
-                        >
-                          no matrix
-                        </span>
-                      )}
-                    </td>
-
-                    {/* ACTIONS */}
-                    <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "center",
-                          gap: "8px",
-                        }}
-                      >
-                        <button
-                          title="Edit"
-                          onClick={() => openEdit(p)}
-                          style={{
-                            background: "#fff",
-                            border: "1px solid #dee2e6",
-                            borderRadius: "6px",
-                            padding: "4px 8px",
-                            cursor: "pointer",
-                            fontSize: "13px",
-                            lineHeight: 1,
-                          }}
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          title="Delete"
-                          onClick={() => handleDelete(p)}
-                          style={{
-                            background: "#fff",
-                            border: "1px solid #f5c6cb",
-                            borderRadius: "6px",
-                            padding: "4px 8px",
-                            cursor: "pointer",
-                            fontSize: "13px",
-                            lineHeight: 1,
-                          }}
-                        >
-                          🗑
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
             {!loading && positions.length > 0 && (
@@ -422,7 +466,7 @@ export default function ManagePositions() {
                   >
                     {totalWorkers}
                   </td>
-                  <td colSpan="2"></td>
+                  <td colSpan="3"></td>
                 </tr>
               </tfoot>
             )}
@@ -449,7 +493,9 @@ export default function ManagePositions() {
               background: "#fff",
               borderRadius: "10px",
               width: "100%",
-              maxWidth: "520px",
+              maxWidth: "560px",
+              maxHeight: "90vh",
+              overflowY: "auto",
               overflow: "hidden",
             }}
           >
@@ -482,7 +528,9 @@ export default function ManagePositions() {
             </div>
 
             {/* Body */}
-            <div style={{ padding: "24px" }}>
+            <div
+              style={{ padding: "24px", maxHeight: "70vh", overflowY: "auto" }}
+            >
               {error && (
                 <div
                   style={{
@@ -535,20 +583,34 @@ export default function ManagePositions() {
                 </div>
                 <div>
                   <label style={labelStyle}>Department</label>
-                  <select
-                    value={form.category}
-                    onChange={(e) =>
-                      setForm({ ...form, category: e.target.value })
+                  <Select
+                    options={departmentOptions}
+                    value={
+                      departmentOptions.find(
+                        (o) => o.value === form.category,
+                      ) || null
                     }
-                    style={inputStyle}
-                  >
-                    <option value="">—</option>
-                    {CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(o) =>
+                      setForm({ ...form, category: o ? o.value : "" })
+                    }
+                    placeholder="ค้นหา / เลือกแผนก..."
+                    isClearable
+                    menuPortalTarget={
+                      typeof document !== "undefined" ? document.body : null
+                    }
+                    menuPosition="fixed"
+                    styles={{
+                      menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
+                      control: (b) => ({
+                        ...b,
+                        fontSize: "13px",
+                        minHeight: "38px",
+                        borderColor: "#dee2e6",
+                      }),
+                      option: (b) => ({ ...b, fontSize: "13px" }),
+                    }}
+                    noOptionsMessage={() => "ไม่มีแผนก"}
+                  />
                 </div>
               </div>
 
@@ -561,6 +623,7 @@ export default function ManagePositions() {
                   border: "1px solid #e9ecef",
                   borderRadius: "8px",
                   padding: "12px 14px",
+                  marginBottom: "16px",
                 }}
               >
                 <input
@@ -578,6 +641,70 @@ export default function ManagePositions() {
                 >
                   ตำแหน่งนี้เป็นสาย offshore (ลงแท่นกลางทะเล)
                 </label>
+              </div>
+
+              {/* Responsibilities — เพิ่มใหม่ */}
+              <div>
+                <label style={labelStyle}>
+                  CV Responsibility{" "}
+                  <span style={{ color: "#6c757d", fontWeight: 400 }}>
+                    (แสดงในเรซูเม่ตอน "Generate CV Summary" — Allocation)
+                  </span>
+                </label>
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "#6c757d",
+                    marginBottom: "8px",
+                  }}
+                >
+                  พิมพ์ 1 บรรทัด = 1 ข้อ ระบบจะขึ้นเลข 1. 2. 3. ... ให้อัตโนมัติ
+                  ตอนแสดงในเรซูเม่
+                </div>
+                <textarea
+                  rows={5}
+                  placeholder={
+                    "Prepare tools and equipment for that task as assigned by the supervisor.\nReport the performance to the supervisor.\nNotify the repair of equipment, tools about sand blasting - paint that is damaged\nStore and maintain cleanliness of the working area before and after work."
+                  }
+                  value={form.responsibilities}
+                  onChange={(e) =>
+                    setForm({ ...form, responsibilities: e.target.value })
+                  }
+                  style={{ ...inputStyle, resize: "vertical" }}
+                />
+                {responsibilityLines(form.responsibilities).length > 0 && (
+                  <div
+                    style={{
+                      marginTop: "10px",
+                      background: "#f8f9fa",
+                      border: "1px dashed #dee2e6",
+                      borderRadius: "8px",
+                      padding: "10px 14px",
+                      fontSize: "12px",
+                      color: "#495057",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        marginBottom: "6px",
+                        color: "#6c757d",
+                        textTransform: "uppercase",
+                        fontSize: "10px",
+                        letterSpacing: "0.4px",
+                      }}
+                    >
+                      Preview ในเรซูเม่
+                    </div>
+                    {responsibilityLines(form.responsibilities).map(
+                      (line, i) => (
+                        <div key={i}>
+                          {i + 1}. {line}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

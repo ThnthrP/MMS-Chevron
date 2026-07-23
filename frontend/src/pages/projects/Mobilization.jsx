@@ -84,6 +84,7 @@ export default function Mobilization() {
   const [project, setProject] = useState(null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   // dropdown — reuse allocation projects endpoint
   useEffect(() => {
@@ -118,6 +119,32 @@ export default function Mobilization() {
       setRows([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const clearProjectDeployments = async () => {
+    if (!selectedProjectId) return;
+    if (
+      !window.confirm(
+        "⚠ DEV TOOL: ลบ deployment record ทั้งหมดของ project นี้ทิ้ง?\n" +
+          "(ใช้ตอนแก้ position request แล้วมี worker ค้าง deploy อยู่)",
+      )
+    )
+      return;
+    try {
+      setClearing(true);
+      const res = await axios.post(
+        `${backendUrl}/api/mobilization/clear-project`,
+        { projectId: selectedProjectId },
+        { withCredentials: true },
+      );
+      alert(`ลบ deployment record ${res.data.count} รายการแล้ว`);
+      await fetchList(selectedProjectId);
+    } catch (err) {
+      console.error(err);
+      alert("Clear failed — ดู console");
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -326,25 +353,56 @@ export default function Mobilization() {
 
       {/* project select */}
       <div style={{ ...card, padding: "16px 18px" }}>
-        <select
-          value={selectedProjectId}
-          onChange={(e) => setSelectedProjectId(e.target.value)}
+        <div
           style={{
-            width: "100%",
-            maxWidth: "420px",
-            border: "1px solid #ced4da",
-            borderRadius: "8px",
-            padding: "10px 12px",
-            fontSize: "14px",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            flexWrap: "wrap",
           }}
         >
-          <option value="">-- Select Project --</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+          <select
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+            style={{
+              flex: "1 1 320px",
+              maxWidth: "420px",
+              border: "1px solid #ced4da",
+              borderRadius: "8px",
+              padding: "10px 12px",
+              fontSize: "14px",
+            }}
+          >
+            <option value="">-- Select Project --</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+
+          {selectedProjectId && (
+            <button
+              onClick={clearProjectDeployments}
+              disabled={clearing}
+              title="Dev tool — ลบ deployment record ทั้งหมดของ project นี้ (ใช้ตอนแก้ position request แล้วมี worker ค้าง)"
+              style={{
+                background: "#fff",
+                border: "1px solid #dc3545",
+                color: "#dc3545",
+                borderRadius: "8px",
+                padding: "9px 14px",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: clearing ? "not-allowed" : "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {clearing ? "Clearing..." : "🧹 Clear Deployments (Dev)"}
+            </button>
+          )}
+        </div>
+
         {project && (
           <div
             style={{ marginTop: "10px", fontSize: "12px", color: "#6c757d" }}

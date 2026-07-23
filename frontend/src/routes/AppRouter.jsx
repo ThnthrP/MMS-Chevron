@@ -26,18 +26,21 @@ import EditProject from "../pages/projects/EditProject";
 import ManagePositions from "../pages/positions/ManagePositions";
 import MatrixEditor from "../pages/positions/MatrixEditor";
 import ManageDivisions from "../pages/positions/ManageDivisions";
+import ManageTrainings from "../pages/training/ManageTrainings"; // ← เพิ่มใหม่
 
 import Mobilization from "../pages/projects/Mobilization";
 import PostProjectReview from "../pages/projects/PostProjectReview";
 
 import AnalyticsReports from "../pages/projects/AnalyticsReports";
 
-const AppRouter = () => {
-  const { userData } = useContext(AppContent);
+import Certifications from "../pages/compliance/Certifications";
 
-  if (!userData) {
-    return <div>Loading...</div>;
-  }
+const AppRouter = () => {
+  // const { userData } = useContext(AppContent);
+
+  // if (!userData) {
+  //   return <div>Loading...</div>;
+  // }
 
   return (
     <ProtectedRoute>
@@ -120,6 +123,23 @@ const AppRouter = () => {
                 ]}
               >
                 <ComplianceDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/certifications"
+            element={
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "hr",
+                  "manpower",
+                  "safety",
+                  "nurse",
+                  "pe",
+                ]}
+              >
+                <Certifications />
               </ProtectedRoute>
             }
           />
@@ -215,6 +235,15 @@ const AppRouter = () => {
             element={
               <ProtectedRoute allowRoles={["admin", "manpower"]}>
                 <ManageDivisions />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/trainings"
+            element={
+              <ProtectedRoute allowRoles={["admin", "hr", "manpower"]}>
+                <ManageTrainings />
               </ProtectedRoute>
             }
           />

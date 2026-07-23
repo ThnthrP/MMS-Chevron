@@ -275,7 +275,7 @@ export default function Project() {
                       {/* PROJECT — ชื่อคลิกได้ */}
                       <td style={{ padding: "14px 16px" }}>
                         <div
-                          onClick={() => navigate(`/admin/projects/${p.id}`)}
+                          onClick={() => navigate(`/projects/${p.id}`)}
                           style={{
                             fontWeight: 600,
                             color: "#0d6efd",
@@ -334,7 +334,7 @@ export default function Project() {
                           </span>
                         ) : (
                           <span
-                            onClick={() => navigate(`/admin/projects/${p.id}`)}
+                            onClick={() => navigate(`/projects/${p.id}`)}
                             style={{
                               fontSize: "12px",
                               color: "#664d03",
@@ -363,7 +363,7 @@ export default function Project() {
                         >
                           <button
                             title="Open project — manage positions & allocation"
-                            onClick={() => navigate(`/admin/projects/${p.id}`)}
+                            onClick={() => navigate(`/projects/${p.id}`)}
                             style={{
                               background: "#0d6efd",
                               color: "#fff",
@@ -380,7 +380,7 @@ export default function Project() {
                           <button
                             title="Edit"
                             onClick={() =>
-                              navigate(`/admin/projects/${p.id}/edit`)
+                              navigate(`/projects/${p.id}/edit`)
                             }
                             style={{
                               background: "#fff",

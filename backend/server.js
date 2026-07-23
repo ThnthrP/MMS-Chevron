@@ -29,16 +29,23 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 
 import divisionRoutes from "./routes/divisionRoutes.js";
 
+import globalTrainingRoutes from "./routes/globalTrainingRoutes.js";
 
 
-import safetyRouter from "./routes/safetyRoutes.js";
-import medicalRouter from "./routes/medicalRoutes.js";
-import requestRouter from "./routes/requestRoutes.js";
+
+// import safetyRouter from "./routes/safetyRoutes.js";
+// import medicalRouter from "./routes/medicalRoutes.js";
+// import requestRouter from "./routes/requestRoutes.js";
 
 
 // import bookingRouter from "./routes/bookingRoutes.js";
 // import vehicleRouter from "./routes/vehicleRoutes.js";
 // import costRouter from "./routes/costRoutes.js";
+
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -71,6 +78,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/user", userRouter);
 
 // app.use("/uploads", express.static("uploads"));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use("/api/training-matrix", trainingMatrixRoutes);
 app.use("/api/workers", workerRoutes);
@@ -95,12 +103,15 @@ app.use("/api/dashboard", dashboardRoutes);
 
 app.use("/api/divisions", divisionRoutes);
 
+app.use("/api/global-trainings", globalTrainingRoutes);
 
-app.use("/api/safety", safetyRouter);
-app.use("/api/medical", medicalRouter);
-app.use("/api/request", requestRouter);
+
+// app.use("/api/safety", safetyRouter);
+// app.use("/api/medical", medicalRouter);
+// app.use("/api/request", requestRouter);
 
 // start server
 app.listen(port, () => {
   console.log(`🚀 Server running on http://localhost:${port}`);
 });
+

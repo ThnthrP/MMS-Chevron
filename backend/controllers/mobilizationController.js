@@ -47,3 +47,20 @@ export async function undeploy(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
+
+// POST /api/mobilization/clear-project
+// body: { projectId }
+// ⚠ DEV TOOL — ลบ Assignment ทั้งหมดของ project ทิ้ง (ไม่ใช่ undeploy ทีละคน)
+export async function clearProject(req, res) {
+  try {
+    const { projectId } = req.body;
+    if (!projectId) {
+      return res.status(400).json({ message: "projectId is required" });
+    }
+    const result = await service.clearProjectDeployments(projectId);
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}

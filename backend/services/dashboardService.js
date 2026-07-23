@@ -9,9 +9,14 @@ const prisma = new PrismaClient();
 // เพื่อให้ตัวเลขตรงกับหน้า Compliance Center
 // ════════════════════════════════════════════════════════════════
 export async function getDashboard() {
+  // ตัดเวลาออก เทียบกันแบบ "วันที่" ล้วนๆ (ไม่สนใจ time-of-day)
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
   const employees = await prisma.employee.findMany({
-    where: { status: "active" }, // ← ตรงกับ compliance (active เท่านั้น)
+    where: { status: "active" },
     select: {
+      id: true, // ← เพิ่ม: ต้องใช้เทียบกับ onSite employeeId set
       availabilityStatus: true,
       mobilizationStatus: true,
       fullName: true,
@@ -31,16 +36,39 @@ export async function getDashboard() {
     },
   });
 
+  // ← เพิ่มใหม่: นับจำนวนคนที่อยู่หน้างานจริง ณ ตอนนี้ จากช่วงวันที่ mobDate–demobDate
+  //   ของทุก project รวมกัน (ไม่พึ่ง field `status` เพราะไม่ auto-update ตามเวลา —
+  //   ดู statusByDate() ใน mobilizationService.js ที่ compute ครั้งเดียวตอน deploy เท่านั้น)
+  // นับจำนวนคนที่อยู่หน้างานจริง ณ วันนี้ จาก Assignment table
+  const onSiteAssignments = await prisma.assignment.findMany({
+    where: {
+      mobDate: { lte: todayStart },
+      OR: [{ demobDate: null }, { demobDate: { gte: todayStart } }],
+    },
+    select: { employeeId: true },
+    distinct: ["employeeId"],
+  });
+  const onSiteEmployeeIds = new Set(onSiteAssignments.map((a) => a.employeeId));
+  const onSiteCount = onSiteEmployeeIds.size;
+
   // ── worker breakdowns ──
-  const mobilization = { pending: 0, ready: 0, on_site: 0 };
+  // on_site ใช้ข้อมูลจริงจาก Assignment แทน mobilizationStatus (ไม่ sync กัน)
+  // ready/pending ยังอิง mobilizationStatus แต่ตัดคนที่ on-site จริงออกก่อน กันนับซ้ำ
+  const mobilization = { pending: 0, ready: 0, on_site: onSiteCount };
   const availability = { available: 0, unavailable: 0 };
   for (const e of employees) {
-    if (mobilization[e.mobilizationStatus] !== undefined)
-      mobilization[e.mobilizationStatus]++;
+    if (!onSiteEmployeeIds.has(e.id)) {
+      if (e.mobilizationStatus === "pending") mobilization.pending++;
+      else if (e.mobilizationStatus === "ready") mobilization.ready++;
+      // ถ้า mobilizationStatus === "on_site" แต่ไม่มีใน onSiteEmployeeIds จริง
+      // (ข้อมูลเก่าไม่ sync) จะไม่ถูกนับที่ไหนเลย — เป็นพฤติกรรมที่ตั้งใจ
+      // เพราะถือว่า Assignment คือ source of truth
+    }
     if (availability[e.availabilityStatus] !== undefined)
       availability[e.availabilityStatus]++;
   }
 
+  // ... (ส่วน bucket/certByType/alerts เดิม ไม่ต้องแก้อะไร) ...
   const today = new Date();
   const daysLeft = (d) =>
     Math.ceil((new Date(d) - today) / (1000 * 60 * 60 * 24));
@@ -140,10 +168,10 @@ export async function getDashboard() {
     totalWorkers: employees.length,
     counts: {
       ready: mobilization.ready,
-      onSite: mobilization.on_site,
-      certAlerts: expiring + expired, // ← ตรงกับ compliance: critical+warning+expired
+      onSite: onSiteCount,
+      certAlerts: expiring + expired,
     },
-    mobilization,
+    mobilization, // ← ตอนนี้ on_site sync กับ KPI card แล้ว
     availability,
     certCompliance: { valid, expiring, expired },
     certByType,

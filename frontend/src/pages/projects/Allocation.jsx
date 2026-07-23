@@ -4,6 +4,9 @@ import Select from "react-select";
 import { useNavigate } from "react-router-dom";
 import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
+import { createPortal } from "react-dom";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 
 // อายุเกษียณ (ปรับได้ตามนโยบายบริษัท)
 const RETIREMENT_AGE = 60;
@@ -15,6 +18,8 @@ const HEALTH_MAP = {
   high: { label: "สูง", bg: "#f8d7da", color: "#842029" },
 };
 const SSE_LABEL = { new_sse: "NEW SSE", sse1: "SSE1", sse2: "SSE2" };
+
+const GENDER_LABEL = { male: "Male", female: "Female", other: "Other" };
 
 export default function Allocation() {
   const { backendUrl } = useContext(AppContent);
@@ -40,6 +45,7 @@ export default function Allocation() {
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
   const [activeClientTab, setActiveClientTab] = useState(0);
   const [completedExpanded, setCompletedExpanded] = useState({});
+  const [approvedExpanded, setApprovedExpanded] = useState({});
   const [workerSearch, setWorkerSearch] = useState("");
   const [sortBy, setSortBy] = useStickyState("alloc_sortBy", "dayoff");
   const [empType, setEmpType] = useStickyState("alloc_empType", "permanent");
@@ -281,6 +287,103 @@ export default function Allocation() {
     }
   };
 
+  const handleExportSkillMatrixExcel = async () => {
+    if (!skillMatrixModal) return;
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Skill Matrix");
+
+    const trainings = skillMatrixModal.trainings;
+    const rows = skillMatrixModal.rows;
+
+    // ── หัวเรื่อง ──
+    ws.mergeCells(1, 1, 1, 2 + trainings.length);
+    const titleCell = ws.getCell(1, 1);
+    titleCell.value = `${skillMatrixModal.project?.name ?? ""} — ${skillMatrixModal.project?.client ?? ""}`;
+    titleCell.font = { bold: true, size: 14, color: { argb: "FF198754" } };
+
+    const headerRowIndex = 3;
+
+    // ── หัวตาราง: Name, Position, แล้วตามด้วย training (หมุนเฉียง) ──
+    ws.getCell(headerRowIndex, 1).value = "Name";
+    ws.getCell(headerRowIndex, 2).value = "Position";
+    trainings.forEach((tr, i) => {
+      const cell = ws.getCell(headerRowIndex, 3 + i);
+      cell.value = tr.name;
+      cell.alignment = {
+        textRotation: 45,
+        vertical: "bottom",
+        horizontal: "left",
+      };
+      cell.font = { bold: true, size: 9 };
+    });
+
+    ws.getRow(headerRowIndex).height = 110;
+    ws.getColumn(1).width = 22;
+    ws.getColumn(2).width = 26;
+    for (let i = 0; i < trainings.length; i++) {
+      ws.getColumn(3 + i).width = 5;
+    }
+
+    // ── border + สีพื้นหลังหัวตาราง ──
+    for (let c = 1; c <= 2 + trainings.length; c++) {
+      const cell = ws.getCell(headerRowIndex, c);
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF1F3F5" },
+      };
+      cell.border = {
+        top: { style: "thin" },
+        bottom: { style: "thin" },
+        left: { style: "thin" },
+        right: { style: "thin" },
+      };
+    }
+
+    // ── ข้อมูลแต่ละแถว ──
+    rows.forEach((r, ri) => {
+      const rowIndex = headerRowIndex + 1 + ri;
+      ws.getCell(rowIndex, 1).value = r.fullName;
+      ws.getCell(rowIndex, 1).font = { bold: true };
+      ws.getCell(rowIndex, 2).value = r.position;
+
+      r.cells.forEach((cell, ci) => {
+        const excelCell = ws.getCell(rowIndex, 3 + ci);
+        excelCell.value = skillCellLabel(cell);
+        excelCell.alignment = { horizontal: "center" };
+        excelCell.font = {
+          size: 9,
+          color:
+            cell.status === "overdue"
+              ? { argb: "FFDC3545" }
+              : { argb: "FF212529" },
+        };
+      });
+
+      for (let c = 1; c <= 2 + trainings.length; c++) {
+        ws.getCell(rowIndex, c).border = {
+          top: { style: "thin", color: { argb: "FFDEE2E6" } },
+          bottom: { style: "thin", color: { argb: "FFDEE2E6" } },
+          left: { style: "thin", color: { argb: "FFDEE2E6" } },
+          right: { style: "thin", color: { argb: "FFDEE2E6" } },
+        };
+      }
+    });
+
+    // ── freeze แถวหัว + คอลัมน์ Name/Position ──
+    ws.views = [{ state: "frozen", xSplit: 2, ySplit: headerRowIndex }];
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/octet-stream",
+    });
+    saveAs(
+      blob,
+      `SkillMatrix_${skillMatrixModal.project?.name || "export"}.xlsx`,
+    );
+  };
+
   const updateRosterField = (employeeId, field, value) => {
     setRosterModal((prev) => ({
       ...prev,
@@ -298,6 +401,24 @@ export default function Allocation() {
           year: "numeric",
         })
       : "—";
+
+  // เหมือน fmtShort แต่ไม่มี dash ระหว่างวัน-เดือน-ปี (ให้ตรงกับสไตล์เรซูเม่จริง เช่น "3-May-1983")
+  const fmtResumeDate = (d) => {
+    if (!d) return "—";
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return "—";
+    const day = dt.getDate();
+    const month = dt.toLocaleDateString("en-GB", { month: "long" });
+    const year = dt.getFullYear();
+    return `${day}-${month}-${year}`;
+  };
+
+  const calcAge = (birthDate) => {
+    if (!birthDate) return null;
+    const b = new Date(birthDate);
+    if (isNaN(b.getTime())) return null;
+    return Math.floor((Date.now() - b.getTime()) / (365.25 * 86400000));
+  };
 
   const skillCellLabel = (cell) => {
     if (!cell.completedDate && !cell.expiryDate && !cell.status) return "N/A";
@@ -502,6 +623,31 @@ export default function Allocation() {
     menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
   };
 
+  // ── styles สำหรับ Resume (CV modal ใหม่) ──
+  const resumeSectionTitle = {
+    background: "#e6fbfb",
+    border: "1px solid #1e3a5f",
+    borderTop: "none",
+    padding: "6px 12px",
+    fontWeight: 700,
+    fontSize: "13px",
+    color: "#1e3a5f",
+  };
+  const resumeTd1 = {
+    padding: "4px 8px",
+    fontSize: "12px",
+    fontWeight: 700,
+    color: "#1e3a5f",
+    verticalAlign: "top",
+    whiteSpace: "nowrap",
+  };
+  const resumeTd2 = {
+    padding: "4px 8px",
+    fontSize: "12px",
+    color: "#212529",
+    verticalAlign: "top",
+  };
+
   return (
     <div className="container-fluid p-4">
       <div style={{ width: "100%" }}>
@@ -687,9 +833,7 @@ export default function Allocation() {
                 >
                   ⚠ โปรเจกต์นี้ยังไม่มี position request —{" "}
                   <span
-                    onClick={() =>
-                      navigate(`/admin/projects/${selectedProjectId}`)
-                    }
+                    onClick={() => navigate(`/projects/${selectedProjectId}`)}
                     style={{
                       color: "#0d6efd",
                       cursor: "pointer",
@@ -1319,27 +1463,44 @@ export default function Allocation() {
                                   {w.matchPct === null ? (
                                     <span style={{ color: "#6c757d" }}>—</span>
                                   ) : (
-                                    <span
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleViewEligibility(w);
-                                      }}
+                                    <div
                                       style={{
-                                        color:
-                                          w.matchPct === 100
-                                            ? "#198754"
-                                            : w.matchPct >= 70
-                                              ? "#cc8400"
-                                              : "#dc3545",
-                                        fontWeight: 700,
-                                        fontSize: "13px",
-                                        cursor: "pointer",
-                                        textDecoration: "underline",
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        alignItems: "center",
+                                        gap: "2px",
                                       }}
-                                      title={w.missingTrainings?.join(", ")}
                                     >
-                                      {w.matchPct}% Match
-                                    </span>
+                                      <span
+                                        style={{
+                                          color:
+                                            w.matchPct === 100
+                                              ? "#198754"
+                                              : w.matchPct >= 70
+                                                ? "#cc8400"
+                                                : "#dc3545",
+                                          fontWeight: 700,
+                                          fontSize: "13px",
+                                        }}
+                                        title={w.missingTrainings?.join(", ")}
+                                      >
+                                        {w.matchPct}% Match
+                                      </span>
+                                      <span
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleViewEligibility(w);
+                                        }}
+                                        style={{
+                                          fontSize: "11px",
+                                          color: "#0d6efd",
+                                          cursor: "pointer",
+                                          fontWeight: 600,
+                                        }}
+                                      >
+                                        🔍 ดู Gap →
+                                      </span>
+                                    </div>
                                   )}
                                 </td>
                               </tr>
@@ -1397,8 +1558,20 @@ export default function Allocation() {
                 </div>
               ) : (
                 <div style={{ marginBottom: "16px" }}>
-                  {shortlist.map((req) =>
-                    req.candidates?.length > 0 ? (
+                  {shortlist.map((req) => {
+                    if (!req.candidates || req.candidates.length === 0)
+                      return null;
+
+                    const proposedCandidates = req.candidates.filter(
+                      (c) => c.status !== "approved",
+                    );
+                    const approvedCandidates = req.candidates.filter(
+                      (c) => c.status === "approved",
+                    );
+                    const isApprovedListOpen =
+                      !!approvedExpanded[req.requestId];
+
+                    return (
                       <div key={req.requestId} style={{ marginBottom: "16px" }}>
                         <div
                           style={{
@@ -1415,77 +1588,88 @@ export default function Allocation() {
                             ({req.candidates.length} shortlisted)
                           </span>
                         </div>
-                        {req.candidates.map((c) => (
+
+                        {/* ── Proposed candidates — approve ทีละคน ── */}
+                        {proposedCandidates.length === 0 ? (
                           <div
-                            key={c.id}
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              padding: "8px 12px",
-                              background: "#f8f9fa",
-                              borderRadius: "6px",
-                              marginBottom: "6px",
+                              fontSize: "12px",
+                              color: "#198754",
+                              fontWeight: 600,
+                              padding: "8px 0",
                             }}
                           >
-                            <div>
-                              <div
-                                style={{ fontWeight: 600, fontSize: "13px" }}
-                              >
-                                {c.employee?.fullName}
-                              </div>
-                              <div
-                                style={{ fontSize: "11px", color: "#6c757d" }}
-                              >
-                                {c.employee?.empCode}
-                              </div>
-                            </div>
+                            ✓ ทุกคนได้รับการ approve แล้ว
+                          </div>
+                        ) : (
+                          proposedCandidates.map((c) => (
                             <div
+                              key={c.id}
                               style={{
                                 display: "flex",
                                 alignItems: "center",
-                                gap: "6px",
+                                justifyContent: "space-between",
+                                padding: "8px 12px",
+                                background: "#f8f9fa",
+                                borderRadius: "6px",
+                                marginBottom: "6px",
+                                gap: "8px", // ← เพิ่มใหม่ กันชื่อกับปุ่มชิดกันเกินไป
                               }}
                             >
-                              <span
+                              <div style={{ minWidth: 0 }}>
+                                {" "}
+                                {/* ← เพิ่ม minWidth: 0 ให้ชื่อ wrap ได้โดยไม่ดันปุ่ม */}
+                                <div
+                                  style={{ fontWeight: 600, fontSize: "13px" }}
+                                >
+                                  {c.employee?.fullName}
+                                </div>
+                                <div
+                                  style={{ fontSize: "11px", color: "#6c757d" }}
+                                >
+                                  {c.employee?.empCode}
+                                </div>
+                              </div>
+                              <div
                                 style={{
-                                  background:
-                                    c.status === "approved"
-                                      ? "#d1e7dd"
-                                      : "#fff3cd",
-                                  color:
-                                    c.status === "approved"
-                                      ? "#0f5132"
-                                      : "#664d03",
-                                  borderRadius: "6px",
-                                  padding: "2px 8px",
-                                  fontSize: "11px",
-                                  fontWeight: 600,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                  flexShrink: 0, // ← เพิ่มใหม่ กันฝั่งปุ่มถูกบีบ
                                 }}
                               >
-                                {c.status === "approved"
-                                  ? "✓ Approved"
-                                  : "Proposed"}
-                              </span>
-                              {c.status === "approved" ? (
-                                <button
-                                  onClick={() =>
-                                    handleUnapprove([c.id], req.requestId)
-                                  }
-                                  title="ยกเลิก approve (กลับเป็น Proposed)"
+                                <span
                                   style={{
-                                    background: "none",
-                                    border: "none",
-                                    color: "#adb5bd",
-                                    fontSize: "14px",
-                                    cursor: "pointer",
-                                    padding: "0 2px",
-                                    lineHeight: 1,
+                                    background: "#fff3cd",
+                                    color: "#664d03",
+                                    borderRadius: "6px",
+                                    padding: "2px 8px",
+                                    fontSize: "11px",
+                                    fontWeight: 600,
+                                    whiteSpace: "nowrap", // ← เพิ่มใหม่
                                   }}
                                 >
-                                  ↩
+                                  Proposed
+                                </span>
+                                <button
+                                  onClick={() =>
+                                    handleApprove([c.id], req.requestId)
+                                  }
+                                  title="Approve คนนี้"
+                                  style={{
+                                    background: "#198754",
+                                    border: "1px solid #198754",
+                                    color: "#fff",
+                                    borderRadius: "6px",
+                                    padding: "3px 10px",
+                                    fontSize: "11px",
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                    whiteSpace: "nowrap", // ← เพิ่มใหม่ (ตัวสำคัญที่สุด)
+                                  }}
+                                >
+                                  ✓ Approve
                                 </button>
-                              ) : (
                                 <button
                                   onClick={() =>
                                     handleRemoveFromShortlist(c.id)
@@ -1499,45 +1683,126 @@ export default function Allocation() {
                                     cursor: "pointer",
                                     padding: "0 2px",
                                     lineHeight: 1,
+                                    flexShrink: 0, // ← เพิ่มใหม่
                                   }}
                                 >
                                   ✕
                                 </button>
-                              )}
+                              </div>
                             </div>
+                          ))
+                        )}
+
+                        {/* ── Approved list — collapsible ── */}
+                        {approvedCandidates.length > 0 && (
+                          <div style={{ marginTop: "8px" }}>
+                            <span
+                              onClick={() =>
+                                setApprovedExpanded((prev) => ({
+                                  ...prev,
+                                  [req.requestId]: !prev[req.requestId],
+                                }))
+                              }
+                              style={{
+                                fontSize: "11px",
+                                color: "#198754",
+                                cursor: "pointer",
+                                fontWeight: 600,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                              }}
+                            >
+                              {isApprovedListOpen ? "▾" : "▸"} ✓{" "}
+                              {approvedCandidates.length} approved —{" "}
+                              {isApprovedListOpen ? "ซ่อนรายชื่อ" : "ดูรายชื่อ"}
+                            </span>
+
+                            {isApprovedListOpen && (
+                              <div style={{ marginTop: "6px" }}>
+                                {approvedCandidates.map((c) => (
+                                  <div
+                                    key={c.id}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      padding: "8px 12px",
+                                      background: "#f0fff4",
+                                      borderRadius: "6px",
+                                      marginBottom: "6px",
+                                      gap: "8px", // ← เพิ่มใหม่
+                                    }}
+                                  >
+                                    <div style={{ minWidth: 0 }}>
+                                      {" "}
+                                      {/* ← เพิ่มใหม่ */}
+                                      <div
+                                        style={{
+                                          fontWeight: 600,
+                                          fontSize: "13px",
+                                        }}
+                                      >
+                                        {c.employee?.fullName}
+                                      </div>
+                                      <div
+                                        style={{
+                                          fontSize: "11px",
+                                          color: "#6c757d",
+                                        }}
+                                      >
+                                        {c.employee?.empCode}
+                                      </div>
+                                    </div>
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        flexShrink: 0, // ← เพิ่มใหม่
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          background: "#d1e7dd",
+                                          color: "#0f5132",
+                                          borderRadius: "6px",
+                                          padding: "2px 8px",
+                                          fontSize: "11px",
+                                          fontWeight: 600,
+                                          whiteSpace: "nowrap", // ← เพิ่มใหม่
+                                        }}
+                                      >
+                                        ✓ Approved
+                                      </span>
+                                      <button
+                                        onClick={() =>
+                                          handleUnapprove([c.id], req.requestId)
+                                        }
+                                        title="ยกเลิก approve (กลับเป็น Proposed)"
+                                        style={{
+                                          background: "none",
+                                          border: "none",
+                                          color: "#adb5bd",
+                                          fontSize: "14px",
+                                          cursor: "pointer",
+                                          padding: "0 2px",
+                                          lineHeight: 1,
+                                          flexShrink: 0, // ← เพิ่มใหม่
+                                        }}
+                                      >
+                                        ↩
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        ))}
-                        {req.candidates.some(
-                          (c) => c.status !== "approved",
-                        ) && (
-                          <button
-                            onClick={() =>
-                              handleApprove(
-                                req.candidates
-                                  .filter((c) => c.status !== "approved")
-                                  .map((c) => c.id),
-                                req.requestId,
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: "7px",
-                              fontSize: "12px",
-                              border: "1px solid #198754",
-                              borderRadius: "6px",
-                              background: "#fff",
-                              color: "#198754",
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              marginTop: "4px",
-                            }}
-                          >
-                            ✓ Mark Client Approved
-                          </button>
                         )}
                       </div>
-                    ) : null,
-                  )}
+                    );
+                  })}
                 </div>
               )}
 
@@ -1634,650 +1899,863 @@ export default function Allocation() {
           </div>
         </div>
       </div>
-      {cvModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 999999,
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "center",
-            padding: "24px",
-            overflowY: "auto",
-          }}
-          onClick={() => setCvModal(null)}
-        >
-          <style>{`@media print {
-            body * { visibility: hidden !important; }
-            #cv-print, #cv-print * { visibility: visible !important; }
-            #cv-print { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; border-radius: 0 !important; }
-            .cv-no-print { display: none !important; }
-          }`}</style>
-          <div
-            id="cv-print"
-            style={{
-              background: "#fff",
-              borderRadius: "10px",
-              width: "100%",
-              maxWidth: "820px",
-              overflow: "hidden",
-              boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              className="cv-no-print"
-              style={{
-                background: "#1e3a5f",
-                color: "#fff",
-                padding: "14px 24px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <span style={{ fontWeight: 600, fontSize: "16px" }}>
-                📄 CV Summary
-              </span>
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button
-                  onClick={() => window.print()}
-                  style={{
-                    background: "#fff",
-                    color: "#1e3a5f",
-                    border: "none",
-                    borderRadius: "6px",
-                    padding: "6px 16px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  🖨 Print / Save PDF
-                </button>
-                <button
-                  onClick={() => setCvModal(null)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#fff",
-                    fontSize: "20px",
-                    cursor: "pointer",
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
 
-            <div style={{ padding: "28px 32px" }}>
+      {/* ════════════════════════════════════════════════════════════
+          CV Summary — เวอร์ชันใหม่: หน้าตาตรงกับเรซูเม่จริงที่ส่งลูกค้า
+          1 candidate = 1 "resume block" (page-break ตอน print)
+          ════════════════════════════════════════════════════════════ */}
+      {cvModal &&
+        createPortal(
+          <div
+            className="cv-print-overlay"
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              zIndex: 999999,
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              padding: "24px",
+              overflowY: "auto",
+            }}
+            onClick={() => setCvModal(null)}
+          >
+            <style>{`@media print {
+            #root { display: none !important; }
+            .cv-print-overlay {
+              position: static !important;
+              background: none !important;
+              padding: 0 !important;
+            }
+            #cv-print {
+              position: static !important;
+              box-shadow: none !important;
+              border-radius: 0 !important;
+            }
+            .cv-no-print { display: none !important; }
+            .cv-resume-page { page-break-after: always; border: none !important; box-shadow: none !important; }
+            .cv-resume-page:last-child { page-break-after: auto; }
+          }`}</style>
+            <div
+              id="cv-print"
+              style={{
+                background: "#fff",
+                borderRadius: "10px",
+                width: "100%",
+                maxWidth: "900px",
+                overflow: "hidden",
+                boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Toolbar — ไม่พิมพ์ */}
               <div
+                className="cv-no-print"
                 style={{
-                  borderBottom: "2px solid #1e3a5f",
-                  paddingBottom: "12px",
-                  marginBottom: "20px",
+                  background: "#1e3a5f",
+                  color: "#fff",
+                  padding: "14px 24px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                 }}
               >
-                <div style={{ fontSize: "20px", fontWeight: 700 }}>
-                  Candidate CV Summary
-                </div>
-                <div
-                  style={{
-                    fontSize: "13px",
-                    color: "#495057",
-                    marginTop: "4px",
-                  }}
-                >
-                  <strong>Project:</strong> {cvModal.project.name}
-                  {cvModal.project.client ? ` — ${cvModal.project.client}` : ""}
-                  {cvModal.project.contractNo
-                    ? ` · ${cvModal.project.contractNo}`
-                    : ""}
-                  {cvModal.project.location
-                    ? ` · ${cvModal.project.location}`
-                    : ""}
-                </div>
-                <div
-                  style={{
-                    fontSize: "11px",
-                    color: "#868e96",
-                    marginTop: "2px",
-                  }}
-                >
-                  Generated:{" "}
-                  {new Date(cvModal.generatedAt).toLocaleString("en-GB")}
+                <span style={{ fontWeight: 600, fontSize: "16px" }}>
+                  📄 CV Summary — Resume
+                </span>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    onClick={() => window.print()}
+                    style={{
+                      background: "#fff",
+                      color: "#1e3a5f",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "6px 16px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🖨 Print / Save PDF
+                  </button>
+                  <button
+                    onClick={() => setCvModal(null)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#fff",
+                      fontSize: "20px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✕
+                  </button>
                 </div>
               </div>
 
-              {cvModal.groups.length === 0 ? (
-                <div style={{ color: "#6c757d", fontSize: "13px" }}>
-                  ยังไม่มี candidate ใน shortlist
-                </div>
-              ) : (
-                cvModal.groups.map((g, gi) => (
-                  <div key={gi} style={{ marginBottom: "24px" }}>
+              <div style={{ padding: "20px", background: "#e9ecef" }}>
+                {(() => {
+                  // กรองเฉพาะ candidate ที่ยังเป็น Proposed (ไม่รวมคนที่ approved แล้ว)
+                  const proposedGroups = cvModal.groups
+                    .map((g) => ({
+                      ...g,
+                      candidates: g.candidates.filter(
+                        (c) => c.status !== "approved",
+                      ),
+                    }))
+                    .filter((g) => g.candidates.length > 0);
+                  return proposedGroups.length === 0 ? (
                     <div
                       style={{
-                        fontSize: "14px",
-                        fontWeight: 700,
-                        color: "#1e3a5f",
-                        marginBottom: "10px",
+                        color: "#6c757d",
+                        fontSize: "13px",
+                        textAlign: "center",
+                        padding: "40px",
+                        background: "#fff",
                       }}
                     >
-                      {g.position} — {g.candidates.length}/{g.quantity}{" "}
-                      candidate
-                    </div>
-                    {g.candidates.map((c, ci) => {
-                      const fmt = (d) =>
-                        d
-                          ? new Date(d).toLocaleDateString("en-GB", {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                            })
-                          : "—";
-                      const age = c.birthDate
-                        ? Math.floor(
-                            (Date.now() - new Date(c.birthDate).getTime()) /
-                              (365.25 * 86400000),
-                          )
-                        : null;
-                      return (
-                        <div
-                          key={ci}
-                          style={{
-                            border: "1px solid #dee2e6",
-                            borderRadius: "8px",
-                            padding: "14px 16px",
-                            marginBottom: "10px",
-                            breakInside: "avoid",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "8px",
-                              marginBottom: "6px",
-                            }}
-                          >
-                            <span style={{ fontWeight: 700, fontSize: "14px" }}>
-                              {c.fullName}
-                            </span>
-                            <span
-                              style={{ fontSize: "12px", color: "#6c757d" }}
-                            >
-                              {c.empCode}
-                            </span>
-                            <span
-                              style={{
-                                marginLeft: "auto",
-                                background:
-                                  c.status === "approved"
-                                    ? "#d1e7dd"
-                                    : "#fff3cd",
-                                color:
-                                  c.status === "approved"
-                                    ? "#0f5132"
-                                    : "#664d03",
-                                borderRadius: "6px",
-                                padding: "2px 10px",
-                                fontSize: "11px",
-                                fontWeight: 600,
-                              }}
-                            >
-                              {c.status === "approved"
-                                ? "Approved"
-                                : "Proposed"}
-                            </span>
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              color: "#495057",
-                              marginBottom: "8px",
-                            }}
-                          >
-                            {c.position}
-                            {c.nationality ? ` · ${c.nationality}` : ""}
-                            {age !== null ? ` · Age ${age}` : ""}
-                            {c.passport?.passportNo
-                              ? ` · Passport ${c.passport.passportNo} (exp ${fmt(c.passport.expiryDate)})`
-                              : ""}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              marginBottom: "6px",
-                            }}
-                          >
-                            <strong>Medical:</strong>{" "}
-                            {c.medical
-                              ? `${c.medical.status || "—"} (exp ${fmt(c.medical.expiryDate)})`
-                              : "—"}
-                          </div>
-                          <div style={{ fontSize: "12px" }}>
-                            <strong>
-                              Certifications ({c.certifications.length}):
-                            </strong>{" "}
-                            {c.certifications.length === 0 ? (
-                              "—"
-                            ) : (
-                              <span>
-                                {c.certifications
-                                  .map(
-                                    (t) =>
-                                      `${t.name}${t.expiryDate ? ` (exp ${fmt(t.expiryDate)})` : ""}`,
-                                  )
-                                  .join(", ")}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-      {rosterModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 999999,
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "center",
-            padding: "24px",
-            overflowY: "auto",
-          }}
-          onClick={() => setRosterModal(null)}
-        >
-          <style>{`@media print {
-            body * { visibility: hidden !important; }
-            #roster-print, #roster-print * { visibility: visible !important; }
-            #roster-print { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; border-radius: 0 !important; }
-            .cv-no-print { display: none !important; }
-            #roster-print input { border: none !important; background: transparent !important; }
-          }`}</style>
-          <div
-            id="roster-print"
-            style={{
-              background: "#fff",
-              borderRadius: "10px",
-              width: "100%",
-              maxWidth: "1100px",
-              overflow: "hidden",
-              boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              className="cv-no-print"
-              style={{
-                background: "#1e3a5f",
-                color: "#fff",
-                padding: "14px 24px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <span style={{ fontWeight: 600, fontSize: "16px" }}>
-                🛫 Roster (MOB/D-MOB)
-              </span>
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button
-                  onClick={() => window.print()}
-                  style={{
-                    background: "#fff",
-                    color: "#1e3a5f",
-                    border: "none",
-                    borderRadius: "6px",
-                    padding: "6px 16px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  🖨 Print / Save PDF
-                </button>
-                <button
-                  onClick={() => setRosterModal(null)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#fff",
-                    fontSize: "20px",
-                    cursor: "pointer",
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            <div style={{ padding: "24px" }}>
-              <div
-                style={{
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  marginBottom: "4px",
-                }}
-              >
-                {rosterModal.project?.name}
-                {rosterModal.project?.workingDay
-                  ? ` (${fmtShort(rosterModal.project.workingDay)})`
-                  : rosterModal.project?.startDate
-                    ? ` (${fmtShort(rosterModal.project.startDate)})`
-                    : ""}
-              </div>
-              <div
-                style={{
-                  fontSize: "13px",
-                  color: "#6c757d",
-                  marginBottom: "16px",
-                }}
-              >
-                {rosterModal.project?.client}{" "}
-                {rosterModal.project?.location
-                  ? `· ${rosterModal.project.location}`
-                  : ""}
-              </div>
-
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: "12px",
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "#f1f3f5" }}>
-                    {[
-                      "Item",
-                      "Name (Eng)",
-                      "Position",
-                      "Company",
-                      "From",
-                      "To",
-                      "MOB",
-                      "D-MOB",
-                      "Working Day",
-                      "Day Off",
-                      "Previous Location",
-                      "Remark",
-                    ].map((h) => (
-                      <th
-                        key={h}
+                      ไม่มี candidate สถานะ Proposed ใน shortlist
+                      <div
                         style={{
-                          padding: "8px 6px",
-                          border: "1px solid #dee2e6",
-                          textAlign: "left",
-                          fontWeight: 700,
+                          fontSize: "11px",
+                          color: "#adb5bd",
+                          marginTop: "6px",
                         }}
                       >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rosterModal.rows.map((r, i) => (
-                    <tr key={r.employeeId}>
-                      <td
-                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
-                      >
-                        {i + 1}
-                      </td>
-                      <td
-                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
-                      >
-                        {r.fullName}
-                      </td>
-                      <td
-                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
-                      >
-                        {r.position}
-                      </td>
-                      <td
-                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
-                      >
-                        {r.company}
-                      </td>
-                      <td
-                        style={{ padding: "2px", border: "1px solid #dee2e6" }}
-                      >
-                        <input
-                          value={r.from}
-                          onChange={(e) =>
-                            updateRosterField(
-                              r.employeeId,
-                              "from",
-                              e.target.value,
-                            )
-                          }
-                          style={{
-                            width: "60px",
-                            border: "1px solid #dee2e6",
-                            padding: "4px",
-                            fontSize: "12px",
-                          }}
-                          placeholder="—"
-                        />
-                      </td>
-                      <td
-                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
-                      >
-                        {r.to ?? "—"}
-                      </td>
-                      <td
-                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
-                      >
-                        {fmtShort(r.mobDate)}
-                      </td>
-                      <td
-                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
-                      >
-                        {fmtShort(r.demobDate)}
-                      </td>
-                      <td
-                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
-                      >
-                        {fmtShort(r.workingDay)}
-                      </td>
-                      <td
-                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
-                      >
-                        {r.dayOff ?? "—"}
-                      </td>
-                      <td
-                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
-                      >
-                        {r.previousLocation ?? "—"}
-                      </td>
-                      <td
-                        style={{ padding: "2px", border: "1px solid #dee2e6" }}
-                      >
-                        <input
-                          value={r.remark}
-                          onChange={(e) =>
-                            updateRosterField(
-                              r.employeeId,
-                              "remark",
-                              e.target.value,
-                            )
-                          }
-                          style={{
-                            width: "120px",
-                            border: "1px solid #dee2e6",
-                            padding: "4px",
-                            fontSize: "12px",
-                          }}
-                          placeholder="—"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-      {skillMatrixModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 999999,
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "center",
-            padding: "24px",
-            overflowY: "auto",
-          }}
-          onClick={() => setSkillMatrixModal(null)}
-        >
-          <style>{`@media print {
-            body * { visibility: hidden !important; }
-            #matrix-print, #matrix-print * { visibility: visible !important; }
-            #matrix-print { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; border-radius: 0 !important; }
-            .cv-no-print { display: none !important; }
-          }`}</style>
-          <div
-            id="matrix-print"
-            style={{
-              background: "#fff",
-              borderRadius: "10px",
-              width: "100%",
-              maxWidth: "95vw",
-              overflow: "hidden",
-              boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              className="cv-no-print"
-              style={{
-                background: "#1e3a5f",
-                color: "#fff",
-                padding: "14px 24px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <span style={{ fontWeight: 600, fontSize: "16px" }}>
-                📋 Skill Matrix
-              </span>
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button
-                  onClick={() => window.print()}
-                  style={{
-                    background: "#fff",
-                    color: "#1e3a5f",
-                    border: "none",
-                    borderRadius: "6px",
-                    padding: "6px 16px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  🖨 Print / Save PDF
-                </button>
-                <button
-                  onClick={() => setSkillMatrixModal(null)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#fff",
-                    fontSize: "20px",
-                    cursor: "pointer",
-                  }}
-                >
-                  ✕
-                </button>
+                        (candidate ที่ Approved แล้วจะไม่แสดงในนี้)
+                      </div>
+                    </div>
+                  ) : (
+                    proposedGroups.map((g) =>
+                      g.candidates.map((c, ci) => {
+                        const age = calcAge(c.birthDate);
+                        const p = c.personal || {};
+                        const pro = c.professional || {};
+                        const trainedCourses = c.trainedCourses || [];
+                        const projectReferences = pro.projectReferences || [];
+
+                        return (
+                          <div
+                            key={`${g.position}-${ci}`}
+                            className="cv-resume-page"
+                            style={{
+                              background: "#fff",
+                              border: "1px solid #dee2e6",
+                              borderRadius: "6px",
+                              marginBottom: "20px",
+                              padding: "24px 28px",
+                              fontFamily: "Arial, sans-serif",
+                            }}
+                          >
+                            {/* status badge — ไม่พิมพ์ ใช้ดูก่อนส่งเท่านั้น */}
+                            <div
+                              className="cv-no-print"
+                              style={{
+                                display: "flex",
+                                justifyContent: "flex-end",
+                                marginBottom: "8px",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  background:
+                                    c.status === "approved"
+                                      ? "#d1e7dd"
+                                      : "#fff3cd",
+                                  color:
+                                    c.status === "approved"
+                                      ? "#0f5132"
+                                      : "#664d03",
+                                  borderRadius: "6px",
+                                  padding: "2px 10px",
+                                  fontSize: "11px",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {c.status === "approved"
+                                  ? "Approved"
+                                  : "Proposed"}
+                              </span>
+                            </div>
+
+                            {/* ── Letterhead ── */}
+                            <div
+                              style={{
+                                display: "flex",
+                                border: "1px solid #000",
+                                marginBottom: "0",
+                              }}
+                            >
+                              {/* โลโก้บริษัท — ซ้าย */}
+                              <div
+                                style={{
+                                  width: "100px",
+                                  flexShrink: 0,
+                                  borderRight: "1px solid #000",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  padding: "8px",
+                                }}
+                              >
+                                <img
+                                  src={`${backendUrl}/uploads/branding/experteam-logo.png`}
+                                  alt="EXPERTEAM Logo"
+                                  style={{
+                                    maxWidth: "100%",
+                                    maxHeight: "70px",
+                                    objectFit: "contain",
+                                  }}
+                                />
+                              </div>
+
+                              {/* ข้อความบริษัท — กลาง (ไทย + อังกฤษ) */}
+                              <div
+                                style={{
+                                  flex: 1,
+                                  textAlign: "center",
+                                  padding: "10px 12px",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontWeight: 700,
+                                    fontSize: "13px",
+                                    color: "#1e3a5f",
+                                  }}
+                                >
+                                  บริษัท เอ็กซ์เพิททีม จำกัด
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: "10px",
+                                    color: "#1e3a5f",
+                                    marginBottom: "4px",
+                                  }}
+                                >
+                                  110, 112, 114 ถนนพระราม 2 แขวงแสมดำ
+                                  เขตบางขุนเทียน กรุงเทพฯ 10150
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: "10px",
+                                    color: "#1e3a5f",
+                                    marginBottom: "6px",
+                                  }}
+                                >
+                                  โทร (662) 898-6001 แฟ็กซ์ (662) 898-6451
+                                </div>
+                                <div
+                                  style={{
+                                    fontWeight: 700,
+                                    fontSize: "13px",
+                                    color: "#1e3a5f",
+                                  }}
+                                >
+                                  EXPERTEAM CO., LTD.
+                                </div>
+                                <div
+                                  style={{ fontSize: "10px", color: "#1e3a5f" }}
+                                >
+                                  110, 112, 114 Rama II Road, Sa-maedum,
+                                  Bangkuntean, Bangkok 10150
+                                </div>
+                                <div
+                                  style={{ fontSize: "10px", color: "#1e3a5f" }}
+                                >
+                                  TEL: (662) 898-6001 FAX: (662) 898-6451
+                                </div>
+                              </div>
+
+                              {/* ISO badges — ขวา */}
+                              <div
+                                style={{
+                                  width: "160px",
+                                  flexShrink: 0,
+                                  borderLeft: "1px solid #000",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  padding: "8px",
+                                }}
+                              >
+                                <img
+                                  src={`${backendUrl}/uploads/branding/iso-badges.png`}
+                                  alt="ISO 9001 / 14001 / 45001 Certified"
+                                  style={{
+                                    maxWidth: "100%",
+                                    maxHeight: "70px",
+                                    objectFit: "contain",
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            <div
+                              style={{
+                                border: "1px solid #000",
+                                borderTop: "none",
+                                padding: "6px",
+                                textAlign: "center",
+                                fontWeight: 700,
+                                fontSize: "16px",
+                                marginBottom: "16px",
+                              }}
+                            >
+                              Resume
+                            </div>
+
+                            {/* ── Personal Details (พร้อมรูปมุมขวาบน — เหมือนเรซูเม่ต้นฉบับ) ── */}
+                            <div style={resumeSectionTitle}>
+                              Personal Details
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: "16px",
+                                border: "1px solid #1e3a5f",
+                                borderTop: "none",
+                                marginBottom: "16px",
+                              }}
+                            >
+                              <table
+                                style={{
+                                  flex: 1,
+                                  borderCollapse: "collapse",
+                                }}
+                              >
+                                <tbody>
+                                  <tr>
+                                    <td style={resumeTd1}>Name</td>
+                                    <td style={resumeTd2} colSpan={3}>
+                                      {c.fullName}
+                                    </td>
+                                  </tr>
+                                  <tr>
+                                    <td style={resumeTd1}>Address</td>
+                                    <td style={resumeTd2} colSpan={3}>
+                                      {p.address || "—"}
+                                    </td>
+                                  </tr>
+                                  <tr>
+                                    <td style={resumeTd1}>Telephone</td>
+                                    <td style={resumeTd2}>{p.phone || "—"}</td>
+                                    <td style={resumeTd1}>Email</td>
+                                    <td style={resumeTd2}>{p.email || "—"}</td>
+                                  </tr>
+                                  <tr>
+                                    <td style={resumeTd1}>Date of Birth</td>
+                                    <td style={resumeTd2}>
+                                      {fmtResumeDate(c.birthDate)}
+                                    </td>
+                                    <td style={resumeTd1}>Age</td>
+                                    <td style={resumeTd2}>
+                                      {age !== null ? `${age} years` : "—"}
+                                    </td>
+                                  </tr>
+                                  <tr>
+                                    <td style={resumeTd1}>Sex</td>
+                                    <td style={resumeTd2}>
+                                      {GENDER_LABEL[p.gender] || "—"}
+                                    </td>
+                                    <td style={resumeTd1}>Nationality</td>
+                                    <td style={resumeTd2}>
+                                      {c.nationality || "—"}
+                                    </td>
+                                  </tr>
+                                  <tr>
+                                    <td style={resumeTd1}>Height</td>
+                                    <td style={resumeTd2}>
+                                      {p.height != null
+                                        ? `${p.height} cm.`
+                                        : "—"}
+                                    </td>
+                                    <td style={resumeTd1}>Weight</td>
+                                    <td style={resumeTd2}>
+                                      {p.weight != null
+                                        ? `${p.weight} kg.`
+                                        : "—"}
+                                    </td>
+                                  </tr>
+                                  <tr>
+                                    <td style={resumeTd1}>Religion</td>
+                                    <td style={resumeTd2}>
+                                      {p.religion || "—"}
+                                    </td>
+                                    <td style={resumeTd1}>Language</td>
+                                    <td style={resumeTd2}>
+                                      {p.language || "—"}
+                                    </td>
+                                  </tr>
+                                  <tr>
+                                    <td style={resumeTd1}>Education</td>
+                                    <td style={resumeTd2} colSpan={3}>
+                                      {p.education || "—"}
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+
+                              {/* รูปพนักงาน — มุมขวา เหมือนเรซูเม่ต้นฉบับ */}
+                              <div
+                                style={{
+                                  width: "110px",
+                                  flexShrink: 0,
+                                  padding: "10px",
+                                  display: "flex",
+                                  alignItems: "flex-start",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {p.photoUrl ? (
+                                  <img
+                                    src={`${backendUrl}${p.photoUrl}`}
+                                    alt={c.fullName}
+                                    style={{
+                                      width: "100px",
+                                      height: "120px",
+                                      objectFit: "cover",
+                                      border: "1px solid #1e3a5f",
+                                      borderRadius: "4px",
+                                    }}
+                                  />
+                                ) : (
+                                  <div
+                                    className="cv-no-print"
+                                    style={{
+                                      width: "100px",
+                                      height: "120px",
+                                      border: "1px dashed #adb5bd",
+                                      borderRadius: "4px",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      fontSize: "10px",
+                                      color: "#adb5bd",
+                                      textAlign: "center",
+                                      padding: "4px",
+                                    }}
+                                  >
+                                    No Photo
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* ── Trained Courses ── */}
+                            <div style={resumeSectionTitle}>
+                              Trained Courses
+                            </div>
+                            <div
+                              style={{
+                                border: "1px solid #1e3a5f",
+                                borderTop: "none",
+                                padding: "10px 14px",
+                                marginBottom: "16px",
+                              }}
+                            >
+                              {trainedCourses.length === 0 ? (
+                                <div
+                                  style={{ fontSize: "12px", color: "#6c757d" }}
+                                >
+                                  — ไม่มีข้อมูล
+                                </div>
+                              ) : (
+                                trainedCourses.map((t, ti) => (
+                                  <div
+                                    key={ti}
+                                    style={{
+                                      display: "flex",
+                                      fontSize: "12px",
+                                      marginBottom: "6px",
+                                      gap: "8px",
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        fontWeight: 700,
+                                        color: "#1e3a5f",
+                                        minWidth: "110px",
+                                      }}
+                                    >
+                                      {fmtResumeDate(t.completedDate)}
+                                    </span>
+                                    <span>:</span>
+                                    <div>
+                                      <div>{t.name}</div>
+                                      {t.institute && (
+                                        <div
+                                          style={{
+                                            color: "#6c757d",
+                                            fontSize: "11px",
+                                          }}
+                                        >
+                                          By {t.institute}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            {/* ── Professional Experience ── */}
+                            <div style={resumeSectionTitle}>
+                              Professional Experience
+                            </div>
+                            <div
+                              style={{
+                                border: "1px solid #1e3a5f",
+                                borderTop: "none",
+                                padding: "10px 14px",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                  textDecoration: "underline",
+                                  marginBottom: "8px",
+                                }}
+                              >
+                                Present
+                              </div>
+                              <table
+                                style={{
+                                  fontSize: "12px",
+                                  marginBottom: "16px",
+                                }}
+                              >
+                                <tbody>
+                                  <tr>
+                                    <td
+                                      style={{
+                                        fontWeight: 700,
+                                        paddingRight: "8px",
+                                        verticalAlign: "top",
+                                      }}
+                                    >
+                                      Company
+                                    </td>
+                                    <td>:&nbsp;&nbsp;{pro.company}</td>
+                                  </tr>
+                                  <tr>
+                                    <td
+                                      style={{
+                                        fontWeight: 700,
+                                        paddingRight: "8px",
+                                        verticalAlign: "top",
+                                      }}
+                                    >
+                                      Position
+                                    </td>
+                                    <td>
+                                      :&nbsp;&nbsp;{pro.currentPosition || "—"}
+                                    </td>
+                                  </tr>
+                                  {pro.responsibilities?.length > 0 && (
+                                    <tr>
+                                      <td
+                                        style={{
+                                          fontWeight: 700,
+                                          paddingRight: "8px",
+                                          verticalAlign: "top",
+                                        }}
+                                      >
+                                        Responsibility
+                                      </td>
+                                      <td>
+                                        :&nbsp;&nbsp;
+                                        {pro.responsibilities.map((r, ri) => (
+                                          <div key={ri}>
+                                            {ri + 1}. {r}
+                                          </div>
+                                        ))}
+                                      </td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+
+                              <div
+                                style={{
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                  textDecoration: "underline",
+                                  marginBottom: "8px",
+                                }}
+                              >
+                                Project References
+                              </div>
+                              {projectReferences.length === 0 ? (
+                                <div
+                                  style={{ fontSize: "12px", color: "#6c757d" }}
+                                >
+                                  — ไม่มีประวัติ deploy
+                                </div>
+                              ) : (
+                                projectReferences.map((pr, pi) => (
+                                  <table
+                                    key={pi}
+                                    style={{
+                                      fontSize: "12px",
+                                      marginBottom: "10px",
+                                    }}
+                                  >
+                                    <tbody>
+                                      <tr>
+                                        <td
+                                          style={{
+                                            fontWeight: 700,
+                                            paddingRight: "8px",
+                                            width: "70px",
+                                            verticalAlign: "top",
+                                          }}
+                                        >
+                                          Project
+                                        </td>
+                                        <td>:&nbsp;&nbsp;{pr.projectLabel}</td>
+                                      </tr>
+                                      <tr>
+                                        <td
+                                          style={{
+                                            fontWeight: 700,
+                                            paddingRight: "8px",
+                                            verticalAlign: "top",
+                                          }}
+                                        >
+                                          Position
+                                        </td>
+                                        <td>
+                                          :&nbsp;&nbsp;{pr.position || "—"}
+                                        </td>
+                                      </tr>
+                                      <tr>
+                                        <td
+                                          style={{
+                                            fontWeight: 700,
+                                            paddingRight: "8px",
+                                            verticalAlign: "top",
+                                          }}
+                                        >
+                                          Period
+                                        </td>
+                                        <td>
+                                          :&nbsp;&nbsp;
+                                          {fmtResumeDate(pr.mobDate)}
+                                          {pr.demobDate
+                                            ? ` to ${fmtResumeDate(pr.demobDate)}`
+                                            : ""}
+                                        </td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                ))
+                              )}
+                            </div>
+
+                            {/* ── ข้อมูลเสริม (Medical/Passport) — ไม่พิมพ์ ใช้ดูก่อนส่งเท่านั้น ── */}
+                            <div
+                              className="cv-no-print"
+                              style={{
+                                marginTop: "16px",
+                                paddingTop: "12px",
+                                borderTop: "1px dashed #dee2e6",
+                                fontSize: "11px",
+                                color: "#6c757d",
+                              }}
+                            >
+                              <strong>Medical:</strong>{" "}
+                              {c.medical
+                                ? `${c.medical.status || "—"} (exp ${fmtShort(c.medical.expiryDate)})`
+                                : "—"}
+                              {"  ·  "}
+                              <strong>Passport:</strong>{" "}
+                              {c.passport?.passportNo
+                                ? `${c.passport.passportNo} (exp ${fmtShort(c.passport.expiryDate)})`
+                                : "—"}
+                            </div>
+                          </div>
+                        );
+                      }),
+                    )
+                  );
+                })()}
               </div>
             </div>
-
-            <div style={{ padding: "24px", overflowX: "auto" }}>
+          </div>,
+          document.body,
+        )}
+      {rosterModal &&
+        createPortal(
+          <div
+            className="roster-print-overlay"
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              zIndex: 999999,
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              padding: "24px",
+              overflowY: "auto",
+            }}
+            onClick={() => setRosterModal(null)}
+          >
+            <style>{`@media print {
+  #root { display: none !important; }
+  .roster-print-overlay {
+    position: static !important;
+    background: none !important;
+    padding: 0 !important;
+  }
+  #roster-print {
+    position: static !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  .cv-no-print { display: none !important; }
+  #roster-print input { border: none !important; background: transparent !important; }
+}`}</style>
+            <div
+              id="roster-print"
+              style={{
+                background: "#fff",
+                borderRadius: "10px",
+                width: "100%",
+                maxWidth: "1100px",
+                overflow: "hidden",
+                boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
               <div
+                className="cv-no-print"
                 style={{
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  marginBottom: "16px",
+                  background: "#1e3a5f",
+                  color: "#fff",
+                  padding: "14px 24px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                 }}
               >
-                {skillMatrixModal.project?.name} —{" "}
-                {skillMatrixModal.project?.client}
+                <span style={{ fontWeight: 600, fontSize: "16px" }}>
+                  🛫 Roster (MOB/D-MOB)
+                </span>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    onClick={() => window.print()}
+                    style={{
+                      background: "#fff",
+                      color: "#1e3a5f",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "6px 16px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🖨 Print / Save PDF
+                  </button>
+                  <button
+                    onClick={() => setRosterModal(null)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#fff",
+                      fontSize: "20px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
-              {skillMatrixModal.trainings.length === 0 ? (
-                <div style={{ color: "#6c757d", fontSize: "13px" }}>
-                  ไม่พบ training requirement สำหรับตำแหน่งในกลุ่มนี้ (เช็คว่า
-                  Training Matrix ของตำแหน่งเหล่านี้ตั้งไว้แล้วหรือยัง)
+              <div style={{ padding: "24px" }}>
+                <div
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: 700,
+                    marginBottom: "4px",
+                  }}
+                >
+                  {rosterModal.project?.name}
+                  {rosterModal.project?.workingDay
+                    ? ` (${fmtShort(rosterModal.project.workingDay)})`
+                    : rosterModal.project?.startDate
+                      ? ` (${fmtShort(rosterModal.project.startDate)})`
+                      : ""}
                 </div>
-              ) : (
+                <div
+                  style={{
+                    fontSize: "13px",
+                    color: "#6c757d",
+                    marginBottom: "16px",
+                  }}
+                >
+                  {rosterModal.project?.client}{" "}
+                  {rosterModal.project?.location
+                    ? `· ${rosterModal.project.location}`
+                    : ""}
+                </div>
+
                 <table
                   style={{
+                    width: "100%",
                     borderCollapse: "collapse",
-                    fontSize: "11px",
-                    whiteSpace: "nowrap",
+                    fontSize: "12px",
                   }}
                 >
                   <thead>
                     <tr style={{ background: "#f1f3f5" }}>
-                      <th
-                        style={{
-                          padding: "6px",
-                          border: "1px solid #dee2e6",
-                          position: "sticky",
-                          left: 0,
-                          background: "#f1f3f5",
-                        }}
-                      >
-                        Name
-                      </th>
-                      <th
-                        style={{ padding: "6px", border: "1px solid #dee2e6" }}
-                      >
-                        Position
-                      </th>
-                      {skillMatrixModal.trainings.map((tr) => (
+                      {[
+                        "Item",
+                        "Name (Eng)",
+                        "Position",
+                        "Company",
+                        "From",
+                        "To",
+                        "MOB",
+                        "D-MOB",
+                        "Working Day",
+                        "Day Off",
+                        "Previous Location",
+                        "Remark",
+                      ].map((h) => (
                         <th
-                          key={tr.id}
+                          key={h}
                           style={{
-                            padding: "6px",
+                            padding: "8px 6px",
                             border: "1px solid #dee2e6",
-                            maxWidth: "90px",
+                            textAlign: "left",
+                            fontWeight: 700,
                           }}
                         >
-                          {tr.name}
+                          {h}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {skillMatrixModal.rows.map((r) => (
+                    {rosterModal.rows.map((r, i) => (
                       <tr key={r.employeeId}>
                         <td
                           style={{
                             padding: "6px",
                             border: "1px solid #dee2e6",
-                            position: "sticky",
-                            left: 0,
-                            background: "#fff",
-                            fontWeight: 600,
+                          }}
+                        >
+                          {i + 1}
+                        </td>
+                        <td
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
                           }}
                         >
                           {r.fullName}
@@ -2290,31 +2768,359 @@ export default function Allocation() {
                         >
                           {r.position}
                         </td>
-                        {r.cells.map((cell) => (
-                          <td
-                            key={cell.trainingId}
+                        <td
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
+                          }}
+                        >
+                          {r.company}
+                        </td>
+                        <td
+                          style={{
+                            padding: "2px",
+                            border: "1px solid #dee2e6",
+                          }}
+                        >
+                          <input
+                            value={r.from}
+                            onChange={(e) =>
+                              updateRosterField(
+                                r.employeeId,
+                                "from",
+                                e.target.value,
+                              )
+                            }
                             style={{
-                              padding: "6px",
+                              width: "60px",
                               border: "1px solid #dee2e6",
-                              textAlign: "center",
-                              color:
-                                cell.status === "overdue"
-                                  ? "#dc3545"
-                                  : "#212529",
+                              padding: "4px",
+                              fontSize: "12px",
                             }}
-                          >
-                            {skillCellLabel(cell)}
-                          </td>
-                        ))}
+                            placeholder="—"
+                          />
+                        </td>
+                        <td
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
+                          }}
+                        >
+                          {r.to ?? "—"}
+                        </td>
+                        <td
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
+                          }}
+                        >
+                          {fmtShort(r.mobDate)}
+                        </td>
+                        <td
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
+                          }}
+                        >
+                          {fmtShort(r.demobDate)}
+                        </td>
+                        <td
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
+                          }}
+                        >
+                          {fmtShort(r.workingDay)}
+                        </td>
+                        <td
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
+                          }}
+                        >
+                          {r.dayOff ?? "—"}
+                        </td>
+                        <td
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
+                          }}
+                        >
+                          {r.previousLocation ?? "—"}
+                        </td>
+                        <td
+                          style={{
+                            padding: "2px",
+                            border: "1px solid #dee2e6",
+                          }}
+                        >
+                          <input
+                            value={r.remark}
+                            onChange={(e) =>
+                              updateRosterField(
+                                r.employeeId,
+                                "remark",
+                                e.target.value,
+                              )
+                            }
+                            style={{
+                              width: "120px",
+                              border: "1px solid #dee2e6",
+                              padding: "4px",
+                              fontSize: "12px",
+                            }}
+                            placeholder="—"
+                          />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
+      {skillMatrixModal &&
+        createPortal(
+          <div
+            className="matrix-print-overlay"
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              zIndex: 999999,
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              padding: "24px",
+              overflowY: "auto",
+            }}
+            onClick={() => setSkillMatrixModal(null)}
+          >
+            <style>{`@media print {
+  @page { size: A4 landscape; margin: 6mm; }
+  #root { display: none !important; }
+  .matrix-print-overlay {
+    position: static !important;
+    background: none !important;
+    padding: 0 !important;
+  }
+  #matrix-print {
+    position: static !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  .cv-no-print { display: none !important; }
+  #matrix-print table {
+    transform-origin: top left;
+    transform: scale(var(--matrix-scale, 1));
+  }
+}`}</style>
+            <div
+              id="matrix-print"
+              style={{
+                background: "#fff",
+                borderRadius: "10px",
+                width: "100%",
+                maxWidth: "95vw",
+                overflow: "hidden",
+                boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className="cv-no-print"
+                style={{
+                  background: "#1e3a5f",
+                  color: "#fff",
+                  padding: "14px 24px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span style={{ fontWeight: 600, fontSize: "16px" }}>
+                  📋 Skill Matrix
+                </span>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    onClick={handleExportSkillMatrixExcel}
+                    style={{
+                      background: "#198754",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "6px 16px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    📊 Export to Excel
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    style={{
+                      background: "#fff",
+                      color: "#1e3a5f",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "6px 16px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🖨 Print / Save PDF
+                  </button>
+                  <button
+                    onClick={() => setSkillMatrixModal(null)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#fff",
+                      fontSize: "20px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ padding: "24px", overflowX: "auto" }}>
+                <div
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: 700,
+                    marginBottom: "16px",
+                  }}
+                >
+                  {skillMatrixModal.project?.name} —{" "}
+                  {skillMatrixModal.project?.client}
+                </div>
+
+                {skillMatrixModal.trainings.length === 0 ? (
+                  <div style={{ color: "#6c757d", fontSize: "13px" }}>
+                    ไม่พบ training requirement สำหรับตำแหน่งในกลุ่มนี้ (เช็คว่า
+                    Training Matrix ของตำแหน่งเหล่านี้ตั้งไว้แล้วหรือยัง)
+                  </div>
+                ) : (
+                  <table
+                    style={{
+                      borderCollapse: "collapse",
+                      fontSize: "11px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ background: "#f1f3f5" }}>
+                        <th
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
+                            position: "sticky",
+                            left: 0,
+                            background: "#f1f3f5",
+                          }}
+                        >
+                          Name
+                        </th>
+                        <th
+                          style={{
+                            padding: "6px",
+                            border: "1px solid #dee2e6",
+                          }}
+                        >
+                          Position
+                        </th>
+                        {skillMatrixModal.trainings.map((tr) => (
+                          <th
+                            key={tr.id}
+                            style={{
+                              border: "1px solid #dee2e6",
+                              width: "55px",
+                              minWidth: "55px",
+                              maxWidth: "55px",
+                              height: "150px",
+                              verticalAlign: "bottom",
+                              padding: 0,
+                              overflow: "visible",
+                            }}
+                          >
+                            <div
+                              style={{
+                                transform: "rotate(-45deg)",
+                                transformOrigin: "bottom left",
+                                whiteSpace: "nowrap",
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                width: "0px",
+                                marginLeft: "20px",
+                                marginBottom: "6px",
+                              }}
+                            >
+                              {tr.name}
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {skillMatrixModal.rows.map((r) => (
+                        <tr key={r.employeeId}>
+                          <td
+                            style={{
+                              padding: "6px",
+                              border: "1px solid #dee2e6",
+                              position: "sticky",
+                              left: 0,
+                              background: "#fff",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {r.fullName}
+                          </td>
+                          <td
+                            style={{
+                              padding: "6px",
+                              border: "1px solid #dee2e6",
+                            }}
+                          >
+                            {r.position}
+                          </td>
+                          {r.cells.map((cell) => (
+                            <td
+                              key={cell.trainingId}
+                              style={{
+                                padding: "4px 2px",
+                                border: "1px solid #dee2e6",
+                                textAlign: "center",
+                                width: "55px",
+                                minWidth: "55px",
+                                maxWidth: "55px",
+                                fontSize: "10px",
+                                whiteSpace: "nowrap",
+                                color:
+                                  cell.status === "overdue"
+                                    ? "#dc3545"
+                                    : "#212529",
+                              }}
+                            >
+                              {skillCellLabel(cell)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
       {healthNoteModal && (
         <div
           style={{

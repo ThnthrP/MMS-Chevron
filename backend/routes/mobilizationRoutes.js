@@ -6,5 +6,6 @@ const router = express.Router();
 router.get("/:projectId", controller.getList);
 router.post("/deploy", controller.deploy);
 router.post("/undeploy", controller.undeploy);
+router.post("/clear-project", controller.clearProject);
 
 export default router;

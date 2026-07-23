@@ -392,3 +392,91 @@ export async function getWorkerAlerts(employeeId) {
 
   return { fullName: employee.fullName, expired, critical, warning };
 }
+
+// ============================================================
+// Certification detail — มุมมอง "เลือก cert แล้วดูว่าใครสถานะอะไรบ้าง"
+//   ต่างจาก getComplianceDashboard (worker-centric) ตรงที่หน้านี้
+//   fix ที่ training ตัวเดียว แล้ว list worker ทุกคน (รวมคนที่ไม่มี
+//   training นี้เลย = bucket "missing")
+// ============================================================
+export async function getCertificationDetail(globalTrainingId) {
+  const globalTraining = await prisma.globalTraining.findUnique({
+    where: { id: globalTrainingId },
+  });
+  if (!globalTraining) {
+    const err = new Error("Training not found");
+    err.status = 404;
+    throw err;
+  }
+
+  const employees = await prisma.employee.findMany({
+    where: { status: "active" },
+    include: {
+      position: true,
+      trainings: {
+        where: { isLatest: true, globalTrainingId },
+      },
+    },
+    orderBy: { empCode: "asc" },
+  });
+
+  const today = new Date();
+  const stats = { expired: 0, critical: 0, warning: 0, valid: 0, missing: 0 };
+
+  const workers = employees.map((employee) => {
+    const t = employee.trainings[0] || null;
+
+    let bucket;
+    let expiryDate = null;
+    let completedDate = null;
+
+    if (!t) {
+      bucket = "missing";
+      stats.missing++;
+    } else {
+      completedDate = t.completedDate ?? null;
+
+      if (!t.expiryDate) {
+        bucket = "valid";
+        stats.valid++;
+      } else {
+        expiryDate = t.expiryDate;
+        const days = Math.ceil(
+          (new Date(t.expiryDate) - today) / (1000 * 60 * 60 * 24),
+        );
+        if (days < 0) {
+          bucket = "expired";
+          stats.expired++;
+        } else if (days < 30) {
+          bucket = "critical";
+          stats.critical++;
+        } else if (days <= 60) {
+          bucket = "warning";
+          stats.warning++;
+        } else {
+          bucket = "valid";
+          stats.valid++;
+        }
+      }
+    }
+
+    return {
+      employeeId: employee.id,
+      empCode: employee.empCode,
+      fullName: employee.fullName,
+      position: employee.position?.name || null,
+      department: employee.division || null,
+      bucket,
+      hasRecord: !!t, // ← เพิ่มใหม่ — true = มี training record, false = ไม่มีเลย (missing)
+      completedDate,
+      expiryDate,
+    };
+  });
+
+  return {
+    trainingId: globalTraining.id,
+    trainingName: globalTraining.name,
+    stats,
+    workers,
+  };
+}

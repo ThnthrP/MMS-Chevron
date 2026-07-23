@@ -271,7 +271,7 @@ export default function WorkerDetail() {
       <div className="container-fluid p-4">
         <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           <button
-            onClick={() => navigate("/admin/workers")}
+            onClick={() => navigate("/workers")}
             style={{
               background: "none",
               border: "none",
@@ -342,7 +342,7 @@ export default function WorkerDetail() {
       <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
         {/* Back */}
         <button
-          onClick={() => navigate("/admin/workers")}
+          onClick={() => navigate("/workers")}
           style={{
             background: "none",
             border: "none",
@@ -420,7 +420,7 @@ export default function WorkerDetail() {
             </div>
           </div>
           <button
-            onClick={() => navigate(`/admin/workers/${id}/edit`)}
+            onClick={() => navigate(`/workers/${id}/edit`)}
             style={{
               background: "#0d6efd",
               color: "#fff",

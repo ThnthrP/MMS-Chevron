@@ -42,6 +42,14 @@ export default function AddWorker() {
     phone: "",
     email: "",
     notes: "",
+    // ── Personal Details for CV (ใหม่) ──
+    address: "",
+    gender: "",
+    height: "",
+    weight: "",
+    religion: "",
+    language: "",
+    education: "",
   });
 
   const [medicalData, setMedicalData] = useState({
@@ -52,6 +60,20 @@ export default function AddWorker() {
     confinedSpaceStatus: "",
     notes: "",
   });
+
+  // ── Tabs: จัดกลุ่ม section ให้ไม่รกเกินไป (เข้าชุดเดียวกับ EditWorker.jsx) ──
+  const [activeTab, setActiveTab] = useState("profile");
+
+  // ── Photo upload ──
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState("");
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -162,6 +184,14 @@ export default function AddWorker() {
               ? null
               : formData.sseCompleted === "true",
           notes: formData.notes || null,
+          // ── Personal Details for CV (ใหม่) ──
+          address: formData.address || null,
+          gender: formData.gender || null,
+          height: formData.height === "" ? null : formData.height,
+          weight: formData.weight === "" ? null : formData.weight,
+          religion: formData.religion || null,
+          language: formData.language || null,
+          education: formData.education || null,
         },
         { withCredentials: true },
       );
@@ -176,6 +206,18 @@ export default function AddWorker() {
             workPermitExpiryDate: formData.workPermitExpiryDate || null,
           },
           { withCredentials: true },
+        );
+      }
+      if (photoFile) {
+        const fd = new FormData();
+        fd.append("photo", photoFile);
+        await axios.post(
+          `${backendUrl}/api/workers/${newWorker.id}/photo`,
+          fd,
+          {
+            withCredentials: true,
+            headers: { "Content-Type": "multipart/form-data" },
+          },
         );
       }
       for (const cert of certifications) {
@@ -226,7 +268,7 @@ export default function AddWorker() {
           { withCredentials: true },
         );
       }
-      navigate("/admin/workers");
+      navigate("/workers");
     } catch (err) {
       setError(err.response?.data?.message || "Failed to create worker.");
     } finally {
@@ -331,6 +373,12 @@ export default function AddWorker() {
   // const departmentOptions = DIVISIONS.map((d) => ({ value: d, label: d }));
   const departmentOptions = divisions.map((d) => ({ value: d, label: d }));
 
+  const genderOptions = [
+    { value: "male", label: "Male" },
+    { value: "female", label: "Female" },
+    { value: "other", label: "Other" },
+  ];
+
   return (
     <div className="container-fluid p-4">
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -377,7 +425,7 @@ export default function AddWorker() {
             </span>
           </div>
           <button
-            onClick={() => navigate("/admin/workers")}
+            onClick={() => navigate("/workers")}
             style={{
               background: "#fff",
               border: "1px solid #dee2e6",
@@ -407,697 +455,913 @@ export default function AddWorker() {
           </div>
         )}
 
+        {/* Tab bar */}
+        <div
+          style={{
+            display: "flex",
+            gap: "4px",
+            borderBottom: "2px solid #dee2e6",
+            marginBottom: "1.5rem",
+          }}
+        >
+          {[
+            ["profile", "👤 Profile & Status"],
+            ["documents", "📄 Documents & Compliance"],
+            ["cv", "📋 CV / Resume Info"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setActiveTab(key)}
+              style={{
+                padding: "10px 18px",
+                fontSize: "13px",
+                fontWeight: activeTab === key ? 700 : 500,
+                border: "none",
+                borderBottom:
+                  activeTab === key
+                    ? "2px solid #0d6efd"
+                    : "2px solid transparent",
+                marginBottom: "-2px",
+                background: "none",
+                cursor: "pointer",
+                color: activeTab === key ? "#0d6efd" : "#6c757d",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <form onSubmit={handleSubmit}>
-          {/* Section 1: Basic Information */}
-          <div style={sectionCard}>
-            <SectionHeader number="1" title="Basic Information" />
-            <div style={sectionBody}>
-              <div
-                style={{
-                  ...grid2,
-                  gridTemplateColumns: "1fr 2fr",
-                  marginBottom: "16px",
-                }}
-              >
-                <div>
-                  <label style={labelStyle}>
-                    Employee Code <span style={{ color: "#dc3545" }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="empCode"
-                    placeholder="e.g., EXPT-001"
-                    value={formData.empCode}
-                    onChange={handleChange}
-                    required
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>
-                    Full Name (as per Passport){" "}
-                    <span style={{ color: "#dc3545" }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="fullName"
-                    placeholder="e.g., Somchai Jaidee"
-                    value={formData.fullName}
-                    onChange={handleChange}
-                    required
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-              <div style={{ marginBottom: "16px" }}>
-                <label style={labelStyle}>Nationality</label>
-                <input
-                  type="text"
-                  name="nationality"
-                  placeholder="e.g., Thai, Filipino"
-                  value={formData.nationality}
-                  onChange={handleChange}
-                  style={{ ...inputStyle, maxWidth: "260px" }}
-                />
-              </div>
-              <div style={{ ...grid2, marginBottom: "16px" }}>
-                <div>
-                  <label style={labelStyle}>Position / Trade</label>
-                  <Select
-                    options={positionOptions}
-                    value={
-                      positionOptions.find(
-                        (o) => o.value === formData.positionId,
-                      ) || null
-                    }
-                    onChange={(o) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        positionId: o ? o.value : "",
-                      }))
-                    }
-                    placeholder="ค้นหา / เลือกตำแหน่ง..."
-                    isClearable
-                    menuPortalTarget={
-                      typeof document !== "undefined" ? document.body : null
-                    }
-                    menuPosition="fixed"
-                    styles={{
-                      menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
-                      control: (b) => ({
-                        ...b,
-                        fontSize: "13px",
-                        minHeight: "38px",
-                        borderColor: "#dee2e6",
-                      }),
-                      option: (b) => ({ ...b, fontSize: "13px" }),
-                    }}
-                    noOptionsMessage={() => "ไม่มีตำแหน่ง"}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Department</label>
-                  <Select
-                    options={departmentOptions}
-                    value={
-                      departmentOptions.find(
-                        (o) => o.value === formData.division,
-                      ) || null
-                    }
-                    onChange={(o) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        division: o ? o.value : "",
-                      }))
-                    }
-                    placeholder="ค้นหา / เลือกแผนก..."
-                    isClearable
-                    menuPortalTarget={
-                      typeof document !== "undefined" ? document.body : null
-                    }
-                    menuPosition="fixed"
-                    styles={{
-                      menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
-                      control: (b) => ({
-                        ...b,
-                        fontSize: "13px",
-                        minHeight: "38px",
-                        borderColor: "#dee2e6",
-                      }),
-                      option: (b) => ({ ...b, fontSize: "13px" }),
-                    }}
-                    noOptionsMessage={() => "ไม่มีแผนก"}
-                  />
-                </div>
-              </div>
-              <div style={{ ...grid2, marginBottom: "16px" }}>
-                <div>
-                  <label style={labelStyle}>Date of Birth</label>
-                  <input
-                    type="date"
-                    name="birthDate"
-                    value={formData.birthDate}
-                    onChange={handleChange}
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Start Work Date</label>
-                  <input
-                    type="date"
-                    name="startWorkDate"
-                    value={formData.startWorkDate}
-                    onChange={handleChange}
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-              <div style={{ ...grid2, marginBottom: "16px" }}>
-                <div>
-                  <label style={labelStyle}>Phone</label>
-                  <input
-                    type="text"
-                    name="phone"
-                    placeholder="+66 xx xxx xxxx"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Email</label>
-                  <input
-                    type="email"
-                    name="email"
-                    placeholder="worker@email.com"
-                    value={formData.email}
-                    onChange={handleChange}
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-              <div>
-                <label style={labelStyle}>Notes</label>
-                <textarea
-                  name="notes"
-                  rows={3}
-                  placeholder="Additional notes, restrictions, or remarks..."
-                  value={formData.notes}
-                  onChange={handleChange}
-                  style={{ ...inputStyle, resize: "vertical" }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Section 2: Worker Status */}
-          <div style={sectionCard}>
-            <SectionHeader number="2" title="Worker Status" />
-            <div style={sectionBody}>
-              <div style={{ ...grid3, marginBottom: "16px" }}>
-                <div>
-                  <label style={labelStyle}>Employee Status</label>
-                  <select
-                    name="status"
-                    value={formData.status}
-                    onChange={handleChange}
-                    style={inputStyle}
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Availability</label>
-                  <select
-                    name="availabilityStatus"
-                    value={formData.availabilityStatus}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setFormData((prev) => ({
-                        ...prev,
-                        availabilityStatus: value,
-                        mobilizationStatus:
-                          value === "unavailable"
-                            ? "on_site"
-                            : prev.mobilizationStatus === "on_site"
-                              ? "pending"
-                              : prev.mobilizationStatus,
-                      }));
-                    }}
-                    style={inputStyle}
-                  >
-                    <option value="available">Available</option>
-                    <option value="unavailable">Unavailable</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Mobilization Status</label>
-                  <select
-                    name="mobilizationStatus"
-                    value={formData.mobilizationStatus}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setFormData((prev) => ({
-                        ...prev,
-                        mobilizationStatus: value,
-                        availabilityStatus:
-                          value === "on_site" ? "unavailable" : "available",
-                      }));
-                    }}
-                    style={inputStyle}
-                  >
-                    {formData.availabilityStatus === "unavailable" ? (
-                      <option value="on_site">On-Site</option>
-                    ) : (
-                      <>
-                        <option value="pending">Pending</option>
-                        <option value="ready">Ready</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-              </div>
-              <div
-                style={{
-                  background: "#f8f9fa",
-                  border: "1px solid #e9ecef",
-                  borderRadius: "8px",
-                  padding: "12px 16px",
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "12px",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  id="isOffshore"
-                  name="isOffshore"
-                  checked={formData.isOffshore}
-                  onChange={handleChange}
-                  style={{
-                    width: "16px",
-                    height: "16px",
-                    marginTop: "2px",
-                    cursor: "pointer",
-                    flexShrink: 0,
-                  }}
-                />
-                <label htmlFor="isOffshore" style={{ cursor: "pointer" }}>
+          {activeTab === "profile" && (
+            <>
+              {/* Section 1: Basic Information */}
+              <div style={sectionCard}>
+                <SectionHeader number="1" title="Basic Information" />
+                <div style={sectionBody}>
                   <div
                     style={{
-                      fontWeight: 600,
-                      fontSize: "14px",
-                      color: "#212529",
+                      ...grid2,
+                      gridTemplateColumns: "1fr 2fr",
+                      marginBottom: "16px",
                     }}
                   >
-                    Offshore Worker
+                    <div>
+                      <label style={labelStyle}>
+                        Employee Code{" "}
+                        <span style={{ color: "#dc3545" }}>*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="empCode"
+                        placeholder="e.g., EXPT-001"
+                        value={formData.empCode}
+                        onChange={handleChange}
+                        required
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>
+                        Full Name (as per Passport){" "}
+                        <span style={{ color: "#dc3545" }}>*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="fullName"
+                        placeholder="e.g., Somchai Jaidee"
+                        value={formData.fullName}
+                        onChange={handleChange}
+                        required
+                        style={inputStyle}
+                      />
+                    </div>
                   </div>
-                  <div style={{ fontSize: "12px", color: "#6c757d" }}>
-                    Check if this worker is deployed to offshore locations
+                  <div style={{ marginBottom: "16px" }}>
+                    <label style={labelStyle}>Nationality</label>
+                    <input
+                      type="text"
+                      name="nationality"
+                      placeholder="e.g., Thai, Filipino"
+                      value={formData.nationality}
+                      onChange={handleChange}
+                      style={{ ...inputStyle, maxWidth: "260px" }}
+                    />
                   </div>
-                </label>
-              </div>
-            </div>
-          </div>
-          {/* Section R: Offshore Roster (ติดตัวพนักงาน) */}
-          <div style={sectionCard}>
-            <SectionHeader
-              number="R"
-              title="Offshore Roster"
-              subtitle="(ข้อมูลติดตัวพนักงาน — Health / SSE / Permanent)"
-            />
-            <div style={sectionBody}>
-              <div style={{ ...grid3, marginBottom: "16px" }}>
-                <div>
-                  <label style={labelStyle}>Health Risk</label>
-                  <select
-                    name="healthRisk"
-                    value={formData.healthRisk}
-                    onChange={handleChange}
-                    style={inputStyle}
-                  >
-                    <option value="">— Select —</option>
-                    <option value="low">Low (ต่ำ)</option>
-                    <option value="medium">Medium (ปานกลาง)</option>
-                    <option value="high">High (สูง)</option>
-                  </select>
+                  <div style={{ ...grid2, marginBottom: "16px" }}>
+                    <div>
+                      <label style={labelStyle}>Position / Trade</label>
+                      <Select
+                        options={positionOptions}
+                        value={
+                          positionOptions.find(
+                            (o) => o.value === formData.positionId,
+                          ) || null
+                        }
+                        onChange={(o) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            positionId: o ? o.value : "",
+                          }))
+                        }
+                        placeholder="ค้นหา / เลือกตำแหน่ง..."
+                        isClearable
+                        menuPortalTarget={
+                          typeof document !== "undefined" ? document.body : null
+                        }
+                        menuPosition="fixed"
+                        styles={{
+                          menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
+                          control: (b) => ({
+                            ...b,
+                            fontSize: "13px",
+                            minHeight: "38px",
+                            borderColor: "#dee2e6",
+                          }),
+                          option: (b) => ({ ...b, fontSize: "13px" }),
+                        }}
+                        noOptionsMessage={() => "ไม่มีตำแหน่ง"}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Department</label>
+                      <Select
+                        options={departmentOptions}
+                        value={
+                          departmentOptions.find(
+                            (o) => o.value === formData.division,
+                          ) || null
+                        }
+                        onChange={(o) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            division: o ? o.value : "",
+                          }))
+                        }
+                        placeholder="ค้นหา / เลือกแผนก..."
+                        isClearable
+                        menuPortalTarget={
+                          typeof document !== "undefined" ? document.body : null
+                        }
+                        menuPosition="fixed"
+                        styles={{
+                          menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
+                          control: (b) => ({
+                            ...b,
+                            fontSize: "13px",
+                            minHeight: "38px",
+                            borderColor: "#dee2e6",
+                          }),
+                          option: (b) => ({ ...b, fontSize: "13px" }),
+                        }}
+                        noOptionsMessage={() => "ไม่มีแผนก"}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ ...grid2, marginBottom: "16px" }}>
+                    <div>
+                      <label style={labelStyle}>Date of Birth</label>
+                      <input
+                        type="date"
+                        name="birthDate"
+                        value={formData.birthDate}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Start Work Date</label>
+                      <input
+                        type="date"
+                        name="startWorkDate"
+                        value={formData.startWorkDate}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ ...grid2, marginBottom: "16px" }}>
+                    <div>
+                      <label style={labelStyle}>Phone</label>
+                      <input
+                        type="text"
+                        name="phone"
+                        placeholder="+66 xx xxx xxxx"
+                        value={formData.phone}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Email</label>
+                      <input
+                        type="email"
+                        name="email"
+                        placeholder="worker@email.com"
+                        value={formData.email}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Notes</label>
+                    <textarea
+                      name="notes"
+                      rows={3}
+                      placeholder="Additional notes, restrictions, or remarks..."
+                      value={formData.notes}
+                      onChange={handleChange}
+                      style={{ ...inputStyle, resize: "vertical" }}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label style={labelStyle}>SSE Level</label>
-                  <select
-                    name="sseLevel"
-                    value={formData.sseLevel}
-                    onChange={handleChange}
-                    style={inputStyle}
-                  >
-                    <option value="">— None —</option>
-                    <option value="new_sse">NEW SSE</option>
-                    <option value="sse1">SSE1</option>
-                    <option value="sse2">SSE2</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>SSE Passed</label>
-                  <select
-                    name="sseCompleted"
-                    value={formData.sseCompleted}
-                    onChange={handleChange}
-                    style={inputStyle}
-                  >
-                    <option value="">— N/A —</option>
-                    <option value="true">Completed</option>
-                    <option value="false">Not yet</option>
-                  </select>
-                </div>
               </div>
-              <div style={{ marginBottom: "16px" }}>
-                <label style={labelStyle}>
-                  Health Note (หมายเหตุสุขภาพ — แยกจาก Notes ทั่วไป)
-                </label>
-                <textarea
-                  name="healthNote"
-                  rows={2}
-                  placeholder="เช่น ไขมันสูง / กรดยูริกสูง / ติดตามผล Medic"
-                  value={formData.healthNote}
-                  onChange={handleChange}
-                  style={{ ...inputStyle, resize: "vertical" }}
-                />
-              </div>
-              <div
-                style={{
-                  background: "#f0fdf4",
-                  border: "1px solid #bbf7d0",
-                  borderRadius: "8px",
-                  padding: "12px 16px",
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "12px",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  id="isPermanent"
-                  name="isPermanent"
-                  checked={formData.isPermanent}
-                  onChange={handleChange}
-                  style={{
-                    width: "16px",
-                    height: "16px",
-                    marginTop: "2px",
-                    cursor: "pointer",
-                    flexShrink: 0,
-                  }}
-                />
-                <label htmlFor="isPermanent" style={{ cursor: "pointer" }}>
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: "14px",
-                      color: "#212529",
-                    }}
-                  >
-                    Permanent Employee (พนักงานประจำ 🟩)
-                  </div>
-                  <div style={{ fontSize: "12px", color: "#6c757d" }}>
-                    ติ๊กถ้าเป็นพนักงานประจำ (item เขียวในไฟล์ roster) —
-                    Allocation จะเลือกก่อน
-                  </div>
-                </label>
-              </div>
-            </div>
-          </div>
+            </>
+          )}
 
-          {/* Section 3: Passport Information */}
-          <div style={sectionCard}>
-            <SectionHeader number="3" title="Passport Information" />
-            <div style={sectionBody}>
-              <div style={{ ...grid2, marginBottom: "16px" }}>
-                <div>
-                  <label style={labelStyle}>Passport Number</label>
-                  <input
-                    type="text"
-                    name="passportNumber"
-                    placeholder="e.g., AA1234567"
-                    value={formData.passportNumber}
-                    onChange={handleChange}
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Passport Expiry Date</label>
-                  <input
-                    type="date"
-                    name="passportExpiryDate"
-                    value={formData.passportExpiryDate}
-                    onChange={handleChange}
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-              <div style={grid2}>
-                <div>
-                  <label style={labelStyle}>Work Permit No.</label>
-                  <input
-                    type="text"
-                    name="workPermitNo"
-                    placeholder="e.g., WP-12345"
-                    value={formData.workPermitNo}
-                    onChange={handleChange}
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Work Permit Expiry Date</label>
-                  <input
-                    type="date"
-                    name="workPermitExpiryDate"
-                    value={formData.workPermitExpiryDate}
-                    onChange={handleChange}
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 4: Certifications */}
-          <div style={sectionCard}>
-            <SectionHeader
-              number="4"
-              title="Certifications"
-              subtitle="(6G, BOSIET, H2S, etc.)"
-              right={
-                <button
-                  type="button"
-                  onClick={addCertification}
-                  style={{
-                    background: "#fff",
-                    border: "1px solid #ffc107",
-                    color: "#664d03",
-                    borderRadius: "6px",
-                    padding: "6px 14px",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  + Add Certification
-                </button>
-              }
-            />
-            <div style={sectionBody}>
-              {certifications.length === 0 ? (
-                <div
-                  style={{
-                    background: "#f8f9fa",
-                    border: "1px dashed #dee2e6",
-                    borderRadius: "8px",
-                    padding: "28px",
-                    textAlign: "center",
-                  }}
-                >
-                  <div style={{ fontSize: "13px", color: "#6c757d" }}>
-                    No certifications added yet.
+          {activeTab === "cv" && (
+            <>
+              {/* Section P: Personal Details for CV (ใหม่) */}
+              <div style={sectionCard}>
+                <SectionHeader
+                  number="P"
+                  title="Personal Details for CV"
+                  subtitle="(ใช้ตอน Generate CV Summary — Allocation)"
+                />
+                <div style={sectionBody}>
+                  <div style={{ marginBottom: "16px" }}>
+                    <label style={labelStyle}>Address</label>
+                    <textarea
+                      name="address"
+                      rows={2}
+                      placeholder="e.g., 575/2 Moo.12 Tambon Tha Rong, Wichian Buri District, Phetchabun Province, Thailand"
+                      value={formData.address}
+                      onChange={handleChange}
+                      style={{ ...inputStyle, resize: "vertical" }}
+                    />
                   </div>
-                  <div style={{ fontSize: "12px", color: "#adb5bd" }}>
-                    Click "+ Add Certification" to add training records.
+                  <div style={{ ...grid3, marginBottom: "16px" }}>
+                    <div>
+                      <label style={labelStyle}>Sex</label>
+                      <Select
+                        options={genderOptions}
+                        value={
+                          genderOptions.find(
+                            (o) => o.value === formData.gender,
+                          ) || null
+                        }
+                        onChange={(o) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            gender: o ? o.value : "",
+                          }))
+                        }
+                        placeholder="— Select —"
+                        isClearable
+                        menuPortalTarget={
+                          typeof document !== "undefined" ? document.body : null
+                        }
+                        menuPosition="fixed"
+                        styles={{
+                          menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
+                          control: (b) => ({
+                            ...b,
+                            fontSize: "13px",
+                            minHeight: "38px",
+                            borderColor: "#dee2e6",
+                          }),
+                          option: (b) => ({ ...b, fontSize: "13px" }),
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Height (cm)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        name="height"
+                        placeholder="e.g., 163.2"
+                        value={formData.height}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Weight (kg)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        name="weight"
+                        placeholder="e.g., 69"
+                        value={formData.weight}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "12px",
-                  }}
-                >
-                  {certifications.map((cert, index) => (
+                  <div style={{ ...grid3, marginBottom: "16px" }}>
+                    <div>
+                      <label style={labelStyle}>Religion</label>
+                      <input
+                        type="text"
+                        name="religion"
+                        placeholder="e.g., Buddhism"
+                        value={formData.religion}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Language</label>
+                      <input
+                        type="text"
+                        name="language"
+                        placeholder="e.g., Moderate command in English"
+                        value={formData.language}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Education</label>
+                      <input
+                        type="text"
+                        name="education"
+                        placeholder="e.g., Secondary School"
+                        value={formData.education}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Photo</label>
                     <div
-                      key={cert.id}
                       style={{
-                        background: "#f8f9fa",
-                        border: "1px solid #e9ecef",
-                        borderRadius: "8px",
-                        padding: "14px 16px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "16px",
                       }}
                     >
+                      {photoPreview && (
+                        <img
+                          src={photoPreview}
+                          alt="preview"
+                          style={{
+                            width: "80px",
+                            height: "80px",
+                            objectFit: "cover",
+                            borderRadius: "8px",
+                            border: "1px solid #dee2e6",
+                          }}
+                        />
+                      )}
+                      <input
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp"
+                        onChange={handlePhotoChange}
+                        style={{ fontSize: "13px" }}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#6c757d",
+                        marginTop: "4px",
+                      }}
+                    >
+                      รองรับ .jpg, .jpeg, .png, .webp — ขนาดไม่เกิน 5MB
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === "profile" && (
+            <>
+              {/* Section 2: Worker Status */}
+              <div style={sectionCard}>
+                <SectionHeader number="2" title="Worker Status" />
+                <div style={sectionBody}>
+                  <div style={{ ...grid3, marginBottom: "16px" }}>
+                    <div>
+                      <label style={labelStyle}>Employee Status</label>
+                      <select
+                        name="status"
+                        value={formData.status}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Availability</label>
+                      <select
+                        name="availabilityStatus"
+                        value={formData.availabilityStatus}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData((prev) => ({
+                            ...prev,
+                            availabilityStatus: value,
+                            mobilizationStatus:
+                              value === "unavailable"
+                                ? "on_site"
+                                : prev.mobilizationStatus === "on_site"
+                                  ? "pending"
+                                  : prev.mobilizationStatus,
+                          }));
+                        }}
+                        style={inputStyle}
+                      >
+                        <option value="available">Available</option>
+                        <option value="unavailable">Unavailable</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Mobilization Status</label>
+                      <select
+                        name="mobilizationStatus"
+                        value={formData.mobilizationStatus}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData((prev) => ({
+                            ...prev,
+                            mobilizationStatus: value,
+                            availabilityStatus:
+                              value === "on_site" ? "unavailable" : "available",
+                          }));
+                        }}
+                        style={inputStyle}
+                      >
+                        {formData.availabilityStatus === "unavailable" ? (
+                          <option value="on_site">On-Site</option>
+                        ) : (
+                          <>
+                            <option value="pending">Pending</option>
+                            <option value="ready">Ready</option>
+                          </>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      background: "#f8f9fa",
+                      border: "1px solid #e9ecef",
+                      borderRadius: "8px",
+                      padding: "12px 16px",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "12px",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      id="isOffshore"
+                      name="isOffshore"
+                      checked={formData.isOffshore}
+                      onChange={handleChange}
+                      style={{
+                        width: "16px",
+                        height: "16px",
+                        marginTop: "2px",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <label htmlFor="isOffshore" style={{ cursor: "pointer" }}>
                       <div
                         style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          marginBottom: "12px",
+                          fontWeight: 600,
+                          fontSize: "14px",
+                          color: "#212529",
                         }}
                       >
-                        <span
-                          style={{
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            color: "#6c757d",
-                          }}
-                        >
-                          Certification #{index + 1}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeCertification(cert.id)}
-                          style={{
-                            background: "#fff",
-                            border: "1px solid #f5c6cb",
-                            color: "#842029",
-                            borderRadius: "6px",
-                            padding: "3px 10px",
-                            fontSize: "12px",
-                            cursor: "pointer",
-                          }}
-                        >
-                          ✕ Remove
-                        </button>
+                        Offshore Worker
                       </div>
-                      <div style={grid3}>
-                        <div>
-                          <label style={labelStyle}>
-                            Training / Certification
-                          </label>
-                          <select
-                            value={cert.globalTrainingId}
-                            onChange={(e) =>
-                              handleCertChange(
-                                cert.id,
-                                "globalTrainingId",
-                                e.target.value,
-                              )
-                            }
-                            style={inputStyle}
-                          >
-                            <option value="">— Select from list —</option>
-                            {globalTrainings.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name}
-                                {t.fullName ? ` - ${t.fullName}` : ""}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Issued Date</label>
-                          <input
-                            type="date"
-                            value={cert.completedDate}
-                            onChange={(e) =>
-                              handleCertChange(
-                                cert.id,
-                                "completedDate",
-                                e.target.value,
-                              )
-                            }
-                            style={inputStyle}
-                          />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Expiry Date</label>
-                          <input
-                            type="date"
-                            value={cert.expiryDate}
-                            onChange={(e) =>
-                              handleCertChange(
-                                cert.id,
-                                "expiryDate",
-                                e.target.value,
-                              )
-                            }
-                            style={inputStyle}
-                          />
-                        </div>
+                      <div style={{ fontSize: "12px", color: "#6c757d" }}>
+                        Check if this worker is deployed to offshore locations
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              {/* Section R: Offshore Roster (ติดตัวพนักงาน) */}
+              <div style={sectionCard}>
+                <SectionHeader
+                  number="R"
+                  title="Offshore Roster"
+                  subtitle="(ข้อมูลติดตัวพนักงาน — Health / SSE / Permanent)"
+                />
+                <div style={sectionBody}>
+                  <div style={{ ...grid3, marginBottom: "16px" }}>
+                    <div>
+                      <label style={labelStyle}>Health Risk</label>
+                      <select
+                        name="healthRisk"
+                        value={formData.healthRisk}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      >
+                        <option value="">— Select —</option>
+                        <option value="low">Low (ต่ำ)</option>
+                        <option value="medium">Medium (ปานกลาง)</option>
+                        <option value="high">High (สูง)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>SSE Level</label>
+                      <select
+                        name="sseLevel"
+                        value={formData.sseLevel}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      >
+                        <option value="">— None —</option>
+                        <option value="new_sse">NEW SSE</option>
+                        <option value="sse1">SSE1</option>
+                        <option value="sse2">SSE2</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>SSE Passed</label>
+                      <select
+                        name="sseCompleted"
+                        value={formData.sseCompleted}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      >
+                        <option value="">— N/A —</option>
+                        <option value="true">Completed</option>
+                        <option value="false">Not yet</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: "16px" }}>
+                    <label style={labelStyle}>
+                      Health Note (หมายเหตุสุขภาพ — แยกจาก Notes ทั่วไป)
+                    </label>
+                    <textarea
+                      name="healthNote"
+                      rows={2}
+                      placeholder="เช่น ไขมันสูง / กรดยูริกสูง / ติดตามผล Medic"
+                      value={formData.healthNote}
+                      onChange={handleChange}
+                      style={{ ...inputStyle, resize: "vertical" }}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      background: "#f0fdf4",
+                      border: "1px solid #bbf7d0",
+                      borderRadius: "8px",
+                      padding: "12px 16px",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "12px",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      id="isPermanent"
+                      name="isPermanent"
+                      checked={formData.isPermanent}
+                      onChange={handleChange}
+                      style={{
+                        width: "16px",
+                        height: "16px",
+                        marginTop: "2px",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <label htmlFor="isPermanent" style={{ cursor: "pointer" }}>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: "14px",
+                          color: "#212529",
+                        }}
+                      >
+                        Permanent Employee (พนักงานประจำ 🟩)
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#6c757d" }}>
+                        ติ๊กถ้าเป็นพนักงานประจำ (item เขียวในไฟล์ roster) —
+                        Allocation จะเลือกก่อน
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === "documents" && (
+            <>
+              {/* Section 3: Passport Information */}
+              <div style={sectionCard}>
+                <SectionHeader number="3" title="Passport Information" />
+                <div style={sectionBody}>
+                  <div style={{ ...grid2, marginBottom: "16px" }}>
+                    <div>
+                      <label style={labelStyle}>Passport Number</label>
+                      <input
+                        type="text"
+                        name="passportNumber"
+                        placeholder="e.g., AA1234567"
+                        value={formData.passportNumber}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Passport Expiry Date</label>
+                      <input
+                        type="date"
+                        name="passportExpiryDate"
+                        value={formData.passportExpiryDate}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+                  <div style={grid2}>
+                    <div>
+                      <label style={labelStyle}>Work Permit No.</label>
+                      <input
+                        type="text"
+                        name="workPermitNo"
+                        placeholder="e.g., WP-12345"
+                        value={formData.workPermitNo}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Work Permit Expiry Date</label>
+                      <input
+                        type="date"
+                        name="workPermitExpiryDate"
+                        value={formData.workPermitExpiryDate}
+                        onChange={handleChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 4: Certifications */}
+              <div style={sectionCard}>
+                <SectionHeader
+                  number="4"
+                  title="Certifications"
+                  subtitle="(6G, BOSIET, H2S, etc.)"
+                  right={
+                    <button
+                      type="button"
+                      onClick={addCertification}
+                      style={{
+                        background: "#fff",
+                        border: "1px solid #ffc107",
+                        color: "#664d03",
+                        borderRadius: "6px",
+                        padding: "6px 14px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      + Add Certification
+                    </button>
+                  }
+                />
+                <div style={sectionBody}>
+                  {certifications.length === 0 ? (
+                    <div
+                      style={{
+                        background: "#f8f9fa",
+                        border: "1px dashed #dee2e6",
+                        borderRadius: "8px",
+                        padding: "28px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: "13px", color: "#6c757d" }}>
+                        No certifications added yet.
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#adb5bd" }}>
+                        Click "+ Add Certification" to add training records.
                       </div>
                     </div>
-                  ))}
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "12px",
+                      }}
+                    >
+                      {certifications.map((cert, index) => (
+                        <div
+                          key={cert.id}
+                          style={{
+                            background: "#f8f9fa",
+                            border: "1px solid #e9ecef",
+                            borderRadius: "8px",
+                            padding: "14px 16px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              marginBottom: "12px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: 600,
+                                color: "#6c757d",
+                              }}
+                            >
+                              Certification #{index + 1}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeCertification(cert.id)}
+                              style={{
+                                background: "#fff",
+                                border: "1px solid #f5c6cb",
+                                color: "#842029",
+                                borderRadius: "6px",
+                                padding: "3px 10px",
+                                fontSize: "12px",
+                                cursor: "pointer",
+                              }}
+                            >
+                              ✕ Remove
+                            </button>
+                          </div>
+                          <div style={grid3}>
+                            <div>
+                              <label style={labelStyle}>
+                                Training / Certification
+                              </label>
+                              <select
+                                value={cert.globalTrainingId}
+                                onChange={(e) =>
+                                  handleCertChange(
+                                    cert.id,
+                                    "globalTrainingId",
+                                    e.target.value,
+                                  )
+                                }
+                                style={inputStyle}
+                              >
+                                <option value="">— Select from list —</option>
+                                {globalTrainings.map((t) => (
+                                  <option key={t.id} value={t.id}>
+                                    {t.name}
+                                    {t.fullName ? ` - ${t.fullName}` : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Issued Date</label>
+                              <input
+                                type="date"
+                                value={cert.completedDate}
+                                onChange={(e) =>
+                                  handleCertChange(
+                                    cert.id,
+                                    "completedDate",
+                                    e.target.value,
+                                  )
+                                }
+                                style={inputStyle}
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Expiry Date</label>
+                              <input
+                                type="date"
+                                value={cert.expiryDate}
+                                onChange={(e) =>
+                                  handleCertChange(
+                                    cert.id,
+                                    "expiryDate",
+                                    e.target.value,
+                                  )
+                                }
+                                style={inputStyle}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
 
-          {/* Section 5: Medical */}
-          <div style={sectionCard}>
-            <SectionHeader number="5" title="Medical Check-up Record" accent />
-            <div style={sectionBody}>
-              <div style={{ ...grid3, marginBottom: "16px" }}>
-                <div>
-                  <label style={labelStyle}>Hospital / Clinic</label>
-                  <input
-                    type="text"
-                    name="hospital"
-                    placeholder="e.g., Bangkok Hospital"
-                    value={medicalData.hospital}
-                    onChange={handleMedicalChange}
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Examination Date</label>
-                  <input
-                    type="date"
-                    name="issuedDate"
-                    value={medicalData.issuedDate}
-                    onChange={handleMedicalChange}
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Expiry Date</label>
-                  <input
-                    type="date"
-                    name="expiryDate"
-                    value={medicalData.expiryDate}
-                    onChange={handleMedicalChange}
-                    style={inputStyle}
-                  />
+              {/* Section 5: Medical */}
+              <div style={sectionCard}>
+                <SectionHeader
+                  number="5"
+                  title="Medical Check-up Record"
+                  accent
+                />
+                <div style={sectionBody}>
+                  <div style={{ ...grid3, marginBottom: "16px" }}>
+                    <div>
+                      <label style={labelStyle}>Hospital / Clinic</label>
+                      <input
+                        type="text"
+                        name="hospital"
+                        placeholder="e.g., Bangkok Hospital"
+                        value={medicalData.hospital}
+                        onChange={handleMedicalChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Examination Date</label>
+                      <input
+                        type="date"
+                        name="issuedDate"
+                        value={medicalData.issuedDate}
+                        onChange={handleMedicalChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Expiry Date</label>
+                      <input
+                        type="date"
+                        name="expiryDate"
+                        value={medicalData.expiryDate}
+                        onChange={handleMedicalChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+                  <div style={grid3}>
+                    <div>
+                      <label style={labelStyle}>Medical Status</label>
+                      <select
+                        name="status"
+                        value={medicalData.status}
+                        onChange={handleMedicalChange}
+                        style={inputStyle}
+                      >
+                        <option value="">— Select —</option>
+                        <option value="passed">Fit</option>
+                        <option value="pending">Pending</option>
+                        <option value="failed">Unfit</option>
+                        <option value="not_required">
+                          Fit with Restriction
+                        </option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Confined Space Medical</label>
+                      <select
+                        name="confinedSpaceStatus"
+                        value={medicalData.confinedSpaceStatus}
+                        onChange={handleMedicalChange}
+                        style={inputStyle}
+                      >
+                        <option value="">— N/A / Not assessed —</option>
+                        <option value="passed">Fit</option>
+                        <option value="failed">Unfit</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Notes</label>
+                      <input
+                        type="text"
+                        name="notes"
+                        placeholder="Restrictions, remarks..."
+                        value={medicalData.notes}
+                        onChange={handleMedicalChange}
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div style={grid3}>
-                <div>
-                  <label style={labelStyle}>Medical Status</label>
-                  <select
-                    name="status"
-                    value={medicalData.status}
-                    onChange={handleMedicalChange}
-                    style={inputStyle}
-                  >
-                    <option value="">— Select —</option>
-                    <option value="passed">Fit</option>
-                    <option value="pending">Pending</option>
-                    <option value="failed">Unfit</option>
-                    <option value="not_required">Fit with Restriction</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Confined Space Medical</label>
-                  <select
-                    name="confinedSpaceStatus"
-                    value={medicalData.confinedSpaceStatus}
-                    onChange={handleMedicalChange}
-                    style={inputStyle}
-                  >
-                    <option value="">— N/A / Not assessed —</option>
-                    <option value="passed">Fit</option>
-                    <option value="failed">Unfit</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Notes</label>
-                  <input
-                    type="text"
-                    name="notes"
-                    placeholder="Restrictions, remarks..."
-                    value={medicalData.notes}
-                    onChange={handleMedicalChange}
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
+            </>
+          )}
 
           {/* Action Buttons */}
           <div
@@ -1110,7 +1374,7 @@ export default function AddWorker() {
           >
             <button
               type="button"
-              onClick={() => navigate("/admin/workers")}
+              onClick={() => navigate("/workers")}
               disabled={submitting}
               style={{
                 padding: "9px 24px",

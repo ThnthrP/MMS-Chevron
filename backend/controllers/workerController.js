@@ -163,3 +163,58 @@ export async function deleteMedical(req, res) {
     res.status(500).json({ message: "Failed to delete medical record" });
   }
 }
+
+// ════════════════════════════════════════════════════════════════
+// Past Deployment (Project References) — manual/historical entry
+// ════════════════════════════════════════════════════════════════
+export async function createDeployment(req, res) {
+  try {
+    const deployment = await service.createDeployment(req.params.id, req.body);
+    res.status(201).json(deployment);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to create deployment record" });
+  }
+}
+
+export async function updateDeployment(req, res) {
+  try {
+    const deployment = await service.updateDeployment(
+      req.params.deploymentId,
+      req.body,
+    );
+    res.json(deployment);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to update deployment record" });
+  }
+}
+
+export async function deleteDeployment(req, res) {
+  try {
+    await service.deleteDeployment(req.params.deploymentId);
+    res.json({ message: "Deployment record deleted" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to delete deployment record" });
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Photo Upload
+// ════════════════════════════════════════════════════════════════
+export async function uploadPhoto(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+    const photoUrl = `/uploads/photos/${req.file.filename}`;
+    const worker = await service.updateWorkerPhoto(req.params.id, photoUrl);
+    res.json({ photoUrl, worker });
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ message: error.message || "Failed to upload photo" });
+  }
+}

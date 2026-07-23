@@ -303,438 +303,514 @@ export default function ComplianceDashboard() {
   );
 
   return (
-    <div className="container-fluid p-4">
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* Header Card */}
+    // <div className="container-fluid p-4">
+    //   <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+
+    <div
+      style={{
+        width: "100%",
+        padding: "8px 20px",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* Header Card */}
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid #dee2e6",
+          borderRadius: "10px",
+          padding: "16px 24px",
+          marginBottom: "1.5rem",
+        }}
+      >
         <div
           style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "16px 24px",
-            marginBottom: "1.5rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            marginBottom: "4px",
           }}
         >
-          <div
+          <span style={{ fontSize: "20px" }}>🛡️</span>
+          <span style={{ fontSize: "18px", fontWeight: 700 }}>
+            Compliance Center
+          </span>
+          <span
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              marginBottom: "4px",
+              background: "#e9f5fb",
+              color: "#0d6efd",
+              borderRadius: "6px",
+              padding: "2px 8px",
+              fontSize: "11px",
+              fontWeight: 600,
             }}
           >
-            <span style={{ fontSize: "20px" }}>🛡️</span>
-            <span style={{ fontSize: "18px", fontWeight: 700 }}>
-              Compliance Center
-            </span>
-            <span
-              style={{
-                background: "#e9f5fb",
-                color: "#0d6efd",
-                borderRadius: "6px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-              }}
-            >
-              Phase 2
-            </span>
-          </div>
-          <div style={{ fontSize: "13px", color: "#6c757d" }}>
-            Certification Monitoring, Gap Analysis & Position Matching
-          </div>
+            Phase 2
+          </span>
         </div>
+        <div style={{ fontSize: "13px", color: "#6c757d" }}>
+          Certification Monitoring, Gap Analysis & Position Matching
+        </div>
+      </div>
 
-        {/* Stats Cards */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "1rem",
-            marginBottom: "1.5rem",
-          }}
-        >
-          {[
-            {
-              icon: "🔴",
-              value: stats.expired,
-              label: "Expired",
-              key: "expired",
-              bg: "#fff5f5",
-              bar: "#dc3545",
-              color: "#dc3545",
-            },
-            {
-              icon: "🔥",
-              value: stats.critical,
-              label: "Critical (<30 days)",
-              key: "critical",
-              bg: "#fff8e1",
-              bar: "#ffc107",
-              color: "#cc8400",
-            },
-            {
-              icon: "🟡",
-              value: stats.warning,
-              label: "Warning (30-60 days)",
-              key: "warning",
-              bg: "#e8f4fd",
-              bar: "#0dcaf0",
-              color: "#0aa2c0",
-            },
-            {
-              icon: "✅",
-              value: stats.valid,
-              label: "Valid (>60 days or no expiry)",
-              key: "valid",
-              bg: "#f0fff4",
-              bar: "#198754",
-              color: "#198754",
-            },
-          ].map((card) => (
+      {/* Stats Cards */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: "1rem",
+          marginBottom: "1.5rem",
+        }}
+      >
+        {[
+          {
+            icon: "🔴",
+            value: stats.expired,
+            label: "Expired",
+            key: "expired",
+            bg: "#fff5f5",
+            bar: "#dc3545",
+            color: "#dc3545",
+          },
+          {
+            icon: "🔥",
+            value: stats.critical,
+            label: "Critical (<30 days)",
+            key: "critical",
+            bg: "#fff8e1",
+            bar: "#ffc107",
+            color: "#cc8400",
+          },
+          {
+            icon: "🟡",
+            value: stats.warning,
+            label: "Warning (30-60 days)",
+            key: "warning",
+            bg: "#e8f4fd",
+            bar: "#0dcaf0",
+            color: "#0aa2c0",
+          },
+          {
+            icon: "✅",
+            value: stats.valid,
+            label: "Valid (>60 days or no expiry)",
+            key: "valid",
+            bg: "#f0fff4",
+            bar: "#198754",
+            color: "#198754",
+          },
+        ].map((card) => (
+          <div
+            key={card.label}
+            style={{
+              background: "#fff",
+              border: "1px solid #dee2e6",
+              borderRadius: "10px",
+              overflow: "hidden",
+              cursor: "pointer",
+            }}
+            onClick={() =>
+              setStatusFilter(statusFilter === card.key ? "all" : card.key)
+            }
+          >
             <div
-              key={card.label}
               style={{
-                background: "#fff",
-                border: "1px solid #dee2e6",
-                borderRadius: "10px",
-                overflow: "hidden",
-                cursor: "pointer",
+                padding: "16px 20px",
+                display: "flex",
+                alignItems: "center",
+                gap: "14px",
               }}
-              onClick={() =>
-                setStatusFilter(statusFilter === card.key ? "all" : card.key)
-              }
             >
               <div
                 style={{
-                  padding: "16px 20px",
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "50%",
+                  background: card.bg,
                   display: "flex",
                   alignItems: "center",
-                  gap: "14px",
+                  justifyContent: "center",
+                  flexShrink: 0,
                 }}
               >
+                <span style={{ fontSize: "20px" }}>{card.icon}</span>
+              </div>
+              <div>
                 <div
                   style={{
-                    width: "48px",
-                    height: "48px",
-                    borderRadius: "50%",
-                    background: card.bg,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
+                    fontSize: "28px",
+                    fontWeight: 700,
+                    color: card.color,
+                    lineHeight: 1,
                   }}
                 >
-                  <span style={{ fontSize: "20px" }}>{card.icon}</span>
+                  {card.value}
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "28px",
-                      fontWeight: 700,
-                      color: card.color,
-                      lineHeight: 1,
-                    }}
-                  >
-                    {card.value}
-                  </div>
-                  <div style={{ fontSize: "12px", color: "#6c757d" }}>
-                    {card.label}
-                  </div>
+                <div style={{ fontSize: "12px", color: "#6c757d" }}>
+                  {card.label}
                 </div>
               </div>
-              <div style={{ height: "4px", background: card.bar }} />
             </div>
-          ))}
-        </div>
-
-        {/* Search & Filter */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "12px 16px",
-            marginBottom: "1rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-          }}
-        >
-          <div style={{ position: "relative", flex: 1, maxWidth: "380px" }}>
-            <span
-              style={{
-                position: "absolute",
-                left: "10px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "#adb5bd",
-                fontSize: "14px",
-              }}
-            >
-              🔍
-            </span>
-            <input
-              type="text"
-              placeholder="Search name, ID, or position..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                width: "100%",
-                paddingLeft: "34px",
-                paddingRight: "12px",
-                paddingTop: "7px",
-                paddingBottom: "7px",
-                fontSize: "13px",
-                border: "1px solid #dee2e6",
-                borderRadius: "8px",
-                outline: "none",
-              }}
-            />
+            <div style={{ height: "4px", background: card.bar }} />
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+        ))}
+      </div>
+
+      {/* Search & Filter */}
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid #dee2e6",
+          borderRadius: "10px",
+          padding: "12px 16px",
+          marginBottom: "1rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+        }}
+      >
+        <div style={{ position: "relative", flex: 1, maxWidth: "380px" }}>
+          <span
             style={{
-              width: "210px",
-              padding: "7px 12px",
+              position: "absolute",
+              left: "10px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "#adb5bd",
+              fontSize: "14px",
+            }}
+          >
+            🔍
+          </span>
+          <input
+            type="text"
+            placeholder="Search name, ID, or position..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              width: "100%",
+              paddingLeft: "34px",
+              paddingRight: "12px",
+              paddingTop: "7px",
+              paddingBottom: "7px",
               fontSize: "13px",
               border: "1px solid #dee2e6",
               borderRadius: "8px",
               outline: "none",
-              background: "#fff",
             }}
-          >
-            <option value="all">All Status</option>
-            <option value="expired">🔴 Expired</option>
-            <option value="critical">🔥 Critical (&lt;30 days)</option>
-            <option value="warning">🟡 Warning (30-60 days)</option>
-            <option value="valid">✅ No Alerts</option>
-          </select>
-          {(statusFilter !== "all" || searchTerm) && (
-            <button
-              onClick={() => {
-                setStatusFilter("all");
-                setSearchTerm("");
-              }}
-              style={{
-                padding: "7px 14px",
-                fontSize: "13px",
-                border: "1px solid #dc3545",
-                borderRadius: "8px",
-                background: "#fff",
-                color: "#dc3545",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              ✕ Clear
-            </button>
-          )}
+          />
         </div>
-
-        {/* Worker Compliance Table */}
-        <div
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
           style={{
-            background: "#fff",
+            width: "210px",
+            padding: "7px 12px",
+            fontSize: "13px",
             border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            overflow: "hidden",
+            borderRadius: "8px",
+            outline: "none",
+            background: "#fff",
           }}
         >
-          <div
-            style={{ padding: "14px 20px", borderBottom: "1px solid #dee2e6" }}
-          >
-            <span style={{ fontWeight: 700, fontSize: "14px" }}>
-              Worker Compliance Overview
-            </span>
-          </div>
-          <table
+          <option value="all">All Status</option>
+          <option value="expired">🔴 Expired</option>
+          <option value="critical">🔥 Critical (&lt;30 days)</option>
+          <option value="warning">🟡 Warning (30-60 days)</option>
+          <option value="valid">✅ No Alerts</option>
+        </select>
+        {(statusFilter !== "all" || searchTerm) && (
+          <button
+            onClick={() => {
+              setStatusFilter("all");
+              setSearchTerm("");
+            }}
             style={{
-              width: "100%",
-              borderCollapse: "collapse",
+              padding: "7px 14px",
               fontSize: "13px",
+              border: "1px solid #dc3545",
+              borderRadius: "8px",
+              background: "#fff",
+              color: "#dc3545",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
             }}
           >
-            <thead>
-              <tr style={{ borderBottom: "1px solid #dee2e6" }}>
-                {[
-                  ["WORKER", "left"],
-                  ["POSITION", "left"],
-                  ["DEPARTMENT", "left"],
-                  ["COMPLIANCE ALERTS", "center"],
-                  ["CHEVRON MATCH", "center"],
-                  ["MEDICAL", "center"],
-                  ["ACTIONS", "center"],
-                ].map(([h, align]) => (
-                  <th
-                    key={h}
-                    style={{
-                      padding: "10px 14px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: "#6c757d",
-                      letterSpacing: "0.5px",
-                      textAlign: align,
-                      background: "#fff",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredWorkers.map((w, idx) => (
-                <tr
-                  key={w.id}
+            ✕ Clear
+          </button>
+        )}
+      </div>
+
+      {/* Worker Compliance Table */}
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid #dee2e6",
+          borderRadius: "10px",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{ padding: "14px 20px", borderBottom: "1px solid #dee2e6" }}
+        >
+          <span style={{ fontWeight: 700, fontSize: "14px" }}>
+            Worker Compliance Overview
+          </span>
+        </div>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: "13px",
+            tableLayout: "fixed", // ← เพิ่มใหม่
+          }}
+        >
+          <thead>
+            <tr style={{ borderBottom: "1px solid #dee2e6" }}>
+              {[
+                ["WORKER", "left", "16%"],
+                ["POSITION", "left", "30%"],
+                ["COMPLIANCE ALERTS", "center", "18%"],
+                ["CHEVRON MATCH", "center", "18%"],
+                ["MEDICAL", "center", "18%"],
+              ].map(([h, align, width]) => (
+                <th
+                  key={h}
                   style={{
-                    borderBottom:
-                      idx < filteredWorkers.length - 1
-                        ? "1px solid #f1f3f5"
-                        : "none",
-                    transition: "background 0.15s",
+                    padding: "10px 14px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "#6c757d",
+                    letterSpacing: "0.5px",
+                    textAlign: align,
+                    background: "#fff",
+                    whiteSpace: "nowrap",
+                    width,
                   }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "#f8f9fa")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = "#fff")
-                  }
                 >
-                  <td style={{ padding: "12px 14px" }}>
-                    <div style={{ fontWeight: 600 }}>{w.fullName}</div>
-                    {w.empCode && (
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filteredWorkers.map((w, idx) => (
+              <tr
+                key={w.id}
+                style={{
+                  borderBottom:
+                    idx < filteredWorkers.length - 1
+                      ? "1px solid #f1f3f5"
+                      : "none",
+                  transition: "background 0.15s",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "#f8f9fa")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "#fff")
+                }
+              >
+                <td style={{ padding: "12px 14px" }}>
+                  <div style={{ fontWeight: 600 }}>{w.fullName}</div>
+                  {w.empCode && (
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#6c757d",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {w.empCode}
+                    </div>
+                  )}
+                </td>
+                <td
+                  style={{
+                    padding: "12px 14px",
+                    color: "#6c757d",
+                  }}
+                >
+                  <div
+                    style={{
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                    title={w.position?.name || ""}
+                  >
+                    {w.position?.name || "—"}
+                  </div>
+                  {w.department && (
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#adb5bd",
+                        marginTop: "2px",
+                      }}
+                    >
+                      {w.department}
+                    </div>
+                  )}
+                </td>
+
+                <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                  {(() => {
+                    const expired = w.alerts?.expired ?? 0;
+                    const critical = w.alerts?.critical ?? 0;
+                    const warning = w.alerts?.warning ?? 0;
+                    const hasAlerts =
+                      expired > 0 || critical > 0 || warning > 0;
+                    return (
                       <div
                         style={{
-                          fontSize: "11px",
-                          color: "#6c757d",
-                          fontFamily: "monospace",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: "4px",
                         }}
                       >
-                        {w.empCode}
+                        {!hasAlerts ? (
+                          badge("#d1e7dd", "#0f5132", "✅ No Alerts")
+                        ) : (
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              justifyContent: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            {expired > 0 &&
+                              badge(
+                                "#f8d7da",
+                                "#842029",
+                                `🔴 ${expired} Expired`,
+                              )}
+                            {critical > 0 &&
+                              badge(
+                                "#f8d7da",
+                                "#842029",
+                                `🔥 ${critical} Critical`,
+                              )}
+                            {warning > 0 &&
+                              badge(
+                                "#fff3cd",
+                                "#664d03",
+                                `🟡 ${warning} Warning`,
+                              )}
+                          </div>
+                        )}
+                        {hasAlerts && (
+                          <span
+                            onClick={() => handleViewAlerts(w.id)}
+                            style={{
+                              fontSize: "11px",
+                              color: "#0d6efd",
+                              cursor: "pointer",
+                              fontWeight: 600,
+                            }}
+                          >
+                            🔍 ดู Alerts →
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </td>
-                  <td style={{ padding: "12px 14px", color: "#6c757d" }}>
-                    {w.position?.name || "—"}
-                  </td>
-                  <td
+                    );
+                  })()}
+                </td>
+
+                {/* CHEVRON */}
+                <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                  <div
                     style={{
-                      padding: "12px 14px",
-                      color: "#6c757d",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "4px",
                     }}
                   >
-                    {w.department || "—"}
-                  </td>
-                  <td style={{ padding: "12px 14px", textAlign: "center" }}>
-                    {(() => {
-                      const expired = w.alerts?.expired ?? 0;
-                      const critical = w.alerts?.critical ?? 0;
-                      const warning = w.alerts?.warning ?? 0;
-                      return expired === 0 &&
-                        critical === 0 &&
-                        warning === 0 ? (
-                        badge("#d1e7dd", "#0f5132", "✅ No Alerts")
-                      ) : (
-                        <div
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            justifyContent: "center",
-                            gap: "4px",
-                          }}
-                        >
-                          {expired > 0 &&
-                            badge(
-                              "#f8d7da",
-                              "#842029",
-                              `🔴 ${expired} Expired`,
-                            )}
-                          {critical > 0 &&
-                            badge(
-                              "#f8d7da",
-                              "#842029",
-                              `🔥 ${critical} Critical`,
-                            )}
-                          {warning > 0 &&
-                            badge(
-                              "#fff3cd",
-                              "#664d03",
-                              `🟡 ${warning} Warning`,
-                            )}
-                        </div>
-                      );
-                    })()}
-                  </td>
-
-                  {/* CHEVRON */}
-                  <td style={{ padding: "12px 14px", textAlign: "center" }}>
                     <ClientCell
                       {...(w.clients?.chevron ?? { completed: null })}
                     />
-                  </td>
-
-                  {/* MEDICAL */}
-                  <td style={{ padding: "12px 14px", textAlign: "center" }}>
-                    {(() => {
-                      const med = getMedical(w);
-                      if (!med)
-                        return <span style={{ color: "#6c757d" }}>—</span>;
-                      const info = medicalStatusInfo(med.status);
-                      const exp = med.expiryDate
-                        ? new Date(med.expiryDate)
-                        : null;
-                      const expired =
-                        exp && !isNaN(exp.getTime()) && exp < new Date();
-                      return (
-                        <div
+                    {w.clients?.chevron?.completed !== null &&
+                      w.clients?.chevron !== undefined && (
+                        <span
+                          onClick={() => handleViewGap(w.id)}
                           style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: "3px",
+                            fontSize: "11px",
+                            color: "#0d6efd",
+                            cursor: "pointer",
+                            fontWeight: 600,
                           }}
                         >
-                          {badge(info.bg, info.color, info.label)}
-                          <div
+                          🔍 ดู Gap →
+                        </span>
+                      )}
+                  </div>
+                </td>
+
+                {/* MEDICAL */}
+                <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                  {(() => {
+                    const med = getMedical(w);
+                    if (!med)
+                      return <span style={{ color: "#6c757d" }}>—</span>;
+                    const info = medicalStatusInfo(med.status);
+                    const exp = med.expiryDate
+                      ? new Date(med.expiryDate)
+                      : null;
+                    const expired =
+                      exp && !isNaN(exp.getTime()) && exp < new Date();
+                    return (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: "3px",
+                        }}
+                      >
+                        {badge(info.bg, info.color, info.label)}
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: expired ? "#dc3545" : "#6c757d",
+                          }}
+                        >
+                          {exp && !isNaN(exp.getTime())
+                            ? `Exp: ${exp.toLocaleDateString()}`
+                            : "No expiry"}
+                        </div>
+                        {med.notes && (
+                          <span
+                            title={med.notes}
+                            onClick={() =>
+                              setNoteModal({
+                                name: w.fullName,
+                                note: med.notes,
+                              })
+                            }
                             style={{
-                              fontSize: "11px",
-                              color: expired ? "#dc3545" : "#6c757d",
+                              fontSize: "10px",
+                              color: "#6c757d",
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              maxWidth: "120px",
+                              textDecorationLine: "underline",
+                              textDecorationStyle: "dotted",
                             }}
                           >
-                            {exp && !isNaN(exp.getTime())
-                              ? `Exp: ${exp.toLocaleDateString()}`
-                              : "No expiry"}
-                          </div>
-                          {med.notes && (
-                            <button
-                              onClick={() =>
-                                setNoteModal({
-                                  name: w.fullName,
-                                  note: med.notes,
-                                })
-                              }
-                              title="View medical notes"
-                              style={{
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                                fontSize: "14px",
-                                padding: 0,
-                                lineHeight: 1,
-                              }}
-                            >
-                              📄
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </td>
+                            📄 {med.notes}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </td>
 
-                  <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                {/* <td style={{ padding: "12px 14px", textAlign: "center" }}>
                     <div
                       style={{
                         display: "flex",
@@ -773,13 +849,13 @@ export default function ComplianceDashboard() {
                         Alerts
                       </button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </td> */}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+      {/* </div> */}
 
       {/* Gap Modal — แบ่ง Mandatory / Assigned / Others */}
       {showGapModal && selectedGap && (

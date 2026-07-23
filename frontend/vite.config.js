@@ -6,8 +6,12 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    host: true,        // = --host
+    host: true, // = --host
     port: 5175,
-    strictPort: true,  // ถ้า 5175 ไม่ว่าง ให้ error เลย ไม่แอบเด้งไปพอร์ตอื่น
+    strictPort: true, // ถ้า 5175 ไม่ว่าง ให้ error เลย ไม่แอบเด้งไปพอร์ตอื่น
+    watch: {
+      usePolling: true, // ← เพิ่มใหม่ — จำเป็นสำหรับ bind mount บน Windows/Docker
+      interval: 300, // ← เพิ่มใหม่ — ms, ปรับได้ตามต้องการ
+    },
   },
 });

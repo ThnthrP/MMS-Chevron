@@ -46,3 +46,13 @@ export async function getWorkerAlerts(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
+
+export async function getCertificationDetail(req, res) {
+  try {
+    const data = await service.getCertificationDetail(req.params.id);
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(error.status || 500).json({ message: error.message });
+  }
+}

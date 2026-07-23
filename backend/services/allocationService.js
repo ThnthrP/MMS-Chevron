@@ -455,8 +455,17 @@ export async function getWorkerEligibility(employeeId) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// CV Summary — รวมข้อมูล shortlist ของ project เพื่อทำเอกสารส่ง client
-// (มีอันเดียว — เวอร์ชันซ้ำถูกลบออกแล้ว)
+// CV Summary — เวอร์ชันใหม่: หน้าตาตรงกับเรซูเม่จริงที่ส่งลูกค้า
+// (แทนที่ getCvSummary เดิมในไฟล์ allocationService.js — ฟังก์ชันอื่นเหมือนเดิม)
+//
+// โครงสร้าง candidate แต่ละคนตอนนี้แบ่งเป็น 3 ส่วนเหมือนเรซูเม่:
+//   personal            — Personal Details (address, gender, height ฯลฯ)
+//   trainedCourses      — list ของ training เรียงวันที่ล่าสุดก่อน
+//   professional        — { company, currentPosition, responsibilities[], projectReferences[] }
+//
+// ⚠ ต้อง migrate schema ก่อน (Employee.address/gender/height/weight/religion/
+//   language/education/photoUrl, Position.responsibilities, Assignment.positionId,
+//   Project.cvLabel) ไม่งั้น query พวกนี้จะพัง
 // ════════════════════════════════════════════════════════════════
 export async function getCvSummary(projectId) {
   const project = await prisma.project.findUnique({
@@ -476,7 +485,7 @@ export async function getCvSummary(projectId) {
             include: {
               employee: {
                 include: {
-                  position: true,
+                  position: true, // ตำแหน่งปัจจุบัน — ใช้เป็น fallback + หา responsibilities
                   passport: true,
                   medicalChecks: {
                     select: { checkType: true, expiryDate: true, status: true },
@@ -484,6 +493,17 @@ export async function getCvSummary(projectId) {
                   trainings: {
                     where: { isLatest: true },
                     include: { globalTraining: true },
+                    orderBy: { completedDate: "desc" },
+                  },
+                  // ประวัติ deploy ทั้งหมด (ทุก project) → "Project References"
+                  assignments: {
+                    orderBy: { mobDate: "desc" },
+                    include: {
+                      position: true, // ตำแหน่ง ณ ตอน deploy รอบนั้น (snapshot)
+                      project: {
+                        include: { contract: { include: { client: true } } },
+                      },
+                    },
                   },
                 },
               },
@@ -498,7 +518,6 @@ export async function getCvSummary(projectId) {
 
   const groups = requests
     .map((req) => {
-      // dedupe ต่อ employee — round ใหม่ทับเก่า
       const byEmp = new Map();
       for (const round of [...req.rounds].sort((a, b) => a.round - b.round)) {
         for (const c of round.candidates) byEmp.set(c.employeeId, c);
@@ -506,26 +525,83 @@ export async function getCvSummary(projectId) {
 
       const candidates = [...byEmp.values()].map((c) => {
         const e = c.employee;
+
         const medical =
           e.medicalChecks?.find(
             (m) => norm(m.checkType) === "medicalcheckup",
           ) || null;
-        const certifications = e.trainings
-          .filter((t) => t.globalTraining)
+
+        // ── Trained Courses ──
+        const trainedCourses = e.trainings
+          .filter((t) => t.globalTraining || t.rawTrainingName)
           .map((t) => ({
-            name: t.globalTraining.name,
-            expiryDate: t.expiryDate,
-            status: t.status,
+            name: t.globalTraining?.name ?? t.rawTrainingName,
+            completedDate: t.completedDate,
+            institute: t.institute ?? null,
           }));
+
+        // ── Professional Experience ──
+        const currentPosition = e.position?.name || req.position?.name || null;
+        const responsibilities = e.position?.responsibilities
+          ? e.position.responsibilities
+              .split("\n")
+              .filter((line) => line.trim())
+          : [];
+
+        const projectReferences = e.assignments
+          .filter((a) => a.mobDate) // ข้าม record ที่ยังไม่มีวันที่ (ไม่พร้อมแสดงในเรซูเม่)
+          .map((a) => ({
+            projectLabel:
+              a.project?.cvLabel ||
+              a.project?.name ||
+              a.projectLabel || // ← เพิ่ม — สำหรับ manual/historical entry
+              (a.platform ? `Deployment at ${a.platform}` : "—"),
+            position: a.position?.name ?? currentPosition,
+            mobDate: a.mobDate,
+            demobDate: a.demobDate,
+            platform: a.platform,
+          }));
+
         return {
           fullName: e.fullName,
           empCode: e.empCode,
-          position: e.position?.name || req.position?.name || null,
+          position: currentPosition,
           nationality: e.nationality || null,
           birthDate: e.birthDate,
           startWorkDate: e.startWorkDate,
-          status: c.status, // proposed | approved
-          certifications,
+          status: c.status,
+
+          // ── Personal Details (ส่วนใหม่) ──
+          personal: {
+            address: e.address || null,
+            gender: e.gender || null,
+            height: e.height ?? null,
+            weight: e.weight ?? null,
+            religion: e.religion || null,
+            language: e.language || null,
+            education: e.education || null,
+            photoUrl: e.photoUrl || null,
+            phone: e.phone || null,
+            email: e.email || null,
+          },
+
+          trainedCourses,
+
+          professional: {
+            company: "Experteam Co., Ltd.",
+            currentPosition,
+            responsibilities,
+            projectReferences,
+          },
+
+          // ── ของเดิม (ยังใช้อยู่ในการ์ดสรุป/eligibility อื่น) ──
+          certifications: e.trainings
+            .filter((t) => t.globalTraining)
+            .map((t) => ({
+              name: t.globalTraining.name,
+              expiryDate: t.expiryDate,
+              status: t.status,
+            })),
           medical: medical
             ? { expiryDate: medical.expiryDate, status: medical.status }
             : null,

@@ -5,6 +5,8 @@ const router = express.Router();
 
 router.get("/dashboard", controller.getComplianceDashboard);
 
+router.get("/certification/:id", controller.getCertificationDetail);
+
 router.get("/worker/:id/gaps", controller.getWorkerGap);
 
 router.get("/stats", controller.getComplianceStats);

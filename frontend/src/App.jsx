@@ -31,18 +31,6 @@ const App = () => {
       <ToastContainer />
 
       <Routes>
-        {/* Root */}
-        <Route
-          path="/"
-          element={
-            isLoggedin ? (
-              <Navigate to="/admin" replace />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-
         {/* Public */}
         <Route path="/login" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -57,11 +45,8 @@ const App = () => {
           }
         />
 
-        {/* Main App */}
-        <Route path="/admin/*" element={<AppRouter />} />
-
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Main App — จัดการ "/" และ path อื่นๆ ทั้งหมดผ่าน AppRouter */}
+        <Route path="/*" element={<AppRouter />} />
       </Routes>
     </>
   );

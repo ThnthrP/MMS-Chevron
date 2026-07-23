@@ -14,8 +14,8 @@ const Sidebar = () => {
 
   const isActive = (path) => {
     // Dashboard
-    if (path === "/admin") {
-      return location.pathname === "/admin";
+    if (path === "/") {
+      return location.pathname === "/";
     }
 
     // route อื่น ๆ

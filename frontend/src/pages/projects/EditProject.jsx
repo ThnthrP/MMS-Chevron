@@ -97,7 +97,7 @@ export default function EditProject() {
         },
         { withCredentials: true },
       );
-      navigate(`/admin/projects/${id}`);
+      navigate(`/projects/${id}`);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to update project.");
     } finally {
@@ -150,7 +150,7 @@ export default function EditProject() {
       <div className="container-fluid p-4">
         <div style={{ maxWidth: "760px", margin: "0 auto" }}>
           <button
-            onClick={() => navigate("/admin/projects")}
+            onClick={() => navigate("/projects")}
             style={{
               background: "none",
               border: "none",
@@ -189,7 +189,7 @@ export default function EditProject() {
       <div style={{ maxWidth: "760px", margin: "0 auto" }}>
         {/* Back */}
         <button
-          onClick={() => navigate(`/admin/projects`)}
+          onClick={() => navigate(`/projects`)}
           style={{
             background: "none",
             border: "none",
@@ -419,7 +419,7 @@ export default function EditProject() {
             }}
           >
             <button
-              onClick={() => navigate(`/admin/projects`)}
+              onClick={() => navigate(`/projects`)}
               disabled={submitting}
               style={{
                 padding: "8px 20px",

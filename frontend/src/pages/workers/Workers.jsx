@@ -249,7 +249,7 @@ export default function Workers() {
               </span>
             </div>
             <button
-              onClick={() => navigate("/admin/workers/add")}
+              onClick={() => navigate("/workers/add")}
               style={{
                 background: "#0d6efd",
                 color: "#fff",
@@ -723,7 +723,7 @@ export default function Workers() {
                           fontWeight: 600,
                           cursor: "pointer",
                         }}
-                        onClick={() => navigate(`/admin/workers/${worker.id}`)}
+                        onClick={() => navigate(`/workers/${worker.id}`)}
                       >
                         {worker.fullName}
                       </span>
@@ -768,7 +768,7 @@ export default function Workers() {
                       >
                         <button
                           onClick={() =>
-                            navigate(`/admin/workers/${worker.id}`)
+                            navigate(`/workers/${worker.id}`)
                           }
                           style={{
                             background: "#fff",
@@ -784,7 +784,7 @@ export default function Workers() {
                         </button>
                         <button
                           onClick={() =>
-                            navigate(`/admin/workers/${worker.id}/edit`)
+                            navigate(`/workers/${worker.id}/edit`)
                           }
                           style={{
                             background: "#fff",

@@ -2,8 +2,10 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-// ── helper: แปลง roster fields ให้ปลอดภัย (ใช้ทั้ง create/update) ──
+// ── helper: แปลง roster + personal-detail fields ให้ปลอดภัย (ใช้ทั้ง create/update) ──
 // คืนเฉพาะ key ที่ "ส่งมาใน body" เพื่อไม่เผลอทับค่าเดิมด้วย null ตอน update
+//
+// address/gender/height/weight/religion/language/education สำหรับ Personal Details ใน CV Summary
 function buildRosterData(data) {
   const out = {};
   if ("birthDate" in data)
@@ -17,6 +19,24 @@ function buildRosterData(data) {
       data.sseCompleted === null || data.sseCompleted === undefined
         ? null
         : !!data.sseCompleted;
+
+  // ── CV Personal Details ──
+  if ("address" in data) out.address = data.address || null;
+  if ("gender" in data) out.gender = data.gender || null;
+  if ("height" in data)
+    out.height =
+      data.height === "" || data.height === null || data.height === undefined
+        ? null
+        : Number(data.height);
+  if ("weight" in data)
+    out.weight =
+      data.weight === "" || data.weight === null || data.weight === undefined
+        ? null
+        : Number(data.weight);
+  if ("religion" in data) out.religion = data.religion || null;
+  if ("language" in data) out.language = data.language || null;
+  if ("education" in data) out.education = data.education || null;
+
   return out;
 }
 
@@ -47,31 +67,9 @@ export async function getNextEmpCode() {
 // ============================================================
 // Cert matching → mobilizationStatus / availabilityStatus
 // ============================================================
-// เกณฑ์ mobilizationStatus = "ready" ต้องผ่านทั้ง 2 เงื่อนไข:
-//   1) match กับ training matrix ของ "Chevron" ครบ 100%
-//      (นับเฉพาะ requirementType ที่เป็น Mandatory — "required"+"mandatory"
-//       ไม่รวม "assigned" — ให้ตรงกับตรรกะเดียวกับ complianceService.js)
-//   2) ไม่มี training หรือ medical check ใบไหนหมดอายุแล้ว
-//      (เช็คทุกใบที่มี expiryDate — เหมือนที่ ComplianceDashboard/
-//       complianceService นับ "expired", ไม่ใช่แค่ตัวที่ required ใน matrix)
-//   ไม่ผ่านข้อใดข้อหนึ่ง → mobilizationStatus = "pending"
-//   ตำแหน่งที่ไม่มี matrix (ไม่มี PositionRequirement เลย) → ไม่แตะสถานะเดิม
-//   ถ้า mobilizationStatus ปัจจุบันเป็น "on_site" → ไม่ auto-overwrite
-//     (on_site มาจาก flow มือ/มือถือหน้างาน ไม่ใช่ผลจาก cert matching)
-// availabilityStatus derive จาก mobilizationStatus:
-//   pending / ready → available
-//   on_site         → unavailable
-// ============================================================
-
 const PRIMARY_CLIENT_NAME = "Chevron";
-
-// ค่า requirementType ที่นับเป็น "Mandatory" (สัญลักษณ์ X)
-// "required" (bulk import) และ "mandatory" (แก้ผ่าน MatrixEditor) เป็น
-// ความหมายเดียวกันสำหรับ Chevron — ดูหมายเหตุเดียวกันใน complianceService.js
 const MANDATORY_REQUIREMENT_TYPES = ["required", "mandatory"];
 
-// คืน { required, completed, score, hasExpiredCert } หรือ null ถ้าคำนวณไม่ได้
-// (ไม่มีตำแหน่ง / ไม่มี matrix ของตำแหน่งนั้น)
 export async function computeMatchPercent(employeeId) {
   const employee = await prisma.employee.findUnique({
     where: { id: employeeId },
@@ -99,8 +97,6 @@ export async function computeMatchPercent(employeeId) {
   });
   if (!contract) return null;
 
-  // นับเฉพาะ requirementType ที่เป็น Mandatory (required + mandatory)
-  // ไม่รวม "assigned" — ตรงกับคอลัมน์ CHEVRON MATCH ในหน้า Compliance
   const requirements = await prisma.positionRequirement.findMany({
     where: {
       positionId: employee.positionId,
@@ -110,7 +106,7 @@ export async function computeMatchPercent(employeeId) {
     include: { clientTraining: { select: { globalTrainingId: true } } },
   });
 
-  if (requirements.length === 0) return null; // ไม่มี matrix ของตำแหน่งนี้
+  if (requirements.length === 0) return null;
 
   const requiredIds = new Set(
     requirements.map((r) => r.clientTraining.globalTrainingId),
@@ -125,8 +121,6 @@ export async function computeMatchPercent(employeeId) {
   ).length;
   const score = required > 0 ? Math.round((completed / required) * 100) : 0;
 
-  // เช็คใบหมดอายุ — ทุกใบที่มี expiryDate ทั้ง training และ medical
-  // (ไม่นับใบที่ expiryDate = null เพราะแปลว่าไม่มีวันหมดอายุ)
   const now = new Date();
   const hasExpiredCert =
     employee.trainings.some(
@@ -139,8 +133,6 @@ export async function computeMatchPercent(employeeId) {
   return { required, completed, score, hasExpiredCert };
 }
 
-// คำนวณแล้ว update mobilizationStatus + availabilityStatus ให้ employee คนเดียว
-// เรียกใช้ได้ตรงๆ (batch script) หรือถูกเรียกอัตโนมัติจาก hook ด้านล่าง
 export async function recomputeMobilizationAndAvailability(employeeId) {
   const current = await prisma.employee.findUnique({
     where: { id: employeeId },
@@ -148,15 +140,14 @@ export async function recomputeMobilizationAndAvailability(employeeId) {
   });
   if (!current) return;
 
-  // on_site = ลงพื้นที่จริงแล้ว → ไม่ให้ cert matching ทับสถานะนี้อัตโนมัติ
   if (current.mobilizationStatus === "on_site") return;
 
   const match = await computeMatchPercent(employeeId);
-  if (!match) return; // ไม่มีตำแหน่ง/ไม่มี matrix → คงสถานะเดิมไว้
+  if (!match) return;
 
   const mobilizationStatus =
     match.score === 100 && !match.hasExpiredCert ? "ready" : "pending";
-  const availabilityStatus = "available"; // pending/ready ทั้งคู่ = available
+  const availabilityStatus = "available";
 
   await prisma.employee.update({
     where: { id: employeeId },
@@ -181,6 +172,12 @@ export async function getWorkerById(id) {
       trainings: {
         where: { isLatest: true },
         include: { globalTraining: true },
+      },
+      // ← เพิ่มใหม่: ประวัติ deploy (ทั้งของจริงจาก Mobilization และ manual/historical
+      //   entry ที่ HR กรอกเอง) — ใช้แสดง/แก้ไขใน EditWorker.jsx section ใหม่
+      assignments: {
+        orderBy: { mobDate: "desc" },
+        include: { position: true },
       },
     },
   });
@@ -326,6 +323,44 @@ export async function updateMedical(medicalId, data) {
   });
 }
 
+// ════════════════════════════════════════════════════════════════
+// Past Deployment (Project References) — manual/historical entry
+// สร้าง Assignment ที่ไม่ผูก Booking/Project จริง (bookingId=null, projectId=null)
+// ใช้ backfill ประวัติเก่าที่ไม่เคยอยู่ในระบบ (ก่อนเริ่มใช้ Mobilization flow)
+// ════════════════════════════════════════════════════════════════
+export async function createDeployment(employeeId, data) {
+  return prisma.assignment.create({
+    data: {
+      employeeId,
+      bookingId: null,
+      projectId: null,
+      positionId: data.positionId || null,
+      projectLabel: data.projectLabel || null,
+      platform: data.platform || null,
+      mobDate: data.mobDate ? new Date(data.mobDate) : null,
+      demobDate: data.demobDate ? new Date(data.demobDate) : null,
+      status: "completed", // ของเก่าถือว่าจบไปแล้วเสมอ
+    },
+  });
+}
+
+export async function updateDeployment(deploymentId, data) {
+  return prisma.assignment.update({
+    where: { id: deploymentId },
+    data: {
+      positionId: data.positionId || null,
+      projectLabel: data.projectLabel || null,
+      platform: data.platform || null,
+      mobDate: data.mobDate ? new Date(data.mobDate) : null,
+      demobDate: data.demobDate ? new Date(data.demobDate) : null,
+    },
+  });
+}
+
+export async function deleteDeployment(deploymentId) {
+  return prisma.assignment.delete({ where: { id: deploymentId } });
+}
+
 export async function updateWorker(id, data) {
   const result = await prisma.employee.update({
     where: { id },
@@ -346,9 +381,19 @@ export async function updateWorker(id, data) {
       ...buildRosterData(data),
     },
   });
-  // ตำแหน่งอาจเปลี่ยน → matrix ที่ใช้เทียบเปลี่ยนตาม ต้องคำนวณสถานะใหม่
   await recomputeMobilizationAndAvailability(id);
   return result;
+}
+
+// ════════════════════════════════════════════════════════════════
+// Photo Upload — บันทึก path ไฟล์รูปที่ multer เซฟไว้แล้ว ลง Employee.photoUrl
+// (multer จัดการ save ไฟล์ลง disk ให้แล้วใน middleware — ฟังก์ชันนี้แค่ผูก path เข้า DB)
+// ════════════════════════════════════════════════════════════════
+export async function updateWorkerPhoto(id, photoUrl) {
+  return prisma.employee.update({
+    where: { id: String(id) },
+    data: { photoUrl },
+  });
 }
 
 export async function deleteWorker(id) {

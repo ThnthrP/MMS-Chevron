@@ -119,6 +119,10 @@ export async function getMobilizationList(projectId) {
 // deployments: [{ employeeId, mobDate, platform }]
 //   D-MOB = mobDate + 28 (คำนวณ backend)
 //   idempotent: ลบ assignment เดิม (bookingId=null) ของ employee+project ก่อน
+//
+//   ⚠ เพิ่มใหม่: snapshot positionId ของพนักงาน ณ เวลา deploy ลงใน Assignment
+//   เพื่อให้ CV "Project References" แสดงตำแหน่งที่ถูกต้องตอนนั้น
+//   (ตำแหน่งพนักงานอาจเปลี่ยนในอนาคต แต่ประวัติ deploy ต้องคงเดิม)
 // ════════════════════════════════════════════════════════════════
 export async function deployToSite({ projectId, deployments }) {
   const created = [];
@@ -130,6 +134,12 @@ export async function deployToSite({ projectId, deployments }) {
     const demob = addDays(mob, DEMOB_DAYS);
     const status = statusByDate(mob, demob);
 
+    // snapshot ตำแหน่งปัจจุบันของพนักงาน ณ เวลา deploy
+    const employee = await prisma.employee.findUnique({
+      where: { id: d.employeeId },
+      select: { positionId: true },
+    });
+
     await prisma.assignment.deleteMany({
       where: { employeeId: d.employeeId, projectId, bookingId: null },
     });
@@ -138,6 +148,7 @@ export async function deployToSite({ projectId, deployments }) {
       data: {
         employeeId: d.employeeId,
         projectId,
+        positionId: employee?.positionId ?? null,
         mobDate: mob,
         demobDate: demob,
         platform: d.platform,
@@ -158,6 +169,20 @@ export async function undeployWorker({ projectId, employeeId }) {
   if (!projectId || !employeeId) return { count: 0 };
   const result = await prisma.assignment.deleteMany({
     where: { employeeId, projectId, bookingId: null },
+  });
+  return { count: result.count };
+}
+
+// ════════════════════════════════════════════════════════════════
+// DEV TOOL — ลบ Assignment ทั้งหมดของ project (bookingId=null เท่านั้น)
+//   ใช้ตอน dev/test เวลาแก้ position request แล้วมี Assignment ค้าง
+//   (orphaned) ที่ไม่ผูกกับ shortlist/candidate อีกต่อไป แต่ยังถูกนับ
+//   ใน Dashboard "Currently On-Site" เพราะ query อิง Assignment ตรงๆ
+// ════════════════════════════════════════════════════════════════
+export async function clearProjectDeployments(projectId) {
+  if (!projectId) return { count: 0 };
+  const result = await prisma.assignment.deleteMany({
+    where: { projectId, bookingId: null },
   });
   return { count: result.count };
 }
