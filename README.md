@@ -23,6 +23,34 @@ mobilization/demobilization.
 
 ---
 
+## 📸 Screenshots
+
+### 🏠 Dashboard
+![Dashboard](screenshots/dashboard.png)
+
+### 🛡️ Compliance Center
+![Compliance Center](screenshots/compliance-center.png)
+
+### 📋 Certifications
+![Certifications](screenshots/certifications.png)
+
+### 🎓 Manage Trainings
+![Manage Trainings](screenshots/manage-trainings.png)
+
+### 👥 Worker Allocation
+![Allocation](screenshots/allocation.png)
+
+### 📄 CV Summary Export
+![CV Summary](screenshots/cv-summary.png)
+
+### 🚀 Mobilization
+![Mobilization](screenshots/mobilization.png)
+
+### 🗂 Projects
+![Projects](screenshots/projects.png)
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
