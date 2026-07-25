@@ -150,9 +150,9 @@ export default function ManageDivisions() {
   return (
     <div
       style={{
-        maxWidth: "780px",
-        margin: "0 auto",
-        padding: "8px 4px",
+        width: "100%",
+        padding: "8px 20px",
+        boxSizing: "border-box",
         display: "flex",
         flexDirection: "column",
         gap: "16px",

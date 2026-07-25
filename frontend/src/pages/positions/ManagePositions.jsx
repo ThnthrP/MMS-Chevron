@@ -157,321 +157,325 @@ export default function ManagePositions() {
   }));
 
   return (
-    <div className="container-fluid p-4">
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
-        {/* Header Card */}
+    <div
+      style={{
+        width: "100%",
+        padding: "8px 20px",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* Header Card */}
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid #dee2e6",
+          borderRadius: "10px",
+          padding: "16px 24px",
+          marginBottom: "1rem",
+        }}
+      >
         <div
           style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "16px 24px",
-            marginBottom: "1rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <span style={{ fontSize: "20px" }}>🧰</span>
-              <span style={{ fontSize: "18px", fontWeight: 700 }}>
-                Manage Positions
-              </span>
-              <span style={{ color: "#6c757d", fontSize: "12px" }}>
-                ตำแหน่งกลาง (canonical) — ใช้ในฟอร์ม worker/project &amp;
-                training matrix
-              </span>
-            </div>
-            <button
-              onClick={openCreate}
-              style={{
-                background: "#0d6efd",
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                padding: "8px 16px",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              + New Position
-            </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "20px" }}>🧰</span>
+            <span style={{ fontSize: "18px", fontWeight: 700 }}>
+              Manage Positions
+            </span>
+            <span style={{ color: "#6c757d", fontSize: "12px" }}>
+              ตำแหน่งกลาง (canonical) — ใช้ในฟอร์ม worker/project &amp; training
+              matrix
+            </span>
           </div>
-        </div>
-
-        {/* Table */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            overflow: "hidden",
-          }}
-        >
-          <table
+          <button
+            onClick={openCreate}
             style={{
-              width: "100%",
-              borderCollapse: "collapse",
+              background: "#0d6efd",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 16px",
               fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
             }}
           >
-            <thead>
-              <tr style={{ borderBottom: "1px solid #dee2e6" }}>
-                {[
-                  ["POSITION", "left"],
-                  ["DEPARTMENT", "left"],
-                  ["OFFSHORE", "center"],
-                  ["WORKERS", "center"],
-                  ["MATRIX", "center"],
-                  ["CV RESPONSIBILITY", "center"],
-                  ["ACTIONS", "center"],
-                ].map(([h, align]) => (
-                  <th
-                    key={h}
-                    style={{
-                      padding: "10px 16px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: "#6c757d",
-                      letterSpacing: "0.5px",
-                      textAlign: align,
-                      background: "#fff",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td
-                    colSpan="7"
-                    style={{
-                      textAlign: "center",
-                      padding: "40px",
-                      color: "#6c757d",
-                    }}
-                  >
-                    Loading...
-                  </td>
-                </tr>
-              ) : positions.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan="7"
-                    style={{
-                      textAlign: "center",
-                      padding: "40px",
-                      color: "#6c757d",
-                    }}
-                  >
-                    No positions yet — click + New Position
-                  </td>
-                </tr>
-              ) : (
-                positions.map((p, idx) => {
-                  const respLines = responsibilityLines(p.responsibilities);
-                  return (
-                    <tr
-                      key={p.id}
-                      style={{
-                        borderBottom:
-                          idx < positions.length - 1
-                            ? "1px solid #f1f3f5"
-                            : "none",
-                        transition: "background 0.15s",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "#f8f9fa")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "#fff")
-                      }
-                    >
-                      {/* POSITION */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <div style={{ fontWeight: 600 }}>{p.name}</div>
-                        {p.nameTH && (
-                          <div style={{ fontSize: "12px", color: "#6c757d" }}>
-                            {p.nameTH}
-                          </div>
-                        )}
-                      </td>
+            + New Position
+          </button>
+        </div>
+      </div>
 
-                      {/* CATEGORY */}
-                      <td style={{ padding: "12px 16px", color: "#6c757d" }}>
-                        {p.category || "—"}
-                      </td>
-
-                      {/* OFFSHORE */}
-                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                        {p.isOffshore ? (
-                          <span
-                            style={{
-                              background: "#cfe2ff",
-                              color: "#084298",
-                              borderRadius: "6px",
-                              padding: "2px 10px",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                            }}
-                          >
-                            Offshore
-                          </span>
-                        ) : (
-                          <span style={{ color: "#adb5bd" }}>—</span>
-                        )}
-                      </td>
-
-                      {/* WORKERS */}
-                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                        {p._count?.employees ?? 0}
-                      </td>
-
-                      {/* MATRIX */}
-                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                        {(p._count?.requirements ?? 0) > 0 ? (
-                          <span
-                            style={{ color: "#198754", fontWeight: 600 }}
-                            title="มี training requirement (รวมทุก contract)"
-                          >
-                            {p._count.requirements}
-                          </span>
-                        ) : (
-                          <span
-                            style={{
-                              background: "#fff3cd",
-                              color: "#664d03",
-                              borderRadius: "6px",
-                              padding: "2px 8px",
-                              fontSize: "11px",
-                              fontWeight: 600,
-                            }}
-                            title="ยังไม่มี matrix — ระบบจะคัดเลือกคนตำแหน่งนี้ไม่ได้"
-                          >
-                            no matrix
-                          </span>
-                        )}
-                      </td>
-
-                      {/* CV RESPONSIBILITY — เพิ่มใหม่ */}
-                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                        {respLines.length > 0 ? (
-                          <span
-                            style={{ color: "#198754", fontWeight: 600 }}
-                            title={respLines
-                              .map((l, i) => `${i + 1}. ${l}`)
-                              .join("\n")}
-                          >
-                            {respLines.length} item
-                            {respLines.length > 1 ? "s" : ""}
-                          </span>
-                        ) : (
-                          <span
-                            style={{
-                              background: "#f1f3f5",
-                              color: "#6c757d",
-                              borderRadius: "6px",
-                              padding: "2px 8px",
-                              fontSize: "11px",
-                              fontWeight: 600,
-                            }}
-                            title="ยังไม่กรอก — ส่วน Responsibility ในเรซูเม่ (Generate CV Summary) จะไม่โชว์"
-                          >
-                            not set
-                          </span>
-                        )}
-                      </td>
-
-                      {/* ACTIONS */}
-                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "center",
-                            gap: "8px",
-                          }}
-                        >
-                          <button
-                            title="Edit"
-                            onClick={() => openEdit(p)}
-                            style={{
-                              background: "#fff",
-                              border: "1px solid #dee2e6",
-                              borderRadius: "6px",
-                              padding: "4px 8px",
-                              cursor: "pointer",
-                              fontSize: "13px",
-                              lineHeight: 1,
-                            }}
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            title="Delete"
-                            onClick={() => handleDelete(p)}
-                            style={{
-                              background: "#fff",
-                              border: "1px solid #f5c6cb",
-                              borderRadius: "6px",
-                              padding: "4px 8px",
-                              cursor: "pointer",
-                              fontSize: "13px",
-                              lineHeight: 1,
-                            }}
-                          >
-                            🗑
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-            {!loading && positions.length > 0 && (
-              <tfoot>
-                <tr
+      {/* Table */}
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid #dee2e6",
+          borderRadius: "10px",
+          overflow: "hidden",
+        }}
+      >
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: "13px",
+          }}
+        >
+          <thead>
+            <tr style={{ borderBottom: "1px solid #dee2e6" }}>
+              {[
+                ["POSITION", "left"],
+                ["DEPARTMENT", "left"],
+                ["OFFSHORE", "center"],
+                ["WORKERS", "center"],
+                ["MATRIX", "center"],
+                ["CV RESPONSIBILITY", "center"],
+                ["ACTIONS", "center"],
+              ].map(([h, align]) => (
+                <th
+                  key={h}
                   style={{
-                    borderTop: "2px solid #dee2e6",
-                    background: "#f8f9fa",
+                    padding: "10px 16px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "#6c757d",
+                    letterSpacing: "0.5px",
+                    textAlign: align,
+                    background: "#fff",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  <td
-                    colSpan="3"
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td
+                  colSpan="7"
+                  style={{
+                    textAlign: "center",
+                    padding: "40px",
+                    color: "#6c757d",
+                  }}
+                >
+                  Loading...
+                </td>
+              </tr>
+            ) : positions.length === 0 ? (
+              <tr>
+                <td
+                  colSpan="7"
+                  style={{
+                    textAlign: "center",
+                    padding: "40px",
+                    color: "#6c757d",
+                  }}
+                >
+                  No positions yet — click + New Position
+                </td>
+              </tr>
+            ) : (
+              positions.map((p, idx) => {
+                const respLines = responsibilityLines(p.responsibilities);
+                return (
+                  <tr
+                    key={p.id}
                     style={{
-                      padding: "12px 16px",
-                      fontWeight: 700,
-                      fontSize: "13px",
+                      borderBottom:
+                        idx < positions.length - 1
+                          ? "1px solid #f1f3f5"
+                          : "none",
+                      transition: "background 0.15s",
                     }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background = "#f8f9fa")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "#fff")
+                    }
                   >
-                    รวม {positions.length} ตำแหน่ง
-                  </td>
-                  <td
-                    style={{
-                      padding: "12px 16px",
-                      textAlign: "center",
-                      fontWeight: 700,
-                      color: "#0d6efd",
-                    }}
-                    title="รวมพนักงานทุกตำแหน่ง"
-                  >
-                    {totalWorkers}
-                  </td>
-                  <td colSpan="3"></td>
-                </tr>
-              </tfoot>
+                    {/* POSITION */}
+                    <td style={{ padding: "12px 16px" }}>
+                      <div style={{ fontWeight: 600 }}>{p.name}</div>
+                      {p.nameTH && (
+                        <div style={{ fontSize: "12px", color: "#6c757d" }}>
+                          {p.nameTH}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* CATEGORY */}
+                    <td style={{ padding: "12px 16px", color: "#6c757d" }}>
+                      {p.category || "—"}
+                    </td>
+
+                    {/* OFFSHORE */}
+                    <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                      {p.isOffshore ? (
+                        <span
+                          style={{
+                            background: "#cfe2ff",
+                            color: "#084298",
+                            borderRadius: "6px",
+                            padding: "2px 10px",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Offshore
+                        </span>
+                      ) : (
+                        <span style={{ color: "#adb5bd" }}>—</span>
+                      )}
+                    </td>
+
+                    {/* WORKERS */}
+                    <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                      {p._count?.employees ?? 0}
+                    </td>
+
+                    {/* MATRIX */}
+                    <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                      {(p._count?.requirements ?? 0) > 0 ? (
+                        <span
+                          style={{ color: "#198754", fontWeight: 600 }}
+                          title="มี training requirement (รวมทุก contract)"
+                        >
+                          {p._count.requirements}
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            background: "#fff3cd",
+                            color: "#664d03",
+                            borderRadius: "6px",
+                            padding: "2px 8px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                          }}
+                          title="ยังไม่มี matrix — ระบบจะคัดเลือกคนตำแหน่งนี้ไม่ได้"
+                        >
+                          no matrix
+                        </span>
+                      )}
+                    </td>
+
+                    {/* CV RESPONSIBILITY — เพิ่มใหม่ */}
+                    <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                      {respLines.length > 0 ? (
+                        <span
+                          style={{ color: "#198754", fontWeight: 600 }}
+                          title={respLines
+                            .map((l, i) => `${i + 1}. ${l}`)
+                            .join("\n")}
+                        >
+                          {respLines.length} item
+                          {respLines.length > 1 ? "s" : ""}
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            background: "#f1f3f5",
+                            color: "#6c757d",
+                            borderRadius: "6px",
+                            padding: "2px 8px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                          }}
+                          title="ยังไม่กรอก — ส่วน Responsibility ในเรซูเม่ (Generate CV Summary) จะไม่โชว์"
+                        >
+                          not set
+                        </span>
+                      )}
+                    </td>
+
+                    {/* ACTIONS */}
+                    <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <button
+                          title="Edit"
+                          onClick={() => openEdit(p)}
+                          style={{
+                            background: "#fff",
+                            border: "1px solid #dee2e6",
+                            borderRadius: "6px",
+                            padding: "4px 8px",
+                            cursor: "pointer",
+                            fontSize: "13px",
+                            lineHeight: 1,
+                          }}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          title="Delete"
+                          onClick={() => handleDelete(p)}
+                          style={{
+                            background: "#fff",
+                            border: "1px solid #f5c6cb",
+                            borderRadius: "6px",
+                            padding: "4px 8px",
+                            cursor: "pointer",
+                            fontSize: "13px",
+                            lineHeight: 1,
+                          }}
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
-          </table>
-        </div>
+          </tbody>
+          {!loading && positions.length > 0 && (
+            <tfoot>
+              <tr
+                style={{
+                  borderTop: "2px solid #dee2e6",
+                  background: "#f8f9fa",
+                }}
+              >
+                <td
+                  colSpan="3"
+                  style={{
+                    padding: "12px 16px",
+                    fontWeight: 700,
+                    fontSize: "13px",
+                  }}
+                >
+                  รวม {positions.length} ตำแหน่ง
+                </td>
+                <td
+                  style={{
+                    padding: "12px 16px",
+                    textAlign: "center",
+                    fontWeight: 700,
+                    color: "#0d6efd",
+                  }}
+                  title="รวมพนักงานทุกตำแหน่ง"
+                >
+                  {totalWorkers}
+                </td>
+                <td colSpan="3"></td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
       </div>
 
       {/* Modal */}

@@ -144,345 +144,348 @@ export default function MatrixEditor() {
   };
 
   return (
-    <div className="container-fluid p-4">
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
-        {/* Header */}
+    <div
+      style={{
+        width: "100%",
+        padding: "8px 20px",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid #dee2e6",
+          borderRadius: "10px",
+          padding: "16px 24px",
+          marginBottom: "1rem",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ fontSize: "20px" }}>🧩</span>
+          <span style={{ fontSize: "18px", fontWeight: 700 }}>
+            Matrix Editor
+          </span>
+          <span style={{ color: "#6c757d", fontSize: "12px" }}>
+            กำหนด training ที่ตำแหน่งต้องมี ต่อ contract (M/X/O) — มีผลกับ
+            eligibility &amp; gap analysis
+          </span>
+        </div>
+      </div>
+
+      {/* Selectors */}
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid #dee2e6",
+          borderRadius: "10px",
+          padding: "16px 24px",
+          marginBottom: "1rem",
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "16px",
+        }}
+      >
+        <div>
+          <label style={labelStyle}>CONTRACT</label>
+          <select
+            value={contractId}
+            onChange={(e) => setContractId(e.target.value)}
+            disabled={loadingLists}
+            style={selectStyle}
+          >
+            <option value="">— เลือก contract —</option>
+            {contracts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.contractNo})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label style={labelStyle}>POSITION</label>
+          <select
+            value={positionId}
+            onChange={(e) => setPositionId(e.target.value)}
+            disabled={loadingLists}
+            style={selectStyle}
+          >
+            <option value="">— เลือก position —</option>
+            {positions.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Message */}
+      {msg && (
+        <div
+          style={{
+            background: msg.type === "ok" ? "#d1e7dd" : "#f8d7da",
+            color: msg.type === "ok" ? "#0f5132" : "#842029",
+            border: `1px solid ${msg.type === "ok" ? "#badbcc" : "#f5c6cb"}`,
+            borderRadius: "8px",
+            padding: "10px 14px",
+            fontSize: "13px",
+            marginBottom: "1rem",
+          }}
+        >
+          {msg.type === "ok" ? "✅ " : "⚠ "}
+          {msg.text}
+        </div>
+      )}
+
+      {/* Body */}
+      {!contractId || !positionId ? (
+        <div
+          style={{
+            background: "#fff",
+            border: "1px dashed #dee2e6",
+            borderRadius: "10px",
+            padding: "48px",
+            textAlign: "center",
+            color: "#6c757d",
+            fontSize: "14px",
+          }}
+        >
+          เลือก <strong>Contract</strong> และ <strong>Position</strong> เพื่อแก้
+          training matrix
+        </div>
+      ) : loadingMatrix ? (
         <div
           style={{
             background: "#fff",
             border: "1px solid #dee2e6",
             borderRadius: "10px",
-            padding: "16px 24px",
-            marginBottom: "1rem",
+            padding: "48px",
+            textAlign: "center",
+            color: "#6c757d",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "20px" }}>🧩</span>
-            <span style={{ fontSize: "18px", fontWeight: 700 }}>
-              Matrix Editor
-            </span>
-            <span style={{ color: "#6c757d", fontSize: "12px" }}>
-              กำหนด training ที่ตำแหน่งต้องมี ต่อ contract (M/X/O) — มีผลกับ
-              eligibility &amp; gap analysis
-            </span>
-          </div>
+          Loading matrix...
         </div>
-
-        {/* Selectors */}
+      ) : (
         <div
           style={{
             background: "#fff",
             border: "1px solid #dee2e6",
             borderRadius: "10px",
-            padding: "16px 24px",
-            marginBottom: "1rem",
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "16px",
+            overflow: "hidden",
           }}
         >
-          <div>
-            <label style={labelStyle}>CONTRACT</label>
-            <select
-              value={contractId}
-              onChange={(e) => setContractId(e.target.value)}
-              disabled={loadingLists}
-              style={selectStyle}
-            >
-              <option value="">— เลือก contract —</option>
-              {contracts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.contractNo})
-                </option>
-              ))}
-            </select>
+          {/* Toolbar */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              padding: "14px 20px",
+              borderBottom: "1px solid #f1f3f5",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ fontSize: "13px", color: "#495057" }}>
+              <strong>{meta?.position?.name}</strong>
+              {meta?.contract && (
+                <span style={{ color: "#6c757d" }}>
+                  {" "}
+                  · {meta.contract.clientName || meta.contract.name} (
+                  {meta.contract.contractNo})
+                </span>
+              )}
+              <span
+                style={{
+                  marginLeft: "10px",
+                  background: "#e7f1ff",
+                  color: "#084298",
+                  borderRadius: "6px",
+                  padding: "2px 10px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                }}
+              >
+                {requiredCount} required
+              </span>
+            </div>
+            <input
+              type="text"
+              placeholder="ค้นหา training..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: "220px",
+                padding: "7px 12px",
+                fontSize: "13px",
+                border: "1px solid #dee2e6",
+                borderRadius: "8px",
+                outline: "none",
+              }}
+            />
           </div>
-          <div>
-            <label style={labelStyle}>POSITION</label>
-            <select
-              value={positionId}
-              onChange={(e) => setPositionId(e.target.value)}
-              disabled={loadingLists}
-              style={selectStyle}
-            >
-              <option value="">— เลือก position —</option>
-              {positions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
 
-        {/* Message */}
-        {msg && (
-          <div
-            style={{
-              background: msg.type === "ok" ? "#d1e7dd" : "#f8d7da",
-              color: msg.type === "ok" ? "#0f5132" : "#842029",
-              border: `1px solid ${msg.type === "ok" ? "#badbcc" : "#f5c6cb"}`,
-              borderRadius: "8px",
-              padding: "10px 14px",
-              fontSize: "13px",
-              marginBottom: "1rem",
-            }}
-          >
-            {msg.type === "ok" ? "✅ " : "⚠ "}
-            {msg.text}
-          </div>
-        )}
-
-        {/* Body */}
-        {!contractId || !positionId ? (
-          <div
-            style={{
-              background: "#fff",
-              border: "1px dashed #dee2e6",
-              borderRadius: "10px",
-              padding: "48px",
-              textAlign: "center",
-              color: "#6c757d",
-              fontSize: "14px",
-            }}
-          >
-            เลือก <strong>Contract</strong> และ <strong>Position</strong>{" "}
-            เพื่อแก้ training matrix
-          </div>
-        ) : loadingMatrix ? (
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              padding: "48px",
-              textAlign: "center",
-              color: "#6c757d",
-            }}
-          >
-            Loading matrix...
-          </div>
-        ) : (
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              overflow: "hidden",
-            }}
-          >
-            {/* Toolbar */}
+          {items.length === 0 ? (
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-                padding: "14px 20px",
-                borderBottom: "1px solid #f1f3f5",
-                flexWrap: "wrap",
+                padding: "40px",
+                textAlign: "center",
+                color: "#6c757d",
+                fontSize: "13px",
               }}
             >
-              <div style={{ fontSize: "13px", color: "#495057" }}>
-                <strong>{meta?.position?.name}</strong>
-                {meta?.contract && (
-                  <span style={{ color: "#6c757d" }}>
-                    {" "}
-                    · {meta.contract.clientName || meta.contract.name} (
-                    {meta.contract.contractNo})
-                  </span>
-                )}
-                <span
-                  style={{
-                    marginLeft: "10px",
-                    background: "#e7f1ff",
-                    color: "#084298",
-                    borderRadius: "6px",
-                    padding: "2px 10px",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                  }}
-                >
-                  {requiredCount} required
-                </span>
-              </div>
-              <input
-                type="text"
-                placeholder="ค้นหา training..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{
-                  width: "220px",
-                  padding: "7px 12px",
-                  fontSize: "13px",
-                  border: "1px solid #dee2e6",
-                  borderRadius: "8px",
-                  outline: "none",
-                }}
-              />
+              contract นี้ยังไม่มี ClientTraining — ต้อง seed/import training
+              ของ contract ก่อน
             </div>
-
-            {items.length === 0 ? (
-              <div
-                style={{
-                  padding: "40px",
-                  textAlign: "center",
-                  color: "#6c757d",
-                  fontSize: "13px",
-                }}
-              >
-                contract นี้ยังไม่มี ClientTraining — ต้อง seed/import training
-                ของ contract ก่อน
-              </div>
-            ) : (
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: "13px",
-                }}
-              >
-                <thead>
-                  <tr style={{ borderBottom: "1px solid #f1f3f5" }}>
-                    <th
+          ) : (
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "13px",
+              }}
+            >
+              <thead>
+                <tr style={{ borderBottom: "1px solid #f1f3f5" }}>
+                  <th
+                    style={{
+                      textAlign: "left",
+                      padding: "10px 20px",
+                      fontSize: "11px",
+                      color: "#6c757d",
+                      fontWeight: 600,
+                    }}
+                  >
+                    TRAINING
+                  </th>
+                  <th
+                    style={{
+                      textAlign: "right",
+                      padding: "10px 20px",
+                      fontSize: "11px",
+                      color: "#6c757d",
+                      fontWeight: 600,
+                      width: "200px",
+                    }}
+                  >
+                    REQUIREMENT
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan="2"
                       style={{
-                        textAlign: "left",
-                        padding: "10px 20px",
-                        fontSize: "11px",
+                        padding: "24px",
+                        textAlign: "center",
                         color: "#6c757d",
-                        fontWeight: 600,
                       }}
                     >
-                      TRAINING
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: "10px 20px",
-                        fontSize: "11px",
-                        color: "#6c757d",
-                        fontWeight: 600,
-                        width: "200px",
-                      }}
-                    >
-                      REQUIREMENT
-                    </th>
+                      ไม่พบ training ที่ตรงกับ "{search}"
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {filtered.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan="2"
+                ) : (
+                  filtered.map((it) => {
+                    const active = !!it.requirementType;
+                    return (
+                      <tr
+                        key={it.clientTrainingId}
                         style={{
-                          padding: "24px",
-                          textAlign: "center",
-                          color: "#6c757d",
+                          borderBottom: "1px solid #f8f9fa",
+                          background: active ? "#fcfdff" : "#fff",
                         }}
                       >
-                        ไม่พบ training ที่ตรงกับ "{search}"
-                      </td>
-                    </tr>
-                  ) : (
-                    filtered.map((it) => {
-                      const active = !!it.requirementType;
-                      return (
-                        <tr
-                          key={it.clientTrainingId}
-                          style={{
-                            borderBottom: "1px solid #f8f9fa",
-                            background: active ? "#fcfdff" : "#fff",
-                          }}
-                        >
-                          <td style={{ padding: "10px 20px" }}>
-                            <span style={{ fontWeight: active ? 600 : 400 }}>
-                              {it.name}
-                            </span>
-                            {it.alias && it.alias !== it.name && (
-                              <span
-                                style={{
-                                  color: "#adb5bd",
-                                  fontSize: "11px",
-                                  marginLeft: "8px",
-                                }}
-                              >
-                                ({it.alias})
-                              </span>
-                            )}
-                          </td>
-                          <td
-                            style={{ padding: "10px 20px", textAlign: "right" }}
-                          >
-                            <select
-                              value={it.requirementType || ""}
-                              onChange={(e) =>
-                                setLevel(it.clientTrainingId, e.target.value)
-                              }
+                        <td style={{ padding: "10px 20px" }}>
+                          <span style={{ fontWeight: active ? 600 : 400 }}>
+                            {it.name}
+                          </span>
+                          {it.alias && it.alias !== it.name && (
+                            <span
                               style={{
-                                padding: "5px 10px",
-                                fontSize: "12px",
-                                fontWeight: 600,
-                                border: "1px solid #dee2e6",
-                                borderRadius: "6px",
-                                background: "#fff",
-                                color:
-                                  REQ_LEVELS.find(
-                                    (l) =>
-                                      l.value === (it.requirementType || ""),
-                                  )?.color || "#212529",
-                                cursor: "pointer",
+                                color: "#adb5bd",
+                                fontSize: "11px",
+                                marginLeft: "8px",
                               }}
                             >
-                              {REQ_LEVELS.map((l) => (
-                                <option key={l.value} value={l.value}>
-                                  {l.label}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            )}
+                              ({it.alias})
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          style={{ padding: "10px 20px", textAlign: "right" }}
+                        >
+                          <select
+                            value={it.requirementType || ""}
+                            onChange={(e) =>
+                              setLevel(it.clientTrainingId, e.target.value)
+                            }
+                            style={{
+                              padding: "5px 10px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              border: "1px solid #dee2e6",
+                              borderRadius: "6px",
+                              background: "#fff",
+                              color:
+                                REQ_LEVELS.find(
+                                  (l) => l.value === (it.requirementType || ""),
+                                )?.color || "#212529",
+                              cursor: "pointer",
+                            }}
+                          >
+                            {REQ_LEVELS.map((l) => (
+                              <option key={l.value} value={l.value}>
+                                {l.label}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          )}
 
-            {/* Footer / Save */}
-            <div
+          {/* Footer / Save */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              gap: "12px",
+              padding: "14px 20px",
+              borderTop: "1px solid #f1f3f5",
+            }}
+          >
+            <span style={{ fontSize: "12px", color: "#6c757d" }}>
+              ติ๊ก {requiredCount} จาก {items.length} training
+            </span>
+            <button
+              onClick={handleSave}
+              disabled={saving}
               style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                alignItems: "center",
-                gap: "12px",
-                padding: "14px 20px",
-                borderTop: "1px solid #f1f3f5",
+                background: "#0d6efd",
+                color: "#fff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "9px 22px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: saving ? "not-allowed" : "pointer",
+                opacity: saving ? 0.7 : 1,
               }}
             >
-              <span style={{ fontSize: "12px", color: "#6c757d" }}>
-                ติ๊ก {requiredCount} จาก {items.length} training
-              </span>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                style={{
-                  background: "#0d6efd",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "9px 22px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: saving ? "not-allowed" : "pointer",
-                  opacity: saving ? 0.7 : 1,
-                }}
-              >
-                {saving ? "Saving..." : "Save Matrix"}
-              </button>
-            </div>
+              {saving ? "Saving..." : "Save Matrix"}
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
