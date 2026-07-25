@@ -755,12 +755,20 @@ export default function ComplianceDashboard() {
                     const med = getMedical(w);
                     if (!med)
                       return <span style={{ color: "#6c757d" }}>—</span>;
-                    const info = medicalStatusInfo(med.status);
+
                     const exp = med.expiryDate
                       ? new Date(med.expiryDate)
                       : null;
                     const expired =
                       exp && !isNaN(exp.getTime()) && exp < new Date();
+
+                    // ── ถ้าวันหมดอายุผ่านไปแล้วจริง ให้ override เป็น Overdue เสมอ ──
+                    // (ยกเว้นสถานะบางอย่างที่ไม่ควร override เช่น not_required)
+                    const info =
+                      expired && med.status !== "not_required"
+                        ? { label: "Overdue", bg: "#f8d7da", color: "#842029" }
+                        : medicalStatusInfo(med.status);
+
                     return (
                       <div
                         style={{
