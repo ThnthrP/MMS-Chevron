@@ -649,8 +649,8 @@ export default function Allocation() {
   };
 
   return (
-    <div className="container-fluid p-4">
-      <div style={{ width: "100%" }}>
+    <div className="container-fluid p-0">
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         <div
           style={{
             background: "#fff",

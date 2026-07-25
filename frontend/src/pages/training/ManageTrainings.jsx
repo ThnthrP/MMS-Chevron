@@ -342,7 +342,7 @@ export default function ManageTrainings() {
   const panelOpen = selectedId !== null;
 
   return (
-    <div className="container-fluid p-4">
+    <div className="container-fluid p-0">
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         {/* Header */}
         <div

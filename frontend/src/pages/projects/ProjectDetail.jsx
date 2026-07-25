@@ -115,7 +115,7 @@ export default function ProjectDetail() {
 
   return (
     <div className="container-fluid p-0">
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         {/* Back + Header */}
         <div style={{ marginBottom: "1.5rem" }}>
           <button

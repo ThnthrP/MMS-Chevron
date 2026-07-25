@@ -210,8 +210,8 @@ export default function Workers() {
   };
 
   return (
-    <div className="container-fluid p-4">
-      <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
+    <div className="container-fluid p-0">
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         {/* Header Card */}
         <div
           style={{
@@ -767,9 +767,7 @@ export default function Workers() {
                         }}
                       >
                         <button
-                          onClick={() =>
-                            navigate(`/workers/${worker.id}`)
-                          }
+                          onClick={() => navigate(`/workers/${worker.id}`)}
                           style={{
                             background: "#fff",
                             border: "1px solid #dee2e6",
@@ -783,9 +781,7 @@ export default function Workers() {
                           👁
                         </button>
                         <button
-                          onClick={() =>
-                            navigate(`/workers/${worker.id}/edit`)
-                          }
+                          onClick={() => navigate(`/workers/${worker.id}/edit`)}
                           style={{
                             background: "#fff",
                             border: "1px solid #dee2e6",

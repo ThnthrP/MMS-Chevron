@@ -148,163 +148,156 @@ export default function ManageDivisions() {
   });
 
   return (
-    <div
-      style={{
-        width: "100%",
-        padding: "8px 20px",
-        boxSizing: "border-box",
-        display: "flex",
-        flexDirection: "column",
-        gap: "16px",
-      }}
-    >
-      {/* header */}
-      <div style={{ ...card, padding: "18px" }}>
-        <div style={{ fontSize: "20px", fontWeight: 800 }}>
-          🗂 Manage Departments
+    <div className="container-fluid p-0">
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+        {/* header */}
+        <div style={{ ...card, padding: "18px" }}>
+          <div style={{ fontSize: "20px", fontWeight: 800 }}>
+            🗂 Manage Departments
+          </div>
+          <div style={{ marginTop: "4px", fontSize: "12px", color: "#6c757d" }}>
+            รายการแผนก/ดิวิชั่น ใช้เป็นตัวเลือกตอน Add/Edit Worker
+          </div>
         </div>
-        <div style={{ marginTop: "4px", fontSize: "12px", color: "#6c757d" }}>
-          รายการแผนก/ดิวิชั่น ใช้เป็นตัวเลือกตอน Add/Edit Worker
-        </div>
-      </div>
 
-      {/* add + search */}
-      <div
-        style={{
-          ...card,
-          padding: "14px 16px",
-          display: "flex",
-          gap: "10px",
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <input
-          type="text"
-          placeholder="ชื่อ department ใหม่…"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          style={{ ...input, flex: "1 1 240px" }}
-        />
-        <button
-          onClick={handleAdd}
-          disabled={adding}
+        {/* add + search */}
+        <div
           style={{
-            ...btn("#0d6efd", adding ? "#adb5bd" : "#0d6efd"),
-            padding: "9px 18px",
-            fontSize: "13px",
+            ...card,
+            padding: "14px 16px",
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
+            alignItems: "center",
           }}
         >
-          {adding ? "Adding…" : "＋ Add"}
-        </button>
-        <div style={{ flexBasis: "100%", height: 0 }} />
-        <input
-          type="text"
-          placeholder="🔍 ค้นหา…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ ...input, flex: "1 1 240px", maxWidth: "320px" }}
-        />
-      </div>
+          <input
+            type="text"
+            placeholder="ชื่อ department ใหม่…"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            style={{ ...input, flex: "1 1 240px" }}
+          />
+          <button
+            onClick={handleAdd}
+            disabled={adding}
+            style={{
+              ...btn("#0d6efd", adding ? "#adb5bd" : "#0d6efd"),
+              padding: "9px 18px",
+              fontSize: "13px",
+            }}
+          >
+            {adding ? "Adding…" : "＋ Add"}
+          </button>
+          <div style={{ flexBasis: "100%", height: 0 }} />
+          <input
+            type="text"
+            placeholder="🔍 ค้นหา…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ ...input, flex: "1 1 240px", maxWidth: "320px" }}
+          />
+        </div>
 
-      {/* table */}
-      <div style={card}>
-        {loading ? (
-          <div
-            style={{ padding: "28px", textAlign: "center", color: "#6c757d" }}
-          >
-            Loading…
-          </div>
-        ) : filtered.length === 0 ? (
-          <div
-            style={{ padding: "28px", textAlign: "center", color: "#6c757d" }}
-          >
-            {search ? "ไม่พบ" : "ยังไม่มี department — เพิ่มด้านบนได้เลย"}
-          </div>
-        ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={th}>Department</th>
-                <th style={{ ...th, textAlign: "right", width: "200px" }}>
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((d) => (
-                <tr key={d.id}>
-                  <td style={td}>
-                    {editId === d.id ? (
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleSaveEdit(d.id);
-                          if (e.key === "Escape") cancelEdit();
-                        }}
-                        autoFocus
-                        style={{
-                          ...input,
-                          padding: "6px 10px",
-                          width: "100%",
-                          maxWidth: "300px",
-                        }}
-                      />
-                    ) : (
-                      <span style={{ fontWeight: 600 }}>{d.name}</span>
-                    )}
-                  </td>
-                  <td style={{ ...td, textAlign: "right" }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "6px",
-                        justifyContent: "flex-end",
-                      }}
-                    >
-                      {editId === d.id ? (
-                        <>
-                          <button
-                            onClick={() => handleSaveEdit(d.id)}
-                            style={btn("#198754", "#198754")}
-                          >
-                            Save
-                          </button>
-                          <button onClick={cancelEdit} style={btn("#6c757d")}>
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => startEdit(d)}
-                            style={btn("#0d6efd")}
-                          >
-                            Rename
-                          </button>
-                          <button
-                            onClick={() => handleDelete(d)}
-                            style={btn("#dc3545")}
-                          >
-                            Delete
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
+        {/* table */}
+        <div style={card}>
+          {loading ? (
+            <div
+              style={{ padding: "28px", textAlign: "center", color: "#6c757d" }}
+            >
+              Loading…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div
+              style={{ padding: "28px", textAlign: "center", color: "#6c757d" }}
+            >
+              {search ? "ไม่พบ" : "ยังไม่มี department — เพิ่มด้านบนได้เลย"}
+            </div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={th}>Department</th>
+                  <th style={{ ...th, textAlign: "right", width: "200px" }}>
+                    Actions
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {filtered.map((d) => (
+                  <tr key={d.id}>
+                    <td style={td}>
+                      {editId === d.id ? (
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSaveEdit(d.id);
+                            if (e.key === "Escape") cancelEdit();
+                          }}
+                          autoFocus
+                          style={{
+                            ...input,
+                            padding: "6px 10px",
+                            width: "100%",
+                            maxWidth: "300px",
+                          }}
+                        />
+                      ) : (
+                        <span style={{ fontWeight: 600 }}>{d.name}</span>
+                      )}
+                    </td>
+                    <td style={{ ...td, textAlign: "right" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "6px",
+                          justifyContent: "flex-end",
+                        }}
+                      >
+                        {editId === d.id ? (
+                          <>
+                            <button
+                              onClick={() => handleSaveEdit(d.id)}
+                              style={btn("#198754", "#198754")}
+                            >
+                              Save
+                            </button>
+                            <button onClick={cancelEdit} style={btn("#6c757d")}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => startEdit(d)}
+                              style={btn("#0d6efd")}
+                            >
+                              Rename
+                            </button>
+                            <button
+                              onClick={() => handleDelete(d)}
+                              style={btn("#dc3545")}
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
 
-      <div style={{ fontSize: "11px", color: "#adb5bd", paddingLeft: "4px" }}>
-        * ลบ department ที่ยังมีพนักงานใช้อยู่ไม่ได้ (ระบบจะแจ้งเตือน) ·
-        เปลี่ยนชื่อจะอัปเดตให้พนักงานที่ใช้ชื่อเดิมโดยอัตโนมัติ
+        <div style={{ fontSize: "11px", color: "#adb5bd", paddingLeft: "4px" }}>
+          * ลบ department ที่ยังมีพนักงานใช้อยู่ไม่ได้ (ระบบจะแจ้งเตือน) ·
+          เปลี่ยนชื่อจะอัปเดตให้พนักงานที่ใช้ชื่อเดิมโดยอัตโนมัติ
+        </div>
       </div>
     </div>
   );

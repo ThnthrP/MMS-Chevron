@@ -327,291 +327,303 @@ export default function Mobilization() {
   };
 
   return (
-    <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "8px 4px" }}>
-      {/* header */}
-      <div style={card}>
-        <div style={{ padding: "18px" }}>
-          <div style={{ fontSize: "20px", fontWeight: 800 }}>
-            🚀 Mobilization
-          </div>
-          <div style={{ marginTop: "6px", fontSize: "12px", color: "#6c757d" }}>
-            <span
-              style={{
-                background: "#e7e9ec",
-                borderRadius: "6px",
-                padding: "2px 8px",
-                fontWeight: 700,
-                marginRight: "8px",
-              }}
+    <div className="container-fluid p-0">
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+        {/* header */}
+        <div style={{ ...card, marginTop: 0 }}>
+          <div style={{ padding: "18px" }}>
+            <div style={{ fontSize: "20px", fontWeight: 800 }}>
+              🚀 Mobilization
+            </div>
+            <div
+              style={{ marginTop: "6px", fontSize: "12px", color: "#6c757d" }}
             >
-              Phase 4
-            </span>
-            Steps 10–11: Checklist → Deploy to Site
-          </div>
-        </div>
-      </div>
-
-      {/* project select */}
-      <div style={{ ...card, padding: "16px 18px" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            flexWrap: "wrap",
-          }}
-        >
-          <select
-            value={selectedProjectId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
-            style={{
-              flex: "1 1 320px",
-              maxWidth: "420px",
-              border: "1px solid #ced4da",
-              borderRadius: "8px",
-              padding: "10px 12px",
-              fontSize: "14px",
-            }}
-          >
-            <option value="">-- Select Project --</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-
-          {selectedProjectId && (
-            <button
-              onClick={clearProjectDeployments}
-              disabled={clearing}
-              title="Dev tool — ลบ deployment record ทั้งหมดของ project นี้ (ใช้ตอนแก้ position request แล้วมี worker ค้าง)"
-              style={{
-                background: "#fff",
-                border: "1px solid #dc3545",
-                color: "#dc3545",
-                borderRadius: "8px",
-                padding: "9px 14px",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: clearing ? "not-allowed" : "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {clearing ? "Clearing..." : "🧹 Clear Deployments (Dev)"}
-            </button>
-          )}
-        </div>
-
-        {project && (
-          <div
-            style={{ marginTop: "10px", fontSize: "12px", color: "#6c757d" }}
-          >
-            Start (default MOB):{" "}
-            <strong>{ymd(project.startDate) || "—"}</strong> · D-MOB = MOB +{" "}
-            {DEMOB_DAYS} วัน
-          </div>
-        )}
-      </div>
-
-      {/* Step 10–11 table */}
-      <div style={card}>
-        <div style={cardHead}>
-          <span>
-            Step 10–11: Checklist (PPE · Safety Induction · Medical Fit) →
-            Deploy
-          </span>
-          {project && rows.length > 0 && (
-            <span style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <Badge tone="ok">{deployedCount} deployed</Badge>
-              <Badge tone="info">{readyCount} ready</Badge>
-              <button
-                onClick={deployAllReady}
-                disabled={readyCount === 0}
+              <span
                 style={{
-                  background: readyCount > 0 ? "#0f5132" : "#e9ecef",
-                  color: readyCount > 0 ? "#fff" : "#adb5bd",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "7px 14px",
-                  fontSize: "12px",
+                  background: "#e7e9ec",
+                  borderRadius: "6px",
+                  padding: "2px 8px",
                   fontWeight: 700,
-                  cursor: readyCount > 0 ? "pointer" : "not-allowed",
+                  marginRight: "8px",
                 }}
               >
-                🚀 Deploy All Ready
+                Phase 4
+              </span>
+              Steps 10–11: Checklist → Deploy to Site
+            </div>
+          </div>
+        </div>
+
+        {/* project select */}
+        <div style={{ ...card, padding: "16px 18px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              flexWrap: "wrap",
+            }}
+          >
+            <select
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+              style={{
+                flex: "1 1 320px",
+                maxWidth: "420px",
+                border: "1px solid #ced4da",
+                borderRadius: "8px",
+                padding: "10px 12px",
+                fontSize: "14px",
+              }}
+            >
+              <option value="">-- Select Project --</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+
+            {selectedProjectId && (
+              <button
+                onClick={clearProjectDeployments}
+                disabled={clearing}
+                title="Dev tool — ลบ deployment record ทั้งหมดของ project นี้ (ใช้ตอนแก้ position request แล้วมี worker ค้าง)"
+                style={{
+                  background: "#fff",
+                  border: "1px solid #dc3545",
+                  color: "#dc3545",
+                  borderRadius: "8px",
+                  padding: "9px 14px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: clearing ? "not-allowed" : "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {clearing ? "Clearing..." : "🧹 Clear Deployments (Dev)"}
               </button>
-            </span>
+            )}
+          </div>
+
+          {project && (
+            <div
+              style={{ marginTop: "10px", fontSize: "12px", color: "#6c757d" }}
+            >
+              Start (default MOB):{" "}
+              <strong>{ymd(project.startDate) || "—"}</strong> · D-MOB = MOB +{" "}
+              {DEMOB_DAYS} วัน
+            </div>
           )}
         </div>
 
-        {loading ? (
-          <div style={empty}>Loading…</div>
-        ) : !project ? (
-          <div style={empty}>Select a project above.</div>
-        ) : rows.length === 0 ? (
-          <div style={empty}>
-            No workers shortlisted. Go to Allocation first.
+        {/* Step 10–11 table */}
+        <div style={card}>
+          <div style={cardHead}>
+            <span>
+              Step 10–11: Checklist (PPE · Safety Induction · Medical Fit) →
+              Deploy
+            </span>
+            {project && rows.length > 0 && (
+              <span
+                style={{ display: "flex", gap: "8px", alignItems: "center" }}
+              >
+                <Badge tone="ok">{deployedCount} deployed</Badge>
+                <Badge tone="info">{readyCount} ready</Badge>
+                <button
+                  onClick={deployAllReady}
+                  disabled={readyCount === 0}
+                  style={{
+                    background: readyCount > 0 ? "#0f5132" : "#e9ecef",
+                    color: readyCount > 0 ? "#fff" : "#adb5bd",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "7px 14px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: readyCount > 0 ? "pointer" : "not-allowed",
+                  }}
+                >
+                  🚀 Deploy All Ready
+                </button>
+              </span>
+            )}
           </div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th style={th}>Worker</th>
-                  <th style={th}>Position</th>
-                  <th style={th}>Medical Fit</th>
-                  <th style={th}>PPE</th>
-                  <th style={th}>Safety Induction</th>
-                  <th style={th}>MOB</th>
-                  <th style={th}>D-MOB</th>
-                  <th style={th}>Platform</th>
-                  <th style={th}>Status</th>
-                  <th style={th}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const med = medicalFit(r.medicalExpiry);
-                  const st = rowStatus(r);
-                  const locked = r.deployed;
-                  const age = calcAge(r.birthDate);
-                  return (
-                    <tr key={r.employeeId}>
-                      <td style={td}>
-                        <div style={{ fontWeight: 700 }}>{r.fullName}</div>
-                        <div style={{ fontSize: "11px", color: "#6c757d" }}>
-                          {r.empCode}
-                          {age ? ` · Age ${age}` : ""}
-                        </div>
-                      </td>
-                      <td style={td}>{r.position}</td>
 
-                      <td style={td}>
-                        <Badge tone={med.tone}>{med.label}</Badge>
-                      </td>
-
-                      <td style={{ ...td, textAlign: "center" }}>
-                        <input
-                          type="checkbox"
-                          checked={r.ppe}
-                          disabled={locked}
-                          onChange={(e) =>
-                            updateRow(r.employeeId, { ppe: e.target.checked })
-                          }
-                        />
-                      </td>
-
-                      <td style={{ ...td, textAlign: "center" }}>
-                        <input
-                          type="checkbox"
-                          checked={r.safetyInduction}
-                          disabled={locked}
-                          onChange={(e) =>
-                            updateRow(r.employeeId, {
-                              safetyInduction: e.target.checked,
-                            })
-                          }
-                        />
-                      </td>
-
-                      <td style={td}>
-                        <input
-                          type="date"
-                          value={r.mobDate || ""}
-                          disabled={locked}
-                          onChange={(e) =>
-                            updateRow(r.employeeId, { mobDate: e.target.value })
-                          }
-                          style={input}
-                        />
-                      </td>
-
-                      <td style={{ ...td, color: "#6c757d" }}>
-                        {addDays(r.mobDate, DEMOB_DAYS) || "—"}
-                      </td>
-
-                      <td style={td}>
-                        <input
-                          type="text"
-                          placeholder="e.g. BELQ"
-                          value={r.platform}
-                          disabled={locked}
-                          onChange={(e) =>
-                            updateRow(r.employeeId, {
-                              platform: e.target.value,
-                            })
-                          }
-                          style={{ ...input, maxWidth: "110px" }}
-                        />
-                      </td>
-
-                      <td style={td}>
-                        <Badge tone={STATUS_TONE[st]}>{STATUS_LABEL[st]}</Badge>
-                        {r.deployed && r.deployedAt && (
-                          <div
-                            style={{
-                              fontSize: "10px",
-                              color: "#adb5bd",
-                              marginTop: "3px",
-                            }}
-                          >
-                            Deployed {ymd(r.deployedAt)}
+          {loading ? (
+            <div style={empty}>Loading…</div>
+          ) : !project ? (
+            <div style={empty}>Select a project above.</div>
+          ) : rows.length === 0 ? (
+            <div style={empty}>
+              No workers shortlisted. Go to Allocation first.
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Worker</th>
+                    <th style={th}>Position</th>
+                    <th style={th}>Medical Fit</th>
+                    <th style={th}>PPE</th>
+                    <th style={th}>Safety Induction</th>
+                    <th style={th}>MOB</th>
+                    <th style={th}>D-MOB</th>
+                    <th style={th}>Platform</th>
+                    <th style={th}>Status</th>
+                    <th style={th}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const med = medicalFit(r.medicalExpiry);
+                    const st = rowStatus(r);
+                    const locked = r.deployed;
+                    const age = calcAge(r.birthDate);
+                    return (
+                      <tr key={r.employeeId}>
+                        <td style={td}>
+                          <div style={{ fontWeight: 700 }}>{r.fullName}</div>
+                          <div style={{ fontSize: "11px", color: "#6c757d" }}>
+                            {r.empCode}
+                            {age ? ` · Age ${age}` : ""}
                           </div>
-                        )}
-                      </td>
+                        </td>
+                        <td style={td}>{r.position}</td>
 
-                      {/* actions */}
-                      <td style={td}>
-                        {r.deployed ? (
-                          <button
-                            onClick={() => undeployRow(r.employeeId)}
-                            style={{
-                              ...btnBase,
-                              border: "1px solid #f5c2c7",
-                              color: "#842029",
-                            }}
-                          >
-                            Undeploy
-                          </button>
-                        ) : (
-                          <div style={{ display: "flex", gap: "6px" }}>
-                            <button
-                              onClick={() => deployRow(r.employeeId)}
-                              disabled={!isReady(r)}
+                        <td style={td}>
+                          <Badge tone={med.tone}>{med.label}</Badge>
+                        </td>
+
+                        <td style={{ ...td, textAlign: "center" }}>
+                          <input
+                            type="checkbox"
+                            checked={r.ppe}
+                            disabled={locked}
+                            onChange={(e) =>
+                              updateRow(r.employeeId, { ppe: e.target.checked })
+                            }
+                          />
+                        </td>
+
+                        <td style={{ ...td, textAlign: "center" }}>
+                          <input
+                            type="checkbox"
+                            checked={r.safetyInduction}
+                            disabled={locked}
+                            onChange={(e) =>
+                              updateRow(r.employeeId, {
+                                safetyInduction: e.target.checked,
+                              })
+                            }
+                          />
+                        </td>
+
+                        <td style={td}>
+                          <input
+                            type="date"
+                            value={r.mobDate || ""}
+                            disabled={locked}
+                            onChange={(e) =>
+                              updateRow(r.employeeId, {
+                                mobDate: e.target.value,
+                              })
+                            }
+                            style={input}
+                          />
+                        </td>
+
+                        <td style={{ ...td, color: "#6c757d" }}>
+                          {addDays(r.mobDate, DEMOB_DAYS) || "—"}
+                        </td>
+
+                        <td style={td}>
+                          <input
+                            type="text"
+                            placeholder="e.g. BELQ"
+                            value={r.platform}
+                            disabled={locked}
+                            onChange={(e) =>
+                              updateRow(r.employeeId, {
+                                platform: e.target.value,
+                              })
+                            }
+                            style={{ ...input, maxWidth: "110px" }}
+                          />
+                        </td>
+
+                        <td style={td}>
+                          <Badge tone={STATUS_TONE[st]}>
+                            {STATUS_LABEL[st]}
+                          </Badge>
+                          {r.deployed && r.deployedAt && (
+                            <div
                               style={{
-                                ...btnBase,
-                                background: isReady(r) ? "#fff" : "#f8f9fa",
-                                border: `1px solid ${
-                                  isReady(r) ? "#0f5132" : "#dee2e6"
-                                }`,
-                                color: isReady(r) ? "#0f5132" : "#adb5bd",
-                                cursor: isReady(r) ? "pointer" : "not-allowed",
+                                fontSize: "10px",
+                                color: "#adb5bd",
+                                marginTop: "3px",
                               }}
                             >
-                              Deploy
-                            </button>
+                              Deployed {ymd(r.deployedAt)}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* actions */}
+                        <td style={td}>
+                          {r.deployed ? (
                             <button
-                              onClick={() => removeFromShortlist(r)}
-                              title="เอาออกจาก shortlist (กลับเป็น proposed ใน Allocation)"
+                              onClick={() => undeployRow(r.employeeId)}
                               style={{
                                 ...btnBase,
-                                border: "1px solid #dee2e6",
-                                color: "#6c757d",
+                                border: "1px solid #f5c2c7",
+                                color: "#842029",
                               }}
                             >
-                              Remove
+                              Undeploy
                             </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                          ) : (
+                            <div style={{ display: "flex", gap: "6px" }}>
+                              <button
+                                onClick={() => deployRow(r.employeeId)}
+                                disabled={!isReady(r)}
+                                style={{
+                                  ...btnBase,
+                                  background: isReady(r) ? "#fff" : "#f8f9fa",
+                                  border: `1px solid ${
+                                    isReady(r) ? "#0f5132" : "#dee2e6"
+                                  }`,
+                                  color: isReady(r) ? "#0f5132" : "#adb5bd",
+                                  cursor: isReady(r)
+                                    ? "pointer"
+                                    : "not-allowed",
+                                }}
+                              >
+                                Deploy
+                              </button>
+                              <button
+                                onClick={() => removeFromShortlist(r)}
+                                title="เอาออกจาก shortlist (กลับเป็น proposed ใน Allocation)"
+                                style={{
+                                  ...btnBase,
+                                  border: "1px solid #dee2e6",
+                                  color: "#6c757d",
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -338,8 +338,8 @@ export default function WorkerDetail() {
     w.isPermanent || w.healthRisk || w.healthNote || w.sseLevel;
 
   return (
-    <div className="container-fluid p-4">
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
+    <div className="container-fluid p-0">
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         {/* Back */}
         <button
           onClick={() => navigate("/workers")}

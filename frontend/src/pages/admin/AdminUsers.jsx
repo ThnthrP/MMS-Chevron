@@ -232,368 +232,365 @@ export default function AdminUsers() {
   };
 
   return (
-    <div
-      style={{
-        width: "100%",
-        padding: "8px 20px",
-        boxSizing: "border-box",
-        display: "flex",
-        flexDirection: "column",
-        gap: "16px",
-      }}
-    >
-      {/* header */}
-      <div
-        style={{
-          ...card,
-          padding: "18px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: "12px",
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <div style={{ fontSize: "20px", fontWeight: 800 }}>
-            👤 User Management
-          </div>
-          <div style={{ marginTop: "4px", fontSize: "12px", color: "#6c757d" }}>
-            จัดการบัญชีผู้ใช้ · role · การผูกกับ worker
-          </div>
-        </div>
-        <button
-          onClick={() => setShowAdd(true)}
+    <div className="container-fluid p-0">
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+        {/* header */}
+        <div
           style={{
-            background: "#0d6efd",
-            color: "#fff",
-            border: "none",
-            borderRadius: "8px",
-            padding: "9px 16px",
-            fontSize: "13px",
-            fontWeight: 700,
-            cursor: "pointer",
+            ...card,
+            padding: "18px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "12px",
+            flexWrap: "wrap",
           }}
         >
-          ＋ Add User
-        </button>
-      </div>
-
-      {/* search */}
-      <div style={{ ...card, padding: "12px 14px" }}>
-        <input
-          type="text"
-          placeholder="🔍 ค้นหาชื่อ หรือ email…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ ...input, maxWidth: "360px" }}
-        />
-      </div>
-
-      {/* table */}
-      <div style={card}>
-        {loading ? (
-          <div
-            style={{ padding: "28px", textAlign: "center", color: "#6c757d" }}
-          >
-            Loading…
+          <div>
+            <div style={{ fontSize: "20px", fontWeight: 800 }}>
+              👤 User Management
+            </div>
+            <div
+              style={{ marginTop: "4px", fontSize: "12px", color: "#6c757d" }}
+            >
+              จัดการบัญชีผู้ใช้ · role · การผูกกับ worker
+            </div>
           </div>
-        ) : filtered.length === 0 ? (
-          <div
-            style={{ padding: "28px", textAlign: "center", color: "#6c757d" }}
+          <button
+            onClick={() => setShowAdd(true)}
+            style={{
+              background: "#0d6efd",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "9px 16px",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
           >
-            ไม่พบผู้ใช้
-          </div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th style={th}>Name</th>
-                  <th style={th}>Email</th>
-                  <th style={th}>Role</th>
-                  <th style={th}>Linked Worker</th>
-                  <th style={th}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((u) => {
-                  const self = isSelf(u.id);
-                  const dirty = roleDraft[u.id] !== u.role?.id;
-                  // ตัวเลือก employee = available + คนที่ผูกอยู่ตอนนี้
-                  const empOptions = [...availableEmps];
-                  if (
-                    u.employee &&
-                    !empOptions.find((e) => e.id === u.employee.id)
-                  ) {
-                    empOptions.unshift(u.employee);
-                  }
-                  return (
-                    <tr key={u.id}>
-                      <td style={td}>
-                        <span style={{ fontWeight: 700 }}>{u.name}</span>
-                        {self && (
-                          <span
+            ＋ Add User
+          </button>
+        </div>
+
+        {/* search */}
+        <div style={{ ...card, padding: "12px 14px" }}>
+          <input
+            type="text"
+            placeholder="🔍 ค้นหาชื่อ หรือ email…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ ...input, maxWidth: "360px" }}
+          />
+        </div>
+
+        {/* table */}
+        <div style={card}>
+          {loading ? (
+            <div
+              style={{ padding: "28px", textAlign: "center", color: "#6c757d" }}
+            >
+              Loading…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div
+              style={{ padding: "28px", textAlign: "center", color: "#6c757d" }}
+            >
+              ไม่พบผู้ใช้
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Name</th>
+                    <th style={th}>Email</th>
+                    <th style={th}>Role</th>
+                    <th style={th}>Linked Worker</th>
+                    <th style={th}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((u) => {
+                    const self = isSelf(u.id);
+                    const dirty = roleDraft[u.id] !== u.role?.id;
+                    // ตัวเลือก employee = available + คนที่ผูกอยู่ตอนนี้
+                    const empOptions = [...availableEmps];
+                    if (
+                      u.employee &&
+                      !empOptions.find((e) => e.id === u.employee.id)
+                    ) {
+                      empOptions.unshift(u.employee);
+                    }
+                    return (
+                      <tr key={u.id}>
+                        <td style={td}>
+                          <span style={{ fontWeight: 700 }}>{u.name}</span>
+                          {self && (
+                            <span
+                              style={{
+                                marginLeft: "6px",
+                                fontSize: "10px",
+                                color: "#adb5bd",
+                              }}
+                            >
+                              (you)
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ ...td, color: "#6c757d" }}>{u.email}</td>
+
+                        {/* role: badge + dropdown */}
+                        <td style={td}>
+                          <div
                             style={{
-                              marginLeft: "6px",
-                              fontSize: "10px",
-                              color: "#adb5bd",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
                             }}
                           >
-                            (you)
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ ...td, color: "#6c757d" }}>{u.email}</td>
+                            <RoleBadge
+                              name={
+                                roleList.find((r) => r.id === roleDraft[u.id])
+                                  ?.name || u.role?.name
+                              }
+                            />
+                            <select
+                              value={roleDraft[u.id] || ""}
+                              disabled={self}
+                              onChange={(e) =>
+                                setRoleDraft((p) => ({
+                                  ...p,
+                                  [u.id]: e.target.value,
+                                }))
+                              }
+                              style={{
+                                ...select,
+                                cursor: self ? "not-allowed" : "pointer",
+                              }}
+                              title={self ? "เปลี่ยน role ตัวเองไม่ได้" : ""}
+                            >
+                              {roleList.map((r) => (
+                                <option key={r.id} value={r.id}>
+                                  {r.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </td>
 
-                      {/* role: badge + dropdown */}
-                      <td style={td}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                          }}
-                        >
-                          <RoleBadge
-                            name={
-                              roleList.find((r) => r.id === roleDraft[u.id])
-                                ?.name || u.role?.name
-                            }
-                          />
+                        {/* linked worker */}
+                        <td style={td}>
                           <select
-                            value={roleDraft[u.id] || ""}
-                            disabled={self}
+                            value={u.employee?.id || ""}
                             onChange={(e) =>
-                              setRoleDraft((p) => ({
-                                ...p,
-                                [u.id]: e.target.value,
-                              }))
+                              handleLinkEmployee(u.id, e.target.value)
                             }
-                            style={{
-                              ...select,
-                              cursor: self ? "not-allowed" : "pointer",
-                            }}
-                            title={self ? "เปลี่ยน role ตัวเองไม่ได้" : ""}
+                            style={select}
                           >
-                            {roleList.map((r) => (
-                              <option key={r.id} value={r.id}>
-                                {r.name}
+                            <option value="">— None —</option>
+                            {empOptions.map((e) => (
+                              <option key={e.id} value={e.id}>
+                                {e.fullName} ({e.empCode})
                               </option>
                             ))}
                           </select>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* linked worker */}
-                      <td style={td}>
-                        <select
-                          value={u.employee?.id || ""}
-                          onChange={(e) =>
-                            handleLinkEmployee(u.id, e.target.value)
-                          }
-                          style={select}
-                        >
-                          <option value="">— None —</option>
-                          {empOptions.map((e) => (
-                            <option key={e.id} value={e.id}>
-                              {e.fullName} ({e.empCode})
-                            </option>
-                          ))}
-                        </select>
-                      </td>
+                        {/* actions */}
+                        <td style={td}>
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            <button
+                              onClick={() => handleSaveRole(u.id)}
+                              disabled={self || !dirty}
+                              style={{
+                                border: `1px solid ${self || !dirty ? "#dee2e6" : "#0d6efd"}`,
+                                background: "#fff",
+                                color: self || !dirty ? "#adb5bd" : "#0d6efd",
+                                borderRadius: "6px",
+                                padding: "5px 12px",
+                                fontSize: "12px",
+                                fontWeight: 600,
+                                cursor: self || !dirty ? "default" : "pointer",
+                              }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => handleDelete(u)}
+                              disabled={self}
+                              title={self ? "ลบบัญชีตัวเองไม่ได้" : "ลบผู้ใช้"}
+                              style={{
+                                border: `1px solid ${self ? "#dee2e6" : "#f5c2c7"}`,
+                                background: "#fff",
+                                color: self ? "#adb5bd" : "#842029",
+                                borderRadius: "6px",
+                                padding: "5px 12px",
+                                fontSize: "12px",
+                                fontWeight: 600,
+                                cursor: self ? "default" : "pointer",
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
-                      {/* actions */}
-                      <td style={td}>
-                        <div style={{ display: "flex", gap: "6px" }}>
-                          <button
-                            onClick={() => handleSaveRole(u.id)}
-                            disabled={self || !dirty}
-                            style={{
-                              border: `1px solid ${self || !dirty ? "#dee2e6" : "#0d6efd"}`,
-                              background: "#fff",
-                              color: self || !dirty ? "#adb5bd" : "#0d6efd",
-                              borderRadius: "6px",
-                              padding: "5px 12px",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              cursor: self || !dirty ? "default" : "pointer",
-                            }}
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => handleDelete(u)}
-                            disabled={self}
-                            title={self ? "ลบบัญชีตัวเองไม่ได้" : "ลบผู้ใช้"}
-                            style={{
-                              border: `1px solid ${self ? "#dee2e6" : "#f5c2c7"}`,
-                              background: "#fff",
-                              color: self ? "#adb5bd" : "#842029",
-                              borderRadius: "6px",
-                              padding: "5px 12px",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              cursor: self ? "default" : "pointer",
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        {/* Add User modal */}
+        {showAdd && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              zIndex: 999999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "20px",
+            }}
+            onClick={() => setShowAdd(false)}
+          >
+            <div
+              style={{ ...card, width: "100%", maxWidth: "440px" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  background: "#1e3a5f",
+                  color: "#fff",
+                  padding: "14px 20px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ fontWeight: 700, fontSize: "15px" }}>
+                  ＋ Add User
+                </span>
+                <button
+                  onClick={() => setShowAdd(false)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#fff",
+                    fontSize: "20px",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              <div
+                style={{
+                  padding: "20px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                }}
+              >
+                <input
+                  style={input}
+                  placeholder="Name"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+                <input
+                  style={input}
+                  placeholder="Email"
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                />
+                <input
+                  style={input}
+                  placeholder="Password"
+                  type="password"
+                  value={form.password}
+                  onChange={(e) =>
+                    setForm({ ...form, password: e.target.value })
+                  }
+                />
+                <select
+                  style={input}
+                  value={form.roleId}
+                  onChange={(e) => setForm({ ...form, roleId: e.target.value })}
+                >
+                  <option value="">-- Select Role --</option>
+                  {roleList.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  style={input}
+                  value={form.employeeId}
+                  onChange={(e) =>
+                    setForm({ ...form, employeeId: e.target.value })
+                  }
+                >
+                  <option value="">Link worker (optional)…</option>
+                  {availableEmps.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.fullName} ({e.empCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div
+                style={{
+                  padding: "14px 20px",
+                  borderTop: "1px solid #e9ecef",
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: "8px",
+                }}
+              >
+                <button
+                  onClick={() => setShowAdd(false)}
+                  style={{
+                    border: "1px solid #dee2e6",
+                    background: "#fff",
+                    color: "#6c757d",
+                    borderRadius: "8px",
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreate}
+                  disabled={saving}
+                  style={{
+                    border: "none",
+                    background: saving ? "#adb5bd" : "#0d6efd",
+                    color: "#fff",
+                    borderRadius: "8px",
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: saving ? "default" : "pointer",
+                  }}
+                >
+                  {saving ? "Creating…" : "Create User"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
-
-      {/* Add User modal */}
-      {showAdd && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 999999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-          }}
-          onClick={() => setShowAdd(false)}
-        >
-          <div
-            style={{ ...card, width: "100%", maxWidth: "440px" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              style={{
-                background: "#1e3a5f",
-                color: "#fff",
-                padding: "14px 20px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <span style={{ fontWeight: 700, fontSize: "15px" }}>
-                ＋ Add User
-              </span>
-              <button
-                onClick={() => setShowAdd(false)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#fff",
-                  fontSize: "20px",
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
-            </div>
-            <div
-              style={{
-                padding: "20px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "12px",
-              }}
-            >
-              <input
-                style={input}
-                placeholder="Name"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
-              <input
-                style={input}
-                placeholder="Email"
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-              />
-              <input
-                style={input}
-                placeholder="Password"
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-              />
-              <select
-                style={input}
-                value={form.roleId}
-                onChange={(e) => setForm({ ...form, roleId: e.target.value })}
-              >
-                <option value="">-- Select Role --</option>
-                {roleList.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                style={input}
-                value={form.employeeId}
-                onChange={(e) =>
-                  setForm({ ...form, employeeId: e.target.value })
-                }
-              >
-                <option value="">Link worker (optional)…</option>
-                {availableEmps.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.fullName} ({e.empCode})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div
-              style={{
-                padding: "14px 20px",
-                borderTop: "1px solid #e9ecef",
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "8px",
-              }}
-            >
-              <button
-                onClick={() => setShowAdd(false)}
-                style={{
-                  border: "1px solid #dee2e6",
-                  background: "#fff",
-                  color: "#6c757d",
-                  borderRadius: "8px",
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreate}
-                disabled={saving}
-                style={{
-                  border: "none",
-                  background: saving ? "#adb5bd" : "#0d6efd",
-                  color: "#fff",
-                  borderRadius: "8px",
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  cursor: saving ? "default" : "pointer",
-                }}
-              >
-                {saving ? "Creating…" : "Create User"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
