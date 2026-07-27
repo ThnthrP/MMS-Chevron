@@ -14,8 +14,10 @@ export default function Workers() {
 
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(false);
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, userData } = useContext(AppContent);
   const navigate = useNavigate();
+
+  const canManageWorkers = ["admin", "hr"].includes(userData?.role?.name);
 
   const departments = [
     ...new Set(workers.map((w) => w.division).filter(Boolean)),
@@ -248,21 +250,23 @@ export default function Workers() {
                 Recruitment & Data Entry
               </span>
             </div>
-            <button
-              onClick={() => navigate("/workers/add")}
-              style={{
-                background: "#0d6efd",
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                padding: "8px 16px",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              + Add Worker
-            </button>
+            {canManageWorkers && (
+              <button
+                onClick={() => navigate("/workers/add")}
+                style={{
+                  background: "#0d6efd",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                + Add Worker
+              </button>
+            )}
           </div>
         </div>
 
@@ -766,6 +770,7 @@ export default function Workers() {
                           gap: "4px",
                         }}
                       >
+                        {/* View - ทุก role ที่เข้าหน้านี้ได้ เห็น/กดได้เสมอ */}
                         <button
                           onClick={() => navigate(`/workers/${worker.id}`)}
                           style={{
@@ -780,34 +785,42 @@ export default function Workers() {
                         >
                           👁
                         </button>
-                        <button
-                          onClick={() => navigate(`/workers/${worker.id}/edit`)}
-                          style={{
-                            background: "#fff",
-                            border: "1px solid #dee2e6",
-                            borderRadius: "6px",
-                            padding: "4px 8px",
-                            cursor: "pointer",
-                            fontSize: "12px",
-                            lineHeight: 1,
-                          }}
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          onClick={() => handleDelete(worker.id)}
-                          style={{
-                            background: "#fff",
-                            border: "1px solid #f5c6cb",
-                            borderRadius: "6px",
-                            padding: "4px 8px",
-                            cursor: "pointer",
-                            fontSize: "12px",
-                            lineHeight: 1,
-                          }}
-                        >
-                          🗑
-                        </button>
+
+                        {/* Edit/Delete - เฉพาะ admin/hr */}
+                        {canManageWorkers && (
+                          <>
+                            <button
+                              onClick={() =>
+                                navigate(`/workers/${worker.id}/edit`)
+                              }
+                              style={{
+                                background: "#fff",
+                                border: "1px solid #dee2e6",
+                                borderRadius: "6px",
+                                padding: "4px 8px",
+                                cursor: "pointer",
+                                fontSize: "12px",
+                                lineHeight: 1,
+                              }}
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => handleDelete(worker.id)}
+                              style={{
+                                background: "#fff",
+                                border: "1px solid #f5c6cb",
+                                borderRadius: "6px",
+                                padding: "4px 8px",
+                                cursor: "pointer",
+                                fontSize: "12px",
+                                lineHeight: 1,
+                              }}
+                            >
+                              🗑
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

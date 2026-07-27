@@ -4,6 +4,7 @@ import { AppContent } from "../../context/AppContext";
 import axios from "axios";
 import { toast } from "react-toastify";
 import experteamLogo from "../../assets/experteam_logo.png";
+import { Eye, EyeOff } from "lucide-react"; // ← เพิ่ม import ไอคอน
 
 const Login = () => {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ const Login = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false); // ← เพิ่ม state
 
   const [loading, setLoading] = useState(false);
 
@@ -136,14 +138,25 @@ const Login = () => {
             required
           />
 
-          <input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            type="password"
-            placeholder="รหัสผ่าน"
-            className="w-full border border-gray-300 rounded-md px-4 py-2"
-            required
-          />
+          {/* Password field พร้อมปุ่มลูกตา */}
+          <div className="relative">
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type={showPassword ? "text" : "password"}
+              placeholder="รหัสผ่าน"
+              className="w-full border border-gray-300 rounded-md px-4 py-2 pr-10"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              tabIndex={-1}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
 
           <div className="text-right">
             <span
