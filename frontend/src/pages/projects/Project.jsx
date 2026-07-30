@@ -4,11 +4,13 @@ import { AppContent } from "../../context/AppContext";
 import { useNavigate } from "react-router-dom";
 
 export default function Project() {
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, userData } = useContext(AppContent);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [clients, setClients] = useState([]);
+
+  const canManageProjects = ["admin", "pe"].includes(userData?.role?.name);
 
   const [form, setForm] = useState({
     name: "",
@@ -17,7 +19,7 @@ export default function Project() {
     notes: "",
     startDate: "",
     endDate: "",
-    isOffshore: false, // ← เพิ่มบรรทัดนี้
+    isOffshore: false,
   });
 
   const navigate = useNavigate();
@@ -74,7 +76,7 @@ export default function Project() {
           notes: form.notes || null,
           startDate: form.startDate || null,
           endDate: form.endDate || null,
-          isOffshore: form.isOffshore, // ← เพิ่มบรรทัดนี้
+          isOffshore: form.isOffshore,
         },
         { withCredentials: true },
       );
@@ -86,7 +88,7 @@ export default function Project() {
         notes: "",
         startDate: "",
         endDate: "",
-        isOffshore: false, // ← เพิ่มบรรทัดนี้ (reset ตอนปิด modal)
+        isOffshore: false,
       });
       fetchProjects();
     } catch (error) {
@@ -159,24 +161,28 @@ export default function Project() {
                 Step 7: Project Requests
               </span>
             </div>
-            <button
-              onClick={() => setShowModal(true)}
-              style={{
-                background: "#0d6efd",
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                padding: "8px 16px",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
-            >
-              + New Project Request
-            </button>
+
+            {/* + New Project Request — admin/pe เท่านั้น */}
+            {canManageProjects && (
+              <button
+                onClick={() => setShowModal(true)}
+                style={{
+                  background: "#0d6efd",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                + New Project Request
+              </button>
+            )}
           </div>
         </div>
 
@@ -272,7 +278,7 @@ export default function Project() {
                         (e.currentTarget.style.background = "#fff")
                       }
                     >
-                      {/* PROJECT — ชื่อคลิกได้ */}
+                      {/* PROJECT — ชื่อคลิกได้ (ทุก role ดูได้) */}
                       <td style={{ padding: "14px 16px" }}>
                         <div
                           onClick={() => navigate(`/projects/${p.id}`)}
@@ -319,12 +325,17 @@ export default function Project() {
                           : "—"}
                       </td>
 
-                      {/* POSITIONS */}
+                      {/* POSITIONS — คลิกดูได้เสมอ ไม่ gate role (แค่ view) */}
                       <td style={{ padding: "14px 16px", textAlign: "center" }}>
                         {posCount > 0 ? (
                           <span
-                            style={{ fontSize: "13px", color: "#495057" }}
-                            title={`${total} total headcount`}
+                            onClick={() => navigate(`/projects/${p.id}`)}
+                            style={{
+                              fontSize: "13px",
+                              color: "#495057",
+                              cursor: "pointer",
+                            }}
+                            title={`${total} total headcount — คลิกเพื่อดูรายละเอียด`}
                           >
                             {posCount} position{posCount > 1 ? "s" : ""}
                             <span style={{ color: "#6c757d" }}>
@@ -345,7 +356,11 @@ export default function Project() {
                               cursor: "pointer",
                               whiteSpace: "nowrap",
                             }}
-                            title="ยังไม่มี position — คลิกเพื่อเพิ่ม"
+                            title={
+                              canManageProjects
+                                ? "ยังไม่มี position — คลิกเพื่อเพิ่ม"
+                                : "ยังไม่มี position"
+                            }
                           >
                             No positions yet
                           </span>
@@ -361,13 +376,22 @@ export default function Project() {
                             gap: "8px",
                           }}
                         >
+                          {/* Manage/View — ทุก role เข้าได้ label ต่างกันตามสิทธิ์ */}
                           <button
-                            title="Open project — manage positions & allocation"
+                            title={
+                              canManageProjects
+                                ? "Open project — manage positions & allocation"
+                                : "View project details"
+                            }
                             onClick={() => navigate(`/projects/${p.id}`)}
                             style={{
-                              background: "#0d6efd",
-                              color: "#fff",
-                              border: "none",
+                              background: canManageProjects
+                                ? "#0d6efd"
+                                : "#fff",
+                              color: canManageProjects ? "#fff" : "#495057",
+                              border: canManageProjects
+                                ? "none"
+                                : "1px solid #dee2e6",
                               borderRadius: "6px",
                               padding: "4px 12px",
                               cursor: "pointer",
@@ -375,40 +399,46 @@ export default function Project() {
                               fontWeight: 600,
                             }}
                           >
-                            Manage
+                            {canManageProjects ? "Manage" : "View"}
                           </button>
-                          <button
-                            title="Edit"
-                            onClick={() =>
-                              navigate(`/projects/${p.id}/edit`)
-                            }
-                            style={{
-                              background: "#fff",
-                              border: "1px solid #dee2e6",
-                              borderRadius: "6px",
-                              padding: "4px 8px",
-                              cursor: "pointer",
-                              fontSize: "13px",
-                              lineHeight: 1,
-                            }}
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            title="Delete"
-                            onClick={() => handleDelete(p.id)}
-                            style={{
-                              background: "#fff",
-                              border: "1px solid #f5c6cb",
-                              borderRadius: "6px",
-                              padding: "4px 8px",
-                              cursor: "pointer",
-                              fontSize: "13px",
-                              lineHeight: 1,
-                            }}
-                          >
-                            🗑
-                          </button>
+
+                          {/* Edit/Delete — admin/pe เท่านั้น */}
+                          {canManageProjects && (
+                            <>
+                              <button
+                                title="Edit"
+                                onClick={() =>
+                                  navigate(`/projects/${p.id}/edit`)
+                                }
+                                style={{
+                                  background: "#fff",
+                                  border: "1px solid #dee2e6",
+                                  borderRadius: "6px",
+                                  padding: "4px 8px",
+                                  cursor: "pointer",
+                                  fontSize: "13px",
+                                  lineHeight: 1,
+                                }}
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                title="Delete"
+                                onClick={() => handleDelete(p.id)}
+                                style={{
+                                  background: "#fff",
+                                  border: "1px solid #f5c6cb",
+                                  borderRadius: "6px",
+                                  padding: "4px 8px",
+                                  cursor: "pointer",
+                                  fontSize: "13px",
+                                  lineHeight: 1,
+                                }}
+                              >
+                                🗑
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -420,8 +450,8 @@ export default function Project() {
         </div>
       </div>
 
-      {/* Modal */}
-      {showModal && (
+      {/* Modal — ไม่ต้อง gate เพิ่ม เพราะ trigger ปุ่มเดียวคือ "+ New Project Request" ที่ gate ไว้แล้ว */}
+      {showModal && canManageProjects && (
         <div
           style={{
             position: "fixed",
@@ -488,7 +518,6 @@ export default function Project() {
                   gap: "16px",
                 }}
               >
-                {/* Project Name */}
                 <div>
                   <label style={labelStyle}>Project Name *</label>
                   <input
@@ -500,7 +529,6 @@ export default function Project() {
                   />
                 </div>
 
-                {/* Client */}
                 <div>
                   <label style={labelStyle}>Client *</label>
                   <select
@@ -521,7 +549,6 @@ export default function Project() {
                   </select>
                 </div>
 
-                {/* Location */}
                 <div>
                   <label style={labelStyle}>Location / Site</label>
                   <input
@@ -535,7 +562,6 @@ export default function Project() {
                   />
                 </div>
 
-                {/* Start Date */}
                 <div>
                   <label style={labelStyle}>Start Date</label>
                   <input
@@ -548,7 +574,6 @@ export default function Project() {
                   />
                 </div>
 
-                {/* End Date */}
                 <div>
                   <label style={labelStyle}>End Date</label>
                   <input
@@ -561,7 +586,6 @@ export default function Project() {
                   />
                 </div>
 
-                {/* Offshore */}
                 <div
                   style={{
                     display: "flex",
@@ -588,7 +612,6 @@ export default function Project() {
                 </div>
               </div>
 
-              {/* Notes */}
               <div style={{ marginTop: "16px" }}>
                 <label style={labelStyle}>Notes</label>
                 <textarea

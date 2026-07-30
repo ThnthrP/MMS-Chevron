@@ -5,6 +5,15 @@ import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
 // import { DIVISIONS } from "../../constants/divisions";
 
+// แปลง "YYYY-MM-DD" -> "DD/MM/YYYY" สำหรับแสดงผลในตาราง
+const formatDateDisplay = (val) => {
+  if (!val) return "—";
+  const parts = val.split("-");
+  if (parts.length !== 3) return val;
+  const [y, m, d] = parts;
+  return `${d}/${m}/${y}`;
+};
+
 export default function AddWorker() {
   const navigate = useNavigate();
   const { backendUrl } = useContext(AppContent);
@@ -15,6 +24,8 @@ export default function AddWorker() {
 
   const [certifications, setCertifications] = useState([]);
   const [globalTrainings, setGlobalTrainings] = useState([]);
+  // id (local) ของ certification ที่กำลังเปิด form แก้ไขอยู่ — null = ไม่มีใคร edit อยู่ (โหมดตาราง)
+  const [editingCertId, setEditingCertId] = useState(null);
 
   const [divisions, setDivisions] = useState([]);
 
@@ -67,6 +78,42 @@ export default function AddWorker() {
   // ── Photo upload ──
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState("");
+
+  const [deployments, setDeployments] = useState([]);
+  // id (local) ของ deployment ที่กำลังเปิด form แก้ไขอยู่ — null = ไม่มีใคร edit อยู่ (โหมดตาราง)
+  const [editingDeploymentId, setEditingDeploymentId] = useState(null);
+
+  const addDeployment = () => {
+    const newId = Date.now();
+    setDeployments((prev) => [
+      ...prev,
+      {
+        id: newId,
+        client: "",
+        field: "",
+        positionId: "",
+        platform: "",
+        mobDate: "",
+        demobDate: "",
+      },
+    ]);
+    // เปิด form ให้กรอกทันที
+    setEditingDeploymentId(newId);
+  };
+  const composeProjectLabel = (client, field, platform) => {
+    if (!client) return "";
+    if (field) return `Supply Manpower for ${client} : ${field}`;
+    if (platform) return `Supply Manpower for ${client} at ${platform}`;
+    return `Supply Manpower for ${client}`;
+  };
+  const removeDeployment = (depId) => {
+    setDeployments((prev) => prev.filter((d) => d.id !== depId));
+    if (editingDeploymentId === depId) setEditingDeploymentId(null);
+  };
+  const handleDeploymentChange = (localId, field, value) =>
+    setDeployments((prev) =>
+      prev.map((d) => (d.id === localId ? { ...d, [field]: value } : d)),
+    );
 
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
@@ -122,18 +169,23 @@ export default function AddWorker() {
   }, [backendUrl]);
 
   const addCertification = () => {
+    const newId = Date.now();
     setCertifications((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: newId,
         globalTrainingId: "",
         completedDate: "",
         expiryDate: "",
       },
     ]);
+    // เปิด form ให้กรอกทันที
+    setEditingCertId(newId);
   };
-  const removeCertification = (id) =>
+  const removeCertification = (id) => {
     setCertifications((prev) => prev.filter((c) => c.id !== id));
+    if (editingCertId === id) setEditingCertId(null);
+  };
   const handleCertChange = (id, field, value) =>
     setCertifications((prev) =>
       prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)),
@@ -233,6 +285,25 @@ export default function AddWorker() {
           { withCredentials: true },
         );
       }
+
+      for (const dep of deployments) {
+        if (!dep.client && !dep.mobDate) continue;
+        await axios.post(
+          `${backendUrl}/api/workers/${newWorker.id}/deployments`,
+          {
+            projectLabel: composeProjectLabel(
+              dep.client,
+              dep.field,
+              dep.platform,
+            ),
+            positionId: dep.positionId || null,
+            platform: dep.platform || null,
+            mobDate: dep.mobDate || null,
+            demobDate: dep.demobDate || null,
+          },
+          { withCredentials: true },
+        );
+      }
       if (
         medicalData.hospital ||
         medicalData.issuedDate ||
@@ -322,6 +393,44 @@ export default function AddWorker() {
     gap: "16px",
   };
 
+  // ── Table styles สำหรับ Certifications / Past Deployment History ──
+  const depTable = {
+    width: "100%",
+    borderCollapse: "collapse",
+    fontSize: "13px",
+  };
+  const depTh = {
+    textAlign: "left",
+    fontSize: "11px",
+    fontWeight: 700,
+    color: "#6c757d",
+    textTransform: "uppercase",
+    letterSpacing: "0.4px",
+    padding: "8px 10px",
+    borderBottom: "2px solid #dee2e6",
+    whiteSpace: "nowrap",
+  };
+  const depTd = {
+    padding: "10px",
+    borderBottom: "1px solid #eee",
+    verticalAlign: "top",
+  };
+  const depBtn = {
+    background: "#fff",
+    border: "1px solid #dee2e6",
+    borderRadius: "6px",
+    padding: "4px 10px",
+    fontSize: "12px",
+    cursor: "pointer",
+    marginRight: "6px",
+  };
+  const depBtnDanger = {
+    ...depBtn,
+    border: "1px solid #f5c6cb",
+    color: "#842029",
+    marginRight: 0,
+  };
+
   const SectionHeader = ({ number, title, subtitle, accent, right }) => (
     <div
       style={{
@@ -370,6 +479,15 @@ export default function AddWorker() {
     value: p.id,
     label: `${p.name}${p._count ? ` (${p._count.employees})` : ""}`,
   }));
+  const positionNameById = (posId) =>
+    positions.find((p) => p.id === posId)?.name || "—";
+
+  const trainingNameById = (trainingId) => {
+    const t = globalTrainings.find((t) => t.id === trainingId);
+    if (!t) return <span style={{ color: "#adb5bd" }}>—</span>;
+    return `${t.name}${t.fullName ? ` - ${t.fullName}` : ""}`;
+  };
+
   // const departmentOptions = DIVISIONS.map((d) => ({ value: d, label: d }));
   const departmentOptions = divisions.map((d) => ({ value: d, label: d }));
 
@@ -837,6 +955,329 @@ export default function AddWorker() {
                   </div>
                 </div>
               </div>
+
+              {/* Section D: Past Deployment History — ตาราง + edit/remove */}
+              <div style={sectionCard}>
+                <SectionHeader
+                  number="D"
+                  title="Past Deployment History"
+                  subtitle="(Project References ในเรซูเม่ — ถ้ามีประวัติเก่าก่อนเข้าระบบ)"
+                  right={
+                    <button
+                      type="button"
+                      onClick={addDeployment}
+                      style={{
+                        background: "#fff",
+                        border: "1px solid #ffc107",
+                        color: "#664d03",
+                        borderRadius: "6px",
+                        padding: "6px 14px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      + Add Past Deployment
+                    </button>
+                  }
+                />
+                <div style={sectionBody}>
+                  {deployments.length === 0 ? (
+                    <div
+                      style={{
+                        background: "#f8f9fa",
+                        border: "1px dashed #dee2e6",
+                        borderRadius: "8px",
+                        padding: "28px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: "13px", color: "#6c757d" }}>
+                        No past deployment records yet.
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={depTable}>
+                        <thead>
+                          <tr>
+                            <th style={depTh}>Client / Project</th>
+                            <th style={depTh}>Field / Platform</th>
+                            <th style={depTh}>Position</th>
+                            <th style={depTh}>MOB Date</th>
+                            <th style={depTh}>D-MOB Date</th>
+                            <th style={{ ...depTh, textAlign: "right" }}>
+                              Actions
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {deployments.map((dep, index) =>
+                            editingDeploymentId === dep.id ? (
+                              // ── โหมด Edit: ขยายเป็น form เต็มในแถวเดียว ──
+                              <tr key={dep.id}>
+                                <td colSpan={6} style={depTd}>
+                                  <div
+                                    style={{
+                                      background: "#f8f9fa",
+                                      border: "1px solid #e9ecef",
+                                      borderRadius: "8px",
+                                      padding: "14px 16px",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        marginBottom: "12px",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          fontSize: "12px",
+                                          fontWeight: 600,
+                                          color: "#6c757d",
+                                        }}
+                                      >
+                                        Deployment #{index + 1}
+                                      </span>
+                                      <div>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setEditingDeploymentId(null)
+                                          }
+                                          style={{
+                                            ...depBtn,
+                                            borderColor: "#0d6efd",
+                                            color: "#0d6efd",
+                                          }}
+                                        >
+                                          ✓ Done
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            removeDeployment(dep.id)
+                                          }
+                                          style={depBtnDanger}
+                                        >
+                                          ✕ Remove
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <div
+                                      style={{
+                                        ...grid2,
+                                        marginBottom: "12px",
+                                      }}
+                                    >
+                                      <div>
+                                        <label style={labelStyle}>Client</label>
+                                        <input
+                                          type="text"
+                                          value={dep.client}
+                                          onChange={(e) =>
+                                            handleDeploymentChange(
+                                              dep.id,
+                                              "client",
+                                              e.target.value,
+                                            )
+                                          }
+                                          placeholder="e.g., Chevron"
+                                          style={inputStyle}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label style={labelStyle}>
+                                          Field / Site (optional)
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={dep.field}
+                                          onChange={(e) =>
+                                            handleDeploymentChange(
+                                              dep.id,
+                                              "field",
+                                              e.target.value,
+                                            )
+                                          }
+                                          placeholder="e.g., FDS Construction Benchams Field: B8/32"
+                                          style={inputStyle}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {dep.client && (
+                                      <div
+                                        style={{
+                                          fontSize: "11px",
+                                          color: "#0d6efd",
+                                          background: "#f0f7ff",
+                                          borderRadius: "6px",
+                                          padding: "6px 10px",
+                                          marginBottom: "12px",
+                                        }}
+                                      >
+                                        Preview: "
+                                        {composeProjectLabel(
+                                          dep.client,
+                                          dep.field,
+                                          dep.platform,
+                                        )}
+                                        "
+                                      </div>
+                                    )}
+
+                                    <div style={grid3}>
+                                      <div>
+                                        <label style={labelStyle}>
+                                          Position (ตอนนั้น)
+                                        </label>
+                                        <Select
+                                          options={positionOptions}
+                                          value={
+                                            positionOptions.find(
+                                              (o) => o.value === dep.positionId,
+                                            ) || null
+                                          }
+                                          onChange={(o) =>
+                                            handleDeploymentChange(
+                                              dep.id,
+                                              "positionId",
+                                              o ? o.value : "",
+                                            )
+                                          }
+                                          placeholder="เลือกตำแหน่ง..."
+                                          isClearable
+                                          menuPortalTarget={
+                                            typeof document !== "undefined"
+                                              ? document.body
+                                              : null
+                                          }
+                                          menuPosition="fixed"
+                                          styles={{
+                                            menuPortal: (b) => ({
+                                              ...b,
+                                              zIndex: 1000000,
+                                            }),
+                                            control: (b) => ({
+                                              ...b,
+                                              fontSize: "13px",
+                                              minHeight: "38px",
+                                            }),
+                                          }}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label style={labelStyle}>
+                                          MOB Date
+                                        </label>
+                                        <input
+                                          type="date"
+                                          value={dep.mobDate}
+                                          onChange={(e) =>
+                                            handleDeploymentChange(
+                                              dep.id,
+                                              "mobDate",
+                                              e.target.value,
+                                            )
+                                          }
+                                          style={inputStyle}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label style={labelStyle}>
+                                          D-MOB Date
+                                        </label>
+                                        <input
+                                          type="date"
+                                          value={dep.demobDate}
+                                          onChange={(e) =>
+                                            handleDeploymentChange(
+                                              dep.id,
+                                              "demobDate",
+                                              e.target.value,
+                                            )
+                                          }
+                                          style={inputStyle}
+                                        />
+                                      </div>
+                                    </div>
+                                    <div style={{ marginTop: "12px" }}>
+                                      <label style={labelStyle}>
+                                        Platform (optional เช่น BELQ, C5)
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={dep.platform}
+                                        onChange={(e) =>
+                                          handleDeploymentChange(
+                                            dep.id,
+                                            "platform",
+                                            e.target.value,
+                                          )
+                                        }
+                                        style={{
+                                          ...inputStyle,
+                                          maxWidth: "200px",
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            ) : (
+                              // ── โหมดปกติ: แถวตารางแบบ compact ──
+                              <tr key={dep.id}>
+                                <td style={depTd}>
+                                  {dep.client || (
+                                    <span style={{ color: "#adb5bd" }}>—</span>
+                                  )}
+                                </td>
+                                <td style={depTd}>
+                                  {dep.field || dep.platform || (
+                                    <span style={{ color: "#adb5bd" }}>—</span>
+                                  )}
+                                </td>
+                                <td style={depTd}>
+                                  {positionNameById(dep.positionId)}
+                                </td>
+                                <td style={depTd}>
+                                  {formatDateDisplay(dep.mobDate)}
+                                </td>
+                                <td style={depTd}>
+                                  {formatDateDisplay(dep.demobDate)}
+                                </td>
+                                <td style={{ ...depTd, textAlign: "right" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setEditingDeploymentId(dep.id)
+                                    }
+                                    style={depBtn}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeDeployment(dep.id)}
+                                    style={depBtnDanger}
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ),
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
             </>
           )}
 
@@ -1117,7 +1558,7 @@ export default function AddWorker() {
                 </div>
               </div>
 
-              {/* Section 4: Certifications */}
+              {/* Section 4: Certifications — ตาราง + edit/remove */}
               <div style={sectionCard}>
                 <SectionHeader
                   number="4"
@@ -1161,114 +1602,172 @@ export default function AddWorker() {
                       </div>
                     </div>
                   ) : (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "12px",
-                      }}
-                    >
-                      {certifications.map((cert, index) => (
-                        <div
-                          key={cert.id}
-                          style={{
-                            background: "#f8f9fa",
-                            border: "1px solid #e9ecef",
-                            borderRadius: "8px",
-                            padding: "14px 16px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              marginBottom: "12px",
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: "12px",
-                                fontWeight: 600,
-                                color: "#6c757d",
-                              }}
-                            >
-                              Certification #{index + 1}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeCertification(cert.id)}
-                              style={{
-                                background: "#fff",
-                                border: "1px solid #f5c6cb",
-                                color: "#842029",
-                                borderRadius: "6px",
-                                padding: "3px 10px",
-                                fontSize: "12px",
-                                cursor: "pointer",
-                              }}
-                            >
-                              ✕ Remove
-                            </button>
-                          </div>
-                          <div style={grid3}>
-                            <div>
-                              <label style={labelStyle}>
-                                Training / Certification
-                              </label>
-                              <select
-                                value={cert.globalTrainingId}
-                                onChange={(e) =>
-                                  handleCertChange(
-                                    cert.id,
-                                    "globalTrainingId",
-                                    e.target.value,
-                                  )
-                                }
-                                style={inputStyle}
-                              >
-                                <option value="">— Select from list —</option>
-                                {globalTrainings.map((t) => (
-                                  <option key={t.id} value={t.id}>
-                                    {t.name}
-                                    {t.fullName ? ` - ${t.fullName}` : ""}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label style={labelStyle}>Issued Date</label>
-                              <input
-                                type="date"
-                                value={cert.completedDate}
-                                onChange={(e) =>
-                                  handleCertChange(
-                                    cert.id,
-                                    "completedDate",
-                                    e.target.value,
-                                  )
-                                }
-                                style={inputStyle}
-                              />
-                            </div>
-                            <div>
-                              <label style={labelStyle}>Expiry Date</label>
-                              <input
-                                type="date"
-                                value={cert.expiryDate}
-                                onChange={(e) =>
-                                  handleCertChange(
-                                    cert.id,
-                                    "expiryDate",
-                                    e.target.value,
-                                  )
-                                }
-                                style={inputStyle}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={depTable}>
+                        <thead>
+                          <tr>
+                            <th style={depTh}>Training / Certification</th>
+                            <th style={depTh}>Issued Date</th>
+                            <th style={depTh}>Expiry Date</th>
+                            <th style={{ ...depTh, textAlign: "right" }}>
+                              Actions
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {certifications.map((cert, index) =>
+                            editingCertId === cert.id ? (
+                              // ── โหมด Edit: ขยายเป็น form เต็มในแถวเดียว ──
+                              <tr key={cert.id}>
+                                <td colSpan={4} style={depTd}>
+                                  <div
+                                    style={{
+                                      background: "#f8f9fa",
+                                      border: "1px solid #e9ecef",
+                                      borderRadius: "8px",
+                                      padding: "14px 16px",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        marginBottom: "12px",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          fontSize: "12px",
+                                          fontWeight: 600,
+                                          color: "#6c757d",
+                                        }}
+                                      >
+                                        Certification #{index + 1}
+                                      </span>
+                                      <div>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingCertId(null)}
+                                          style={{
+                                            ...depBtn,
+                                            borderColor: "#0d6efd",
+                                            color: "#0d6efd",
+                                          }}
+                                        >
+                                          ✓ Done
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            removeCertification(cert.id)
+                                          }
+                                          style={depBtnDanger}
+                                        >
+                                          ✕ Remove
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <div style={grid3}>
+                                      <div>
+                                        <label style={labelStyle}>
+                                          Training / Certification
+                                        </label>
+                                        <select
+                                          value={cert.globalTrainingId}
+                                          onChange={(e) =>
+                                            handleCertChange(
+                                              cert.id,
+                                              "globalTrainingId",
+                                              e.target.value,
+                                            )
+                                          }
+                                          style={inputStyle}
+                                        >
+                                          <option value="">
+                                            — Select from list —
+                                          </option>
+                                          {globalTrainings.map((t) => (
+                                            <option key={t.id} value={t.id}>
+                                              {t.name}
+                                              {t.fullName
+                                                ? ` - ${t.fullName}`
+                                                : ""}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label style={labelStyle}>
+                                          Issued Date
+                                        </label>
+                                        <input
+                                          type="date"
+                                          value={cert.completedDate}
+                                          onChange={(e) =>
+                                            handleCertChange(
+                                              cert.id,
+                                              "completedDate",
+                                              e.target.value,
+                                            )
+                                          }
+                                          style={inputStyle}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label style={labelStyle}>
+                                          Expiry Date
+                                        </label>
+                                        <input
+                                          type="date"
+                                          value={cert.expiryDate}
+                                          onChange={(e) =>
+                                            handleCertChange(
+                                              cert.id,
+                                              "expiryDate",
+                                              e.target.value,
+                                            )
+                                          }
+                                          style={inputStyle}
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            ) : (
+                              // ── โหมดปกติ: แถวตารางแบบ compact ──
+                              <tr key={cert.id}>
+                                <td style={depTd}>
+                                  {trainingNameById(cert.globalTrainingId)}
+                                </td>
+                                <td style={depTd}>
+                                  {formatDateDisplay(cert.completedDate)}
+                                </td>
+                                <td style={depTd}>
+                                  {formatDateDisplay(cert.expiryDate)}
+                                </td>
+                                <td style={{ ...depTd, textAlign: "right" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingCertId(cert.id)}
+                                    style={depBtn}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeCertification(cert.id)}
+                                    style={depBtnDanger}
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ),
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>

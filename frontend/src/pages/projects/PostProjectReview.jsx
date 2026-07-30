@@ -68,6 +68,8 @@ const REHIRE = [
 export default function PostProjectReview() {
   const { backendUrl, userData } = useContext(AppContent);
 
+  const canManageReview = ["admin", "manpower"].includes(userData?.role?.name);
+
   const [projects, setProjects] = useState([]);
   //   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useStickyState(
@@ -286,30 +288,34 @@ export default function PostProjectReview() {
             ))}
           </select>
 
-          <button
-            onClick={markCompleted}
-            disabled={!project || project.status === "completed"}
-            style={{
-              border: "1px solid #198754",
-              background:
-                project && project.status !== "completed"
-                  ? "#198754"
-                  : "#e9ecef",
-              color:
-                project && project.status !== "completed" ? "#fff" : "#adb5bd",
-              borderRadius: "8px",
-              padding: "9px 16px",
-              fontSize: "13px",
-              fontWeight: 700,
-              cursor:
-                project && project.status !== "completed"
-                  ? "pointer"
-                  : "not-allowed",
-              whiteSpace: "nowrap",
-            }}
-          >
-            ✔ Mark Project Completed
-          </button>
+          {canManageReview && (
+            <button
+              onClick={markCompleted}
+              disabled={!project || project.status === "completed"}
+              style={{
+                border: "1px solid #198754",
+                background:
+                  project && project.status !== "completed"
+                    ? "#198754"
+                    : "#e9ecef",
+                color:
+                  project && project.status !== "completed"
+                    ? "#fff"
+                    : "#adb5bd",
+                borderRadius: "8px",
+                padding: "9px 16px",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor:
+                  project && project.status !== "completed"
+                    ? "pointer"
+                    : "not-allowed",
+                whiteSpace: "nowrap",
+              }}
+            >
+              ✔ Mark Project Completed
+            </button>
+          )}
 
           {project && (
             <Badge tone={project.status === "completed" ? "ok" : "info"}>
@@ -371,6 +377,7 @@ export default function PostProjectReview() {
                           onChange={(n) =>
                             updateRow(r.employeeId, { rating: n })
                           }
+                          disabled={!canManageReview}
                         />
                       </td>
 
@@ -384,8 +391,10 @@ export default function PostProjectReview() {
                               <button
                                 key={key}
                                 onClick={() =>
+                                  canManageReview &&
                                   updateRow(r.employeeId, { rehire: key })
                                 }
+                                disabled={!canManageReview}
                                 style={{
                                   border: `1px solid ${active ? t.color : "#dee2e6"}`,
                                   background: active ? t.bg : "#fff",
@@ -394,7 +403,9 @@ export default function PostProjectReview() {
                                   padding: "3px 10px",
                                   fontSize: "11px",
                                   fontWeight: 600,
-                                  cursor: "pointer",
+                                  cursor: canManageReview
+                                    ? "pointer"
+                                    : "default",
                                 }}
                               >
                                 {label}
@@ -410,6 +421,7 @@ export default function PostProjectReview() {
                           type="text"
                           placeholder="หมายเหตุ…"
                           value={r.comment}
+                          disabled={!canManageReview}
                           onChange={(e) =>
                             updateRow(r.employeeId, { comment: e.target.value })
                           }
@@ -420,31 +432,40 @@ export default function PostProjectReview() {
                             fontSize: "12px",
                             width: "100%",
                             minWidth: "160px",
+                            background: canManageReview ? "#fff" : "#f8f9fa",
                           }}
                         />
                       </td>
 
                       {/* save */}
                       <td style={td}>
-                        <button
-                          onClick={() => saveRow(r)}
-                          disabled={!r.dirty && r.saved}
-                          style={{
-                            border: `1px solid ${
-                              r.dirty || !r.saved ? "#0d6efd" : "#dee2e6"
-                            }`,
-                            background: "#fff",
-                            color: r.dirty || !r.saved ? "#0d6efd" : "#adb5bd",
-                            borderRadius: "6px",
-                            padding: "5px 12px",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            cursor: r.dirty || !r.saved ? "pointer" : "default",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {r.saved && !r.dirty ? "✓ Saved" : "Save"}
-                        </button>
+                        {canManageReview ? (
+                          <button
+                            onClick={() => saveRow(r)}
+                            disabled={!r.dirty && r.saved}
+                            style={{
+                              border: `1px solid ${
+                                r.dirty || !r.saved ? "#0d6efd" : "#dee2e6"
+                              }`,
+                              background: "#fff",
+                              color:
+                                r.dirty || !r.saved ? "#0d6efd" : "#adb5bd",
+                              borderRadius: "6px",
+                              padding: "5px 12px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              cursor:
+                                r.dirty || !r.saved ? "pointer" : "default",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {r.saved && !r.dirty ? "✓ Saved" : "Save"}
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: "11px", color: "#adb5bd" }}>
+                            —
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

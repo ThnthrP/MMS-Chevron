@@ -22,8 +22,12 @@ const SSE_LABEL = { new_sse: "NEW SSE", sse1: "SSE1", sse2: "SSE2" };
 const GENDER_LABEL = { male: "Male", female: "Female", other: "Other" };
 
 export default function Allocation() {
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, userData } = useContext(AppContent);
   const navigate = useNavigate();
+
+  const canManageAllocation = ["admin", "manpower"].includes(
+    userData?.role?.name,
+  );
 
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useStickyState(
@@ -956,7 +960,7 @@ export default function Allocation() {
                         · Permanent {permCount}
                       </span>
                     </div>
-                    {selectedWorkerIds.length > 0 && (
+                    {selectedWorkerIds.length > 0 && canManageAllocation && (
                       <button
                         onClick={handleAddToShortlist}
                         style={{
@@ -1134,18 +1138,20 @@ export default function Allocation() {
                     >
                       <thead>
                         <tr style={{ borderBottom: "1px solid #dee2e6" }}>
-                          <th style={{ padding: "10px 12px", width: "36px" }}>
-                            <input
-                              type="checkbox"
-                              checked={allDisplayedSelected}
-                              onChange={toggleAll}
-                              style={{
-                                width: "15px",
-                                height: "15px",
-                                cursor: "pointer",
-                              }}
-                            />
-                          </th>
+                          {canManageAllocation && (
+                            <th style={{ padding: "10px 12px", width: "36px" }}>
+                              <input
+                                type="checkbox"
+                                checked={allDisplayedSelected}
+                                onChange={toggleAll}
+                                style={{
+                                  width: "15px",
+                                  height: "15px",
+                                  cursor: "pointer",
+                                }}
+                              />
+                            </th>
+                          )}
                           {[
                             ["NAME", "left"],
                             ["RETIREMENT", "center"],
@@ -1175,7 +1181,7 @@ export default function Allocation() {
                         {displayedWorkers.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={8}
+                              colSpan={canManageAllocation ? 8 : 7}
                               style={{
                                 textAlign: "center",
                                 padding: "24px",
@@ -1216,23 +1222,31 @@ export default function Allocation() {
                                       ? "1px solid #f1f3f5"
                                       : "none",
                                   background: selected ? "#f0f7ff" : "#fff",
-                                  cursor: "pointer",
+                                  cursor: canManageAllocation
+                                    ? "pointer"
+                                    : "default",
                                 }}
-                                onClick={() => toggleWorker(w.id)}
+                                onClick={
+                                  canManageAllocation
+                                    ? () => toggleWorker(w.id)
+                                    : undefined
+                                }
                               >
-                                <td style={{ padding: "12px 12px" }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={selected}
-                                    onChange={() => toggleWorker(w.id)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    style={{
-                                      width: "15px",
-                                      height: "15px",
-                                      cursor: "pointer",
-                                    }}
-                                  />
-                                </td>
+                                {canManageAllocation && (
+                                  <td style={{ padding: "12px 12px" }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={selected}
+                                      onChange={() => toggleWorker(w.id)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{
+                                        width: "15px",
+                                        height: "15px",
+                                        cursor: "pointer",
+                                      }}
+                                    />
+                                  </td>
+                                )}
                                 <td style={{ padding: "12px 12px" }}>
                                   <div
                                     style={{
@@ -1534,7 +1548,18 @@ export default function Allocation() {
               </span>
             </div>
             <div style={{ padding: "20px" }}>
-              {loadingShortlist ? (
+              {!canManageAllocation ? (
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: "32px 16px",
+                    color: "#6c757d",
+                    fontSize: "13px",
+                  }}
+                >
+                  🔒 การจัดการ Shortlist เป็นสิทธิ์เฉพาะ Manpower
+                </div>
+              ) : loadingShortlist ? (
                 <div
                   style={{
                     textAlign: "center",
@@ -1806,95 +1831,97 @@ export default function Allocation() {
                 </div>
               )}
 
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "8px",
-                  borderTop:
-                    totalShortlisted > 0 ? "1px solid #dee2e6" : "none",
-                  paddingTop: totalShortlisted > 0 ? "16px" : "0",
-                }}
-              >
-                <button
-                  onClick={handleGenerateCv}
-                  disabled={totalShortlisted === 0 || cvLoading}
+              {canManageAllocation && (
+                <div
                   style={{
-                    width: "100%",
-                    padding: "9px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    border: "1px solid #dee2e6",
-                    borderRadius: "8px",
-                    background: totalShortlisted > 0 ? "#fff" : "#f8f9fa",
-                    color: totalShortlisted > 0 ? "#0d6efd" : "#adb5bd",
-                    cursor:
-                      totalShortlisted > 0 && !cvLoading
-                        ? "pointer"
-                        : "not-allowed",
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px",
+                    flexDirection: "column",
+                    gap: "8px",
+                    borderTop:
+                      totalShortlisted > 0 ? "1px solid #dee2e6" : "none",
+                    paddingTop: totalShortlisted > 0 ? "16px" : "0",
                   }}
                 >
-                  {cvLoading ? "Generating..." : "📄 Generate CV Summary"}
-                </button>
+                  <button
+                    onClick={handleGenerateCv}
+                    disabled={totalShortlisted === 0 || cvLoading}
+                    style={{
+                      width: "100%",
+                      padding: "9px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      border: "1px solid #dee2e6",
+                      borderRadius: "8px",
+                      background: totalShortlisted > 0 ? "#fff" : "#f8f9fa",
+                      color: totalShortlisted > 0 ? "#0d6efd" : "#adb5bd",
+                      cursor:
+                        totalShortlisted > 0 && !cvLoading
+                          ? "pointer"
+                          : "not-allowed",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    {cvLoading ? "Generating..." : "📄 Generate CV Summary"}
+                  </button>
 
-                <button
-                  onClick={handleGenerateRoster}
-                  disabled={totalShortlisted === 0 || rosterLoading}
-                  style={{
-                    width: "100%",
-                    padding: "9px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    border: "1px solid #dee2e6",
-                    borderRadius: "8px",
-                    background: totalShortlisted > 0 ? "#fff" : "#f8f9fa",
-                    color: totalShortlisted > 0 ? "#0d6efd" : "#adb5bd",
-                    cursor:
-                      totalShortlisted > 0 && !rosterLoading
-                        ? "pointer"
-                        : "not-allowed",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px",
-                  }}
-                >
-                  {rosterLoading
-                    ? "Generating..."
-                    : "🛫 Export Roster (MOB/D-MOB)"}
-                </button>
+                  <button
+                    onClick={handleGenerateRoster}
+                    disabled={totalShortlisted === 0 || rosterLoading}
+                    style={{
+                      width: "100%",
+                      padding: "9px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      border: "1px solid #dee2e6",
+                      borderRadius: "8px",
+                      background: totalShortlisted > 0 ? "#fff" : "#f8f9fa",
+                      color: totalShortlisted > 0 ? "#0d6efd" : "#adb5bd",
+                      cursor:
+                        totalShortlisted > 0 && !rosterLoading
+                          ? "pointer"
+                          : "not-allowed",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    {rosterLoading
+                      ? "Generating..."
+                      : "🛫 Export Roster (MOB/D-MOB)"}
+                  </button>
 
-                <button
-                  onClick={handleGenerateSkillMatrix}
-                  disabled={totalShortlisted === 0 || skillMatrixLoading}
-                  style={{
-                    width: "100%",
-                    padding: "9px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    border: "1px solid #dee2e6",
-                    borderRadius: "8px",
-                    background: totalShortlisted > 0 ? "#fff" : "#f8f9fa",
-                    color: totalShortlisted > 0 ? "#0d6efd" : "#adb5bd",
-                    cursor:
-                      totalShortlisted > 0 && !skillMatrixLoading
-                        ? "pointer"
-                        : "not-allowed",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px",
-                  }}
-                >
-                  {skillMatrixLoading
-                    ? "Generating..."
-                    : "📋 Export Skill Matrix"}
-                </button>
-              </div>
+                  <button
+                    onClick={handleGenerateSkillMatrix}
+                    disabled={totalShortlisted === 0 || skillMatrixLoading}
+                    style={{
+                      width: "100%",
+                      padding: "9px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      border: "1px solid #dee2e6",
+                      borderRadius: "8px",
+                      background: totalShortlisted > 0 ? "#fff" : "#f8f9fa",
+                      color: totalShortlisted > 0 ? "#0d6efd" : "#adb5bd",
+                      cursor:
+                        totalShortlisted > 0 && !skillMatrixLoading
+                          ? "pointer"
+                          : "not-allowed",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    {skillMatrixLoading
+                      ? "Generating..."
+                      : "📋 Export Skill Matrix"}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

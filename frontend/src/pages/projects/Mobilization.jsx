@@ -73,7 +73,11 @@ const STATUS_LABEL = {
 };
 
 export default function Mobilization() {
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, userData } = useContext(AppContent);
+
+  const canManageMobilization = ["admin", "manpower"].includes(
+    userData?.role?.name,
+  );
 
   const [projects, setProjects] = useState([]);
   //   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -384,7 +388,7 @@ export default function Mobilization() {
               ))}
             </select>
 
-            {selectedProjectId && (
+            {selectedProjectId && canManageMobilization && (
               <button
                 onClick={clearProjectDeployments}
                 disabled={clearing}
@@ -430,22 +434,24 @@ export default function Mobilization() {
               >
                 <Badge tone="ok">{deployedCount} deployed</Badge>
                 <Badge tone="info">{readyCount} ready</Badge>
-                <button
-                  onClick={deployAllReady}
-                  disabled={readyCount === 0}
-                  style={{
-                    background: readyCount > 0 ? "#0f5132" : "#e9ecef",
-                    color: readyCount > 0 ? "#fff" : "#adb5bd",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "7px 14px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    cursor: readyCount > 0 ? "pointer" : "not-allowed",
-                  }}
-                >
-                  🚀 Deploy All Ready
-                </button>
+                {canManageMobilization && (
+                  <button
+                    onClick={deployAllReady}
+                    disabled={readyCount === 0}
+                    style={{
+                      background: readyCount > 0 ? "#0f5132" : "#e9ecef",
+                      color: readyCount > 0 ? "#fff" : "#adb5bd",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "7px 14px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: readyCount > 0 ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    🚀 Deploy All Ready
+                  </button>
+                )}
               </span>
             )}
           </div>
@@ -500,7 +506,7 @@ export default function Mobilization() {
                           <input
                             type="checkbox"
                             checked={r.ppe}
-                            disabled={locked}
+                            disabled={locked || !canManageMobilization}
                             onChange={(e) =>
                               updateRow(r.employeeId, { ppe: e.target.checked })
                             }
@@ -511,7 +517,7 @@ export default function Mobilization() {
                           <input
                             type="checkbox"
                             checked={r.safetyInduction}
-                            disabled={locked}
+                            disabled={locked || !canManageMobilization}
                             onChange={(e) =>
                               updateRow(r.employeeId, {
                                 safetyInduction: e.target.checked,
@@ -524,7 +530,7 @@ export default function Mobilization() {
                           <input
                             type="date"
                             value={r.mobDate || ""}
-                            disabled={locked}
+                            disabled={locked || !canManageMobilization}
                             onChange={(e) =>
                               updateRow(r.employeeId, {
                                 mobDate: e.target.value,
@@ -543,7 +549,7 @@ export default function Mobilization() {
                             type="text"
                             placeholder="e.g. BELQ"
                             value={r.platform}
-                            disabled={locked}
+                            disabled={locked || !canManageMobilization}
                             onChange={(e) =>
                               updateRow(r.employeeId, {
                                 platform: e.target.value,
@@ -572,7 +578,13 @@ export default function Mobilization() {
 
                         {/* actions */}
                         <td style={td}>
-                          {r.deployed ? (
+                          {!canManageMobilization ? (
+                            <span
+                              style={{ fontSize: "11px", color: "#adb5bd" }}
+                            >
+                              —
+                            </span>
+                          ) : r.deployed ? (
                             <button
                               onClick={() => undeployRow(r.employeeId)}
                               style={{
@@ -591,9 +603,7 @@ export default function Mobilization() {
                                 style={{
                                   ...btnBase,
                                   background: isReady(r) ? "#fff" : "#f8f9fa",
-                                  border: `1px solid ${
-                                    isReady(r) ? "#0f5132" : "#dee2e6"
-                                  }`,
+                                  border: `1px solid ${isReady(r) ? "#0f5132" : "#dee2e6"}`,
                                   color: isReady(r) ? "#0f5132" : "#adb5bd",
                                   cursor: isReady(r)
                                     ? "pointer"

@@ -7,9 +7,11 @@ import { AppContent } from "../../context/AppContext";
 export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, userData } = useContext(AppContent);
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const canManageProjects = ["admin", "pe"].includes(userData?.role?.name);
 
   const [showAddPosition, setShowAddPosition] = useState(false);
   const [positions, setPositions] = useState([]);
@@ -258,21 +260,23 @@ export default function ProjectDetail() {
             <span style={{ fontWeight: 700, fontSize: "14px" }}>
               Position Requests
             </span>
-            <button
-              onClick={() => setShowAddPosition(true)}
-              style={{
-                background: "#0d6efd",
-                color: "#fff",
-                border: "none",
-                borderRadius: "6px",
-                padding: "6px 14px",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              + Add Position
-            </button>
+            {canManageProjects && (
+              <button
+                onClick={() => setShowAddPosition(true)}
+                style={{
+                  background: "#0d6efd",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "6px 14px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                + Add Position
+              </button>
+            )}
           </div>
           <div style={{ padding: "0" }}>
             {!project.requests || project.requests.length === 0 ? (
@@ -296,23 +300,27 @@ export default function ProjectDetail() {
               >
                 <thead>
                   <tr style={{ background: "#f8f9fa" }}>
-                    {["POSITION", "HEADCOUNT", "ASSIGNED", "STATUS", ""].map(
-                      (h, hi) => (
-                        <th
-                          key={hi}
-                          style={{
-                            padding: "10px 20px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            color: "#6c757d",
-                            letterSpacing: "0.5px",
-                            textAlign: h === "" ? "center" : "left",
-                          }}
-                        >
-                          {h}
-                        </th>
-                      ),
-                    )}
+                    {[
+                      "POSITION",
+                      "HEADCOUNT",
+                      "ASSIGNED",
+                      "STATUS",
+                      ...(canManageProjects ? [""] : []),
+                    ].map((h, hi) => (
+                      <th
+                        key={hi}
+                        style={{
+                          padding: "10px 20px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: "#6c757d",
+                          letterSpacing: "0.5px",
+                          textAlign: h === "" ? "center" : "left",
+                        }}
+                      >
+                        {h}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -351,25 +359,29 @@ export default function ProjectDetail() {
                           {r.status || "draft"}
                         </span>
                       </td>
-                      <td style={{ padding: "12px 20px", textAlign: "center" }}>
-                        <button
-                          title="ลบ position request"
-                          onClick={() =>
-                            handleDeleteRequest(r.id, r.position?.name || "")
-                          }
-                          style={{
-                            background: "#fff",
-                            border: "1px solid #f5c6cb",
-                            borderRadius: "6px",
-                            padding: "4px 8px",
-                            cursor: "pointer",
-                            fontSize: "13px",
-                            lineHeight: 1,
-                          }}
+                      {canManageProjects && (
+                        <td
+                          style={{ padding: "12px 20px", textAlign: "center" }}
                         >
-                          🗑
-                        </button>
-                      </td>
+                          <button
+                            title="ลบ position request"
+                            onClick={() =>
+                              handleDeleteRequest(r.id, r.position?.name || "")
+                            }
+                            style={{
+                              background: "#fff",
+                              border: "1px solid #f5c6cb",
+                              borderRadius: "6px",
+                              padding: "4px 8px",
+                              cursor: "pointer",
+                              fontSize: "13px",
+                              lineHeight: 1,
+                            }}
+                          >
+                            🗑
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -493,7 +505,7 @@ export default function ProjectDetail() {
       </div>
 
       {/* Add Position Modal */}
-      {showAddPosition && (
+      {showAddPosition && canManageProjects && (
         <div
           style={{
             position: "fixed",
