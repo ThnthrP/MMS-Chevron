@@ -35,6 +35,9 @@ import AnalyticsReports from "../pages/projects/AnalyticsReports";
 
 import Certifications from "../pages/compliance/Certifications";
 
+import TrainingRequestDetail from "../pages/compliance/TrainingRequestDetail";
+import TrainingRequestHistory from "../pages/compliance/TrainingRequestHistory"; // ← เพิ่มใหม่
+
 const AppRouter = () => {
   // const { userData } = useContext(AppContent);
 
@@ -143,6 +146,27 @@ const AppRouter = () => {
               </ProtectedRoute>
             }
           />
+
+          <Route
+            path="/training-requests-history"
+            element={
+              <ProtectedRoute allowRoles={["admin", "hr"]}>
+                <TrainingRequestHistory />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/training-requests/:id"
+            element={
+              <ProtectedRoute>
+                {" "}
+                {/* ทุก role login เข้าดูได้ */}
+                <TrainingRequestDetail />
+              </ProtectedRoute>
+            }
+          />
+
           {/* ดูได้ทุก role ที่เกี่ยวข้อง — Manage/View label ต่างกันแล้วใน UI */}
           <Route
             path="/projects"
@@ -207,7 +231,17 @@ const AppRouter = () => {
           <Route
             path="/mobilization"
             element={
-              <ProtectedRoute allowRoles={["admin", "manpower", "hr", "pe", "safety", "nurse", "ta"]}>
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "manpower",
+                  "hr",
+                  "pe",
+                  "safety",
+                  "nurse",
+                  "ta",
+                ]}
+              >
                 <Mobilization />
               </ProtectedRoute>
             }
@@ -216,7 +250,9 @@ const AppRouter = () => {
           <Route
             path="/review"
             element={
-              <ProtectedRoute allowRoles={["admin", "hr", "pe", "pe_head", "manpower"]}>
+              <ProtectedRoute
+                allowRoles={["admin", "hr", "pe", "pe_head", "manpower"]}
+              >
                 <PostProjectReview />
               </ProtectedRoute>
             }
@@ -225,7 +261,17 @@ const AppRouter = () => {
           <Route
             path="/reports"
             element={
-              <ProtectedRoute allowRoles={["admin", "pe_head", "bd", "manager", "manpower", "hr", "pe"]}>
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "pe_head",
+                  "bd",
+                  "manager",
+                  "manpower",
+                  "hr",
+                  "pe",
+                ]}
+              >
                 <AnalyticsReports />
               </ProtectedRoute>
             }

@@ -67,6 +67,11 @@ export const APP_MENU = [
         path: "/certifications",
         roles: ["admin", "hr", "manpower", "safety", "nurse", "pe"],
       },
+      {
+        name: "Training Requests",
+        path: "/training-requests-history",
+        roles: ["admin", "hr"],
+      },
     ],
   },
 

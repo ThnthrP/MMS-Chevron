@@ -1,4 +1,5 @@
 import * as service from "../services/projectService.js";
+import { notifyRole } from "../services/notificationService.js";
 
 export async function getProjects(req, res) {
   try {
@@ -24,6 +25,22 @@ export async function getProjectById(req, res) {
 export async function createProject(req, res) {
   try {
     const project = await service.createProject(req.body);
+
+    // ── แจ้งเตือน manpower ทุกคน ──
+    // ไม่ await แบบ block response — ถ้า notify พังไม่ควรทำให้สร้าง project ล้มเหลว
+    notifyRole("manpower", {
+      type: "project_created",
+      title: "มี Project ใหม่ถูกสร้าง",
+      message: `${project.name}${
+        project.contract?.client?.name
+          ? ` — ${project.contract.client.name}`
+          : ""
+      }`,
+      link: `/projects/${project.id}`,
+    }).catch((err) =>
+      console.error("notifyRole (project_created) failed:", err),
+    );
+
     res.status(201).json(project);
   } catch (error) {
     console.error(error);
@@ -69,7 +86,6 @@ export async function deleteProjectRequest(req, res) {
     await service.deleteProjectRequest(req.params.id, req.params.requestId);
     res.json({ message: "Position request deleted successfully" });
   } catch (error) {
-    // ส่งจาก service เมื่อมี booking ผูกอยู่
     if (error.code === "REQUEST_HAS_BOOKINGS") {
       return res.status(409).json({
         message:

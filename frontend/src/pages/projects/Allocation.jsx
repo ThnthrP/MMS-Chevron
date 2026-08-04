@@ -652,6 +652,93 @@ export default function Allocation() {
     verticalAlign: "top",
   };
 
+  const [trainingCart, setTrainingCart] = useState([]); // [{employeeId, employeeName, trainingName, trainingId, clientName}]
+  const [globalTrainingMap, setGlobalTrainingMap] = useState({}); // name -> id
+  const [sendingCart, setSendingCart] = useState(false);
+
+  useEffect(() => {
+    axios
+      .get(`${backendUrl}/api/global-trainings`, { withCredentials: true })
+      .then((res) => {
+        const map = {};
+        (res.data || []).forEach((t) => (map[t.name] = t.id));
+        setGlobalTrainingMap(map);
+      })
+      .catch((err) => console.error(err));
+  }, [backendUrl]);
+
+  const addToCart = (employeeId, employeeName, trainingName, clientName) => {
+    const trainingId = globalTrainingMap[trainingName];
+    if (!trainingId) return; // เผื่อชื่อไม่ match (ไม่ควรเกิด แต่กันไว้)
+    setTrainingCart((prev) => {
+      const exists = prev.some(
+        (c) => c.employeeId === employeeId && c.trainingId === trainingId,
+      );
+      if (exists) {
+        return prev.filter(
+          (c) => !(c.employeeId === employeeId && c.trainingId === trainingId),
+        );
+      }
+      return [
+        ...prev,
+        { employeeId, employeeName, trainingName, trainingId, clientName },
+      ];
+    });
+  };
+
+  const isInCart = (employeeId, trainingName) => {
+    const trainingId = globalTrainingMap[trainingName];
+    return trainingCart.some(
+      (c) => c.employeeId === employeeId && c.trainingId === trainingId,
+    );
+  };
+
+  const handleSendCart = async () => {
+    if (trainingCart.length === 0) return;
+    try {
+      setSendingCart(true);
+      await axios.post(
+        `${backendUrl}/api/training-requests`,
+        {
+          items: trainingCart.map((c) => ({
+            employeeId: c.employeeId,
+            globalTrainingId: c.trainingId,
+            clientName: c.clientName,
+          })),
+        },
+        { withCredentials: true },
+      );
+      alert(`แจ้ง HR ให้จัด training ${trainingCart.length} รายการแล้ว`);
+      setTrainingCart([]);
+    } catch (err) {
+      console.error(err);
+      alert("ส่งไม่สำเร็จ — ดู console");
+    } finally {
+      setSendingCart(false);
+    }
+  };
+
+  const [allWorkers, setAllWorkers] = useState([]);
+  const [quickSearch, setQuickSearch] = useState("");
+  const [showQuickResults, setShowQuickResults] = useState(false);
+
+  useEffect(() => {
+    axios
+      .get(`${backendUrl}/api/workers`, { withCredentials: true })
+      .then((res) => setAllWorkers(res.data || []))
+      .catch((err) => console.error(err));
+  }, [backendUrl]);
+
+  const quickSearchResults = quickSearch.trim()
+    ? allWorkers
+        .filter(
+          (w) =>
+            w.fullName?.toLowerCase().includes(quickSearch.toLowerCase()) ||
+            w.empCode?.toLowerCase().includes(quickSearch.toLowerCase()),
+        )
+        .slice(0, 8)
+    : [];
+
   return (
     <div className="container-fluid p-0">
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -684,6 +771,89 @@ export default function Allocation() {
             <span style={{ color: "#6c757d", fontSize: "12px" }}>
               Steps 8–9: Filter & Match → Shortlist → Generate CV
             </span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #dee2e6",
+            borderRadius: "10px",
+            padding: "16px 20px",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <div
+            style={{ fontWeight: 700, fontSize: "14px", marginBottom: "8px" }}
+          >
+            🔍 ค้นหา Worker คนใดก็ได้ (เช่น client เจาะจงชื่อมาตรงๆ)
+          </div>
+          <div style={{ position: "relative", maxWidth: "400px" }}>
+            <input
+              type="text"
+              placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน..."
+              value={quickSearch}
+              onChange={(e) => {
+                setQuickSearch(e.target.value);
+                setShowQuickResults(true);
+              }}
+              onFocus={() => setShowQuickResults(true)}
+              onBlur={() => setTimeout(() => setShowQuickResults(false), 150)}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                fontSize: "13px",
+                border: "1px solid #dee2e6",
+                borderRadius: "8px",
+                outline: "none",
+              }}
+            />
+            {showQuickResults && quickSearchResults.length > 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 4px)",
+                  left: 0,
+                  right: 0,
+                  background: "#fff",
+                  border: "1px solid #dee2e6",
+                  borderRadius: "8px",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                  zIndex: 1000,
+                  maxHeight: "260px",
+                  overflowY: "auto",
+                }}
+              >
+                {quickSearchResults.map((w) => (
+                  <div
+                    key={w.id}
+                    onClick={() => {
+                      handleViewEligibility(w);
+                      setQuickSearch("");
+                      setShowQuickResults(false);
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      cursor: "pointer",
+                      borderBottom: "1px solid #f1f3f5",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background = "#f8f9fa")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "#fff")
+                    }
+                  >
+                    <div style={{ fontWeight: 600, fontSize: "13px" }}>
+                      {w.fullName}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#6c757d" }}>
+                      {w.empCode} · {w.position?.name || "—"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -3372,7 +3542,7 @@ export default function Allocation() {
                   };
                   const others = client.others ?? { completed: [] };
 
-                  const renderTags = (missing, completed) => (
+                  const renderTags = (missing, completed, clientName) => (
                     <>
                       {missing.length > 0 ? (
                         <div style={{ marginBottom: "10px" }}>
@@ -3393,21 +3563,70 @@ export default function Allocation() {
                               gap: "6px",
                             }}
                           >
-                            {missing.map((name, i) => (
-                              <span
-                                key={i}
-                                style={{
-                                  background: "#fff5f5",
-                                  color: "#dc3545",
-                                  border: "1px solid #f5c6cb",
-                                  borderRadius: "6px",
-                                  padding: "3px 10px",
-                                  fontSize: "12px",
-                                }}
-                              >
-                                ✕ {name}
-                              </span>
-                            ))}
+                            {missing.map((item, i) => {
+                              const inCart = trainingCart.some(
+                                (c) =>
+                                  c.employeeId ===
+                                    eligibilityModal.employeeId &&
+                                  c.trainingId === item.trainingId,
+                              );
+                              return (
+                                <span
+                                  key={i}
+                                  onClick={() =>
+                                    canManageAllocation &&
+                                    setTrainingCart((prev) => {
+                                      const exists = prev.some(
+                                        (c) =>
+                                          c.employeeId ===
+                                            eligibilityModal.employeeId &&
+                                          c.trainingId === item.trainingId,
+                                      );
+                                      if (exists) {
+                                        return prev.filter(
+                                          (c) =>
+                                            !(
+                                              c.employeeId ===
+                                                eligibilityModal.employeeId &&
+                                              c.trainingId === item.trainingId
+                                            ),
+                                        );
+                                      }
+                                      return [
+                                        ...prev,
+                                        {
+                                          employeeId:
+                                            eligibilityModal.employeeId,
+                                          employeeName:
+                                            eligibilityModal.fullName,
+                                          trainingName: item.name,
+                                          trainingId: item.trainingId,
+                                          clientName,
+                                        },
+                                      ];
+                                    })
+                                  }
+                                  style={{
+                                    background: inCart ? "#fff3cd" : "#fff5f5",
+                                    color: inCart ? "#664d03" : "#dc3545",
+                                    border: `1px solid ${inCart ? "#ffe69c" : "#f5c6cb"}`,
+                                    borderRadius: "6px",
+                                    padding: "3px 10px",
+                                    fontSize: "12px",
+                                    cursor: canManageAllocation
+                                      ? "pointer"
+                                      : "default",
+                                  }}
+                                  title={
+                                    canManageAllocation
+                                      ? "คลิกเพื่อเลือก/ยกเลิกขอ training นี้"
+                                      : ""
+                                  }
+                                >
+                                  {inCart ? "☑" : "✕"} {item.name}
+                                </span>
+                              );
+                            })}
                           </div>
                         </div>
                       ) : (
@@ -3441,7 +3660,7 @@ export default function Allocation() {
                               gap: "6px",
                             }}
                           >
-                            {completed.map((name, i) => (
+                            {completed.map((item, i) => (
                               <span
                                 key={i}
                                 style={{
@@ -3453,7 +3672,7 @@ export default function Allocation() {
                                   fontSize: "12px",
                                 }}
                               >
-                                ✓ {name}
+                                ✓ {item.name}
                               </span>
                             ))}
                           </div>
@@ -3541,7 +3760,11 @@ export default function Allocation() {
                         >
                           🔴 Mandatory
                         </div>
-                        {renderTags(mandatory.missing, mandatory.completed)}
+                        {renderTags(
+                          mandatory.missing,
+                          mandatory.completed,
+                          client.clientName,
+                        )}
                       </div>
 
                       <div style={{ marginBottom: "20px" }}>
@@ -3560,7 +3783,11 @@ export default function Allocation() {
                             — ไม่มี Assigned training สำหรับตำแหน่งนี้
                           </div>
                         ) : (
-                          renderTags(assigned.missing, assigned.completed)
+                          renderTags(
+                            assigned.missing,
+                            assigned.completed,
+                            client.clientName,
+                          )
                         )}
                       </div>
 
@@ -3642,6 +3869,57 @@ export default function Allocation() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {trainingCart.length > 0 && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "#1e3a5f",
+            color: "#fff",
+            borderRadius: "12px",
+            padding: "12px 20px",
+            display: "flex",
+            alignItems: "center",
+            gap: "14px",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            zIndex: 1000000, // ← เปลี่ยนจาก 999998
+          }}
+        >
+          <span style={{ fontSize: "13px" }}>
+            📦 {trainingCart.length} รายการในตะกร้า
+          </span>
+          <button
+            onClick={handleSendCart}
+            disabled={sendingCart}
+            style={{
+              background: "#198754",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "6px 16px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            {sendingCart ? "กำลังส่ง..." : "แจ้ง HR ให้จัด Training →"}
+          </button>
+          <button
+            onClick={() => setTrainingCart([])}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#adb5bd",
+              cursor: "pointer",
+              fontSize: "13px",
+            }}
+          >
+            ล้างตะกร้า
+          </button>
         </div>
       )}
     </div>

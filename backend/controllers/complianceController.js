@@ -1,4 +1,5 @@
 import * as service from "../services/complianceService.js";
+import { notifyRole } from "../services/notificationService.js";
 
 export async function getComplianceDashboard(req, res) {
   try {
@@ -54,5 +55,33 @@ export async function getCertificationDetail(req, res) {
   } catch (error) {
     console.error(error);
     res.status(error.status || 500).json({ message: error.message });
+  }
+}
+
+export async function requestTraining(req, res) {
+  try {
+    const { trainingId, employeeIds } = req.body;
+    if (!trainingId || !employeeIds?.length) {
+      return res
+        .status(400)
+        .json({ message: "trainingId and employeeIds are required" });
+    }
+
+    const result = await service.requestTraining(trainingId, employeeIds);
+
+    // ── แจ้งเตือน HR ทุกคน ──
+    notifyRole("hr", {
+  type: "training_request",
+  title: "MP ขอให้จัด Training",
+  message: `${result.trainingName} — ${result.employeeCount} คน (${result.employeeNames.slice(0, 3).join(", ")}${result.employeeCount > 3 ? " และอื่นๆ" : ""})`,
+  link: `/certifications?trainingId=${trainingId}&empIds=${employeeIds.join(",")}`,
+}).catch((err) =>
+      console.error("notifyRole (training_request) failed:", err),
+    );
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
   }
 }

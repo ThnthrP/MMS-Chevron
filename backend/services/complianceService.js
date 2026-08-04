@@ -480,3 +480,35 @@ export async function getCertificationDetail(globalTrainingId) {
     workers,
   };
 }
+
+// ============================================================
+// Request Training — MP ขอให้ HR จัด training ให้ worker ที่ยังขาด/หมดอายุ cert นี้
+// แค่ validate + สร้างข้อมูลสำหรับ notification (ไม่มี record ถาวร)
+// ============================================================
+export async function requestTraining(trainingId, employeeIds) {
+  const training = await prisma.globalTraining.findUnique({
+    where: { id: trainingId },
+    select: { name: true },
+  });
+  if (!training) {
+    const err = new Error("Training not found");
+    err.status = 404;
+    throw err;
+  }
+
+  const employees = await prisma.employee.findMany({
+    where: { id: { in: employeeIds } },
+    select: { id: true, fullName: true, empCode: true },
+  });
+  if (employees.length === 0) {
+    const err = new Error("No valid employees found");
+    err.status = 404;
+    throw err;
+  }
+
+  return {
+    trainingName: training.name,
+    employeeCount: employees.length,
+    employeeNames: employees.map((e) => e.fullName),
+  };
+}

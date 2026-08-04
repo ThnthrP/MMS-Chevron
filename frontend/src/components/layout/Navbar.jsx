@@ -1,4 +1,4 @@
-import React, { useContext, useState, useRef } from "react";
+import React, { useContext, useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
@@ -11,12 +11,13 @@ const Navbar = () => {
 
   const [openNotif, setOpenNotif] = useState(false);
   const [openUser, setOpenUser] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const logout = async () => {
     try {
       axios.defaults.withCredentials = true;
       await axios.post(`${backendUrl}/api/auth/logout`);
-
       setIsLoggedin(false);
       setUserData(false);
       navigate("/", { replace: true });
@@ -26,43 +27,91 @@ const Navbar = () => {
   };
 
   const timeoutRef = useRef(null);
-
   const handleEnter = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setOpenUser(true);
   };
-
   const handleLeave = () => {
-    timeoutRef.current = setTimeout(() => {
-      setOpenUser(false);
-    }, 150);
+    timeoutRef.current = setTimeout(() => setOpenUser(false), 150);
   };
 
-  const notifications = [
-    { id: 1, text: "Worker training completed", time: "5 min ago" },
-    { id: 2, text: "New manpower request", time: "10 min ago" },
-  ];
+  // ── Notifications: fetch + polling ทุก 30 วินาที ──
+  const fetchNotifications = async () => {
+    try {
+      const { data } = await axios.get(`${backendUrl}/api/notifications`, {
+        withCredentials: true,
+      });
+      setNotifications(data.notifications);
+      setUnreadCount(data.unreadCount);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    if (!userData) return; // ยังไม่ login ไม่ต้อง fetch
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000); // 30s
+    return () => clearInterval(interval);
+  }, [userData, backendUrl]);
+
+  const handleNotifClick = async (n) => {
+    try {
+      if (!n.isRead) {
+        await axios.put(
+          `${backendUrl}/api/notifications/${n.id}/read`,
+          {},
+          {
+            withCredentials: true,
+          },
+        );
+      }
+      setOpenNotif(false);
+      if (n.link) navigate(n.link);
+      fetchNotifications();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await axios.put(
+        `${backendUrl}/api/notifications/read-all`,
+        {},
+        {
+          withCredentials: true,
+        },
+      );
+      fetchNotifications();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const timeAgo = (dateStr) => {
+    const diffMs = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} hr ago`;
+    return `${Math.floor(hrs / 24)} day ago`;
+  };
 
   return (
     <div className="w-full flex justify-between items-center px-6 py-3 bg-white shadow sticky top-0 z-40">
       {/* LEFT */}
       <div className="flex items-center gap-6">
-        {/* LOGO / TITLE */}
         <div
           className="font-bold text-lg cursor-pointer"
           onClick={() => navigate("/")}
         >
           MMS
         </div>
-
-        {/* COMPANY */}
         <div className="text-sm bg-gray-100 px-3 py-1 rounded-full">
           Experteam
         </div>
-
-        {/* SEARCH */}
         <div className="hidden md:flex items-center bg-gray-100 px-3 py-1 rounded-lg">
           <Search size={16} className="text-gray-500" />
           <input
@@ -82,24 +131,44 @@ const Navbar = () => {
             className="relative p-2 hover:bg-gray-100 rounded-full"
           >
             <Bell size={20} />
-            <span className="absolute top-0 right-0 bg-red-500 text-white text-xs w-4 h-4 flex items-center justify-center rounded-full">
-              {notifications.length}
-            </span>
+            {unreadCount > 0 && (
+              <span className="absolute top-0 right-0 bg-red-500 text-white text-xs w-4 h-4 flex items-center justify-center rounded-full">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </button>
 
           {openNotif && (
-            <div className="absolute right-0 mt-2 w-64 bg-white shadow-lg rounded-lg p-3 z-50">
-              <p className="font-semibold mb-2">Notifications</p>
+            <div className="absolute right-0 mt-2 w-80 bg-white shadow-lg rounded-lg p-3 z-50 max-h-96 overflow-y-auto">
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-semibold">Notifications</p>
+                {unreadCount > 0 && (
+                  <button
+                    onClick={handleMarkAllRead}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
               {notifications.length === 0 ? (
                 <p className="text-sm text-gray-500">No notifications</p>
               ) : (
                 notifications.map((n) => (
                   <div
                     key={n.id}
-                    className="text-sm p-2 hover:bg-gray-100 rounded cursor-pointer"
+                    onClick={() => handleNotifClick(n)}
+                    className={`text-sm p-2 hover:bg-gray-100 rounded cursor-pointer ${
+                      !n.isRead ? "bg-blue-50" : ""
+                    }`}
                   >
-                    <p>{n.text}</p>
-                    <p className="text-xs text-gray-400">{n.time}</p>
+                    <p className="font-medium">{n.title}</p>
+                    {n.message && (
+                      <p className="text-xs text-gray-600">{n.message}</p>
+                    )}
+                    <p className="text-xs text-gray-400">
+                      {timeAgo(n.createdAt)}
+                    </p>
                   </div>
                 ))
               )}

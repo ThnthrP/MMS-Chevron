@@ -244,6 +244,10 @@ model User {
 
   reviews PerformanceReview[]
 
+  notifications Notification[]
+
+  trainingRequestBatches TrainingRequestBatch[]
+
   createdAt        DateTime  @default(now())
   resetOtp         String?
   resetOtpExpireAt DateTime?
@@ -397,6 +401,8 @@ model Employee {
   bookings           Booking[]
   subcontractorHires SubcontractorHire[]
 
+  trainingRequestItems TrainingRequestItem[]
+
   // Allocation
   isPermanent  Boolean     @default(false)  // 🟩 เขียว = permanent
   healthRisk   HealthRisk?                  // ความเสี่ยงสุขภาพ
@@ -438,6 +444,8 @@ model GlobalTraining {
   clientTrainings   ClientTraining[]
   employeeTrainings EmployeeTraining[]
   candidateGaps     CandidateGap[] // FIX A: FK จาก CandidateGap
+
+  trainingRequestItems TrainingRequestItem[]
 
   createdAt DateTime @default(now())
 }
@@ -1076,4 +1084,42 @@ model Division {
   name      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // "project_created" / "cert_expiring" / ... (เผื่ออนาคต)
+  title     String
+  message   String?
+  link      String?  // เช่น "/projects/{id}" — กดแล้วพาไปหน้าที่เกี่ยวข้อง
+  isRead    Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+}
+
+model TrainingRequestBatch {
+  id            String   @id @default(uuid())
+  requestedById String?
+  requestedBy   User?    @relation(fields: [requestedById], references: [id])
+  items         TrainingRequestItem[]
+  createdAt     DateTime @default(now())
+}
+
+model TrainingRequestItem {
+  id               String @id @default(uuid())
+  batchId          String
+  batch            TrainingRequestBatch @relation(fields: [batchId], references: [id])
+  employeeId       String
+  employee         Employee @relation(fields: [employeeId], references: [id])
+  globalTrainingId String
+  globalTraining   GlobalTraining @relation(fields: [globalTrainingId], references: [id])
+  clientName       String? // snapshot ชื่อ client ตอนขอ
+
+  @@index([batchId])
 }

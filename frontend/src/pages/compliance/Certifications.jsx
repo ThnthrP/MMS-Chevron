@@ -2,9 +2,14 @@ import { useState, useEffect, useContext, useCallback } from "react";
 import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
+import { useSearchParams } from "react-router-dom";
 
 export default function Certifications() {
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, userData } = useContext(AppContent);
+
+  const canRequestTraining = ["admin", "manpower"].includes(
+    userData?.role?.name,
+  );
 
   const [trainingOptions, setTrainingOptions] = useState([]);
   const [selectedTraining, setSelectedTraining] = useState(null);
@@ -14,13 +19,22 @@ export default function Certifications() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
 
+  // ── เลือก worker เพื่อขอ training ──
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
+  const [requesting, setRequesting] = useState(false);
+
+  // ในฟังก์ชัน component
+  const [searchParams] = useSearchParams();
+
+  // เพิ่ม state ใหม่
+  const [highlightedIds, setHighlightedIds] = useState([]);
+
   useEffect(() => {
     (async () => {
       try {
         const res = await axios.get(`${backendUrl}/api/global-trainings`, {
           withCredentials: true,
         });
-
         setTrainingOptions(
           (res.data || []).map((t) => ({
             value: t.id,
@@ -56,7 +70,21 @@ export default function Certifications() {
   useEffect(() => {
     if (selectedTraining) loadCertification(selectedTraining.value);
     else setData(null);
+    setSelectedEmployeeIds([]); // reset selection ทุกครั้งที่เปลี่ยน training
   }, [selectedTraining, loadCertification]);
+
+  // แก้ useEffect เดิมที่อ่าน trainingId ให้อ่าน empIds ด้วย
+  useEffect(() => {
+    const trainingId = searchParams.get("trainingId");
+    const empIds = searchParams.get("empIds");
+    if (trainingId && trainingOptions.length > 0 && !selectedTraining) {
+      const match = trainingOptions.find((o) => o.value === trainingId);
+      if (match) setSelectedTraining(match);
+    }
+    if (empIds) {
+      setHighlightedIds(empIds.split(","));
+    }
+  }, [trainingOptions, searchParams]);
 
   const badge = (bg, color, text) => (
     <span
@@ -83,6 +111,13 @@ export default function Certifications() {
     return matchSearch && matchStatus;
   });
 
+  useEffect(() => {
+    if (highlightedIds.length > 0 && filteredWorkers.length > 0) {
+      const el = document.getElementById(`worker-row-${highlightedIds[0]}`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlightedIds, filteredWorkers]);
+
   const bucketBadge = (bucket) => {
     switch (bucket) {
       case "expired":
@@ -97,6 +132,53 @@ export default function Certifications() {
         return badge("#e9ecef", "#495057", "— Missing");
       default:
         return "—";
+    }
+  };
+
+  const toggleEmployee = (employeeId) => {
+    setSelectedEmployeeIds((prev) =>
+      prev.includes(employeeId)
+        ? prev.filter((id) => id !== employeeId)
+        : [...prev, employeeId],
+    );
+  };
+
+  const allFilteredSelected =
+    filteredWorkers.length > 0 &&
+    filteredWorkers.every((w) => selectedEmployeeIds.includes(w.employeeId));
+
+  const toggleAllFiltered = () => {
+    if (allFilteredSelected) {
+      const ids = new Set(filteredWorkers.map((w) => w.employeeId));
+      setSelectedEmployeeIds((prev) => prev.filter((id) => !ids.has(id)));
+    } else {
+      setSelectedEmployeeIds((prev) => [
+        ...new Set([...prev, ...filteredWorkers.map((w) => w.employeeId)]),
+      ]);
+    }
+  };
+
+  const handleRequestTraining = async () => {
+    if (!selectedTraining || selectedEmployeeIds.length === 0) return;
+    try {
+      setRequesting(true);
+      await axios.post(
+        `${backendUrl}/api/compliance/request-training`,
+        {
+          trainingId: selectedTraining.value,
+          employeeIds: selectedEmployeeIds,
+        },
+        { withCredentials: true },
+      );
+      alert(
+        `แจ้ง HR ให้จัด training "${selectedTraining.label.replace(/\s*\(\d+\)$/, "")}" ให้ ${selectedEmployeeIds.length} คนแล้ว`,
+      );
+      setSelectedEmployeeIds([]);
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || "แจ้งไม่สำเร็จ — ดู console");
+    } finally {
+      setRequesting(false);
     }
   };
 
@@ -124,7 +206,7 @@ export default function Certifications() {
           </div>
         </div>
 
-        {/* ← แทรก card ใหม่ตรงนี้ */}
+        {/* Filter card */}
         <div
           style={{
             background: "#fff",
@@ -154,18 +236,9 @@ export default function Certifications() {
                   fontSize: "13px",
                   borderColor: "#dee2e6",
                 }),
-                option: (base) => ({
-                  ...base,
-                  fontSize: "13px", // ← เพิ่มใหม่ ลด font ตัวเลือกใน dropdown list
-                }),
-                singleValue: (base) => ({
-                  ...base,
-                  fontSize: "13px", // ← เพิ่มใหม่ ลด font ตัวที่แสดงหลังเลือกแล้ว
-                }),
-                placeholder: (base) => ({
-                  ...base,
-                  fontSize: "13px", // ← เพิ่มใหม่ ลด font placeholder
-                }),
+                option: (base) => ({ ...base, fontSize: "13px" }),
+                singleValue: (base) => ({ ...base, fontSize: "13px" }),
+                placeholder: (base) => ({ ...base, fontSize: "13px" }),
               }}
             />
           </div>
@@ -359,6 +432,63 @@ export default function Certifications() {
               ))}
             </div>
 
+            {/* Request Training bar — โผล่เมื่อเลือกคนไว้ */}
+            {canRequestTraining && selectedEmployeeIds.length > 0 && (
+              <div
+                style={{
+                  background: "#fff3cd",
+                  border: "1px solid #ffe69c",
+                  borderRadius: "10px",
+                  padding: "12px 16px",
+                  marginBottom: "1rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: "8px",
+                }}
+              >
+                <span style={{ fontSize: "13px", color: "#664d03" }}>
+                  เลือกไว้ <strong>{selectedEmployeeIds.length}</strong> คน
+                  สำหรับ training นี้
+                </span>
+                <button
+                  onClick={handleRequestTraining}
+                  disabled={requesting}
+                  style={{
+                    background: "#664d03",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: requesting ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {requesting ? "กำลังส่ง..." : "📢 แจ้ง HR ให้จัด Training"}
+                </button>
+              </div>
+            )}
+
+            {highlightedIds.length > 0 && (
+              <div
+                style={{
+                  background: "#e9f5fb",
+                  border: "1px solid #b6e0f5",
+                  borderRadius: "10px",
+                  padding: "10px 16px",
+                  marginBottom: "1rem",
+                  fontSize: "13px",
+                  color: "#0a5a8a",
+                }}
+              >
+                📌 มาจากคำขอ Training ล่าสุด —
+                เน้นแถวสีเหลืองด้านล่างคือคนที่ถูกระบุใน request นี้ (
+                {highlightedIds.length} คน)
+              </div>
+            )}
+
             {/* Worker list */}
             <div
               style={{
@@ -377,6 +507,20 @@ export default function Certifications() {
               >
                 <thead>
                   <tr style={{ borderBottom: "1px solid #dee2e6" }}>
+                    {canRequestTraining && (
+                      <th style={{ padding: "10px 14px", width: "36px" }}>
+                        <input
+                          type="checkbox"
+                          checked={allFilteredSelected}
+                          onChange={toggleAllFiltered}
+                          style={{
+                            width: "15px",
+                            height: "15px",
+                            cursor: "pointer",
+                          }}
+                        />
+                      </th>
+                    )}
                     {[
                       "WORKER",
                       "POSITION",
@@ -400,56 +544,81 @@ export default function Certifications() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredWorkers.map((w) => (
-                    <tr
-                      key={w.employeeId}
-                      style={{ borderBottom: "1px solid #f1f3f5" }}
-                    >
-                      <td style={{ padding: "12px 14px" }}>
-                        <div style={{ fontWeight: 600 }}>{w.fullName}</div>
-                        <div style={{ fontSize: "11px", color: "#6c757d" }}>
-                          {w.empCode}
-                        </div>
-                      </td>
-                      <td style={{ padding: "12px 14px", color: "#6c757d" }}>
-                        <div>{w.position || "—"}</div>
-                        {w.department && (
-                          <div
-                            style={{
-                              fontSize: "11px",
-                              color: "#adb5bd",
-                              marginTop: "2px",
-                            }}
-                          >
-                            {w.department}
+                  {filteredWorkers.map((w) => {
+                    const checked = selectedEmployeeIds.includes(w.employeeId);
+                    return (
+                      <tr
+                        key={w.employeeId}
+                        id={`worker-row-${w.employeeId}`}
+                        style={{
+                          borderBottom: "1px solid #f1f3f5",
+                          background: highlightedIds.includes(w.employeeId)
+                            ? "#fff3cd" // ← highlight คนที่ถูกขอ
+                            : checked
+                              ? "#fffbe6"
+                              : "#fff",
+                        }}
+                      >
+                        {canRequestTraining && (
+                          <td style={{ padding: "12px 14px" }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleEmployee(w.employeeId)}
+                              style={{
+                                width: "15px",
+                                height: "15px",
+                                cursor: "pointer",
+                              }}
+                            />
+                          </td>
+                        )}
+                        <td style={{ padding: "12px 14px" }}>
+                          <div style={{ fontWeight: 600 }}>{w.fullName}</div>
+                          <div style={{ fontSize: "11px", color: "#6c757d" }}>
+                            {w.empCode}
                           </div>
-                        )}
-                      </td>
-                      <td style={{ padding: "12px 14px" }}>
-                        {bucketBadge(w.bucket)}
-                      </td>
-                      <td style={{ padding: "12px 14px", color: "#6c757d" }}>
-                        {!w.hasRecord ? (
-                          <span style={{ color: "#adb5bd" }}>N/A</span>
-                        ) : w.completedDate ? (
-                          new Date(w.completedDate).toLocaleDateString()
-                        ) : (
-                          <span style={{ color: "#adb5bd" }}>—</span>
-                        )}
-                      </td>
-                      <td style={{ padding: "12px 14px", color: "#6c757d" }}>
-                        {!w.hasRecord ? (
-                          <span style={{ color: "#adb5bd" }}>N/A</span>
-                        ) : w.expiryDate ? (
-                          new Date(w.expiryDate).toLocaleDateString()
-                        ) : (
-                          <span style={{ color: "#198754", fontWeight: 500 }}>
-                            ไม่มีวันหมดอายุ
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td style={{ padding: "12px 14px", color: "#6c757d" }}>
+                          <div>{w.position || "—"}</div>
+                          {w.department && (
+                            <div
+                              style={{
+                                fontSize: "11px",
+                                color: "#adb5bd",
+                                marginTop: "2px",
+                              }}
+                            >
+                              {w.department}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: "12px 14px" }}>
+                          {bucketBadge(w.bucket)}
+                        </td>
+                        <td style={{ padding: "12px 14px", color: "#6c757d" }}>
+                          {!w.hasRecord ? (
+                            <span style={{ color: "#adb5bd" }}>N/A</span>
+                          ) : w.completedDate ? (
+                            new Date(w.completedDate).toLocaleDateString()
+                          ) : (
+                            <span style={{ color: "#adb5bd" }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "12px 14px", color: "#6c757d" }}>
+                          {!w.hasRecord ? (
+                            <span style={{ color: "#adb5bd" }}>N/A</span>
+                          ) : w.expiryDate ? (
+                            new Date(w.expiryDate).toLocaleDateString()
+                          ) : (
+                            <span style={{ color: "#198754", fontWeight: 500 }}>
+                              ไม่มีวันหมดอายุ
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

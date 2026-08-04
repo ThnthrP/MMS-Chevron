@@ -121,7 +121,8 @@ export default function ProjectDetail() {
         {/* Back + Header */}
         <div style={{ marginBottom: "1.5rem" }}>
           <button
-            onClick={() => navigate(-1)}
+            // onClick={() => navigate(-1)}
+            onClick={() => navigate("/projects")}
             style={{
               background: "none",
               border: "none",

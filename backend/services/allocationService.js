@@ -361,7 +361,6 @@ export async function getWorkerEligibility(employeeId) {
 
   if (!employee) return null;
 
-  // globalTrainingId -> ชื่อ training (เฉพาะที่มี globalTraining ผูกไว้)
   const employeeTrainingByGlobalId = new Map();
   for (const t of employee.trainings) {
     if (t.globalTrainingId) {
@@ -373,7 +372,6 @@ export async function getWorkerEligibility(employeeId) {
   }
   const empTrainingIds = new Set(employeeTrainingByGlobalId.keys());
 
-  // ดึงทุก contract ที่มี position requirement ตรงกับ position ของ employee
   const contracts = await prisma.contract.findMany({
     where: { isActive: true },
     include: {
@@ -409,10 +407,11 @@ export async function getWorkerEligibility(employeeId) {
         if (!group) continue;
 
         group.required.push(name);
+        const entry = { name, trainingId: gtId };
         if (empTrainingIds.has(gtId)) {
-          group.completed.push(name);
+          group.completed.push(entry);
         } else {
-          group.missing.push(name);
+          group.missing.push(entry);
         }
       }
 

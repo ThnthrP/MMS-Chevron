@@ -31,12 +31,13 @@ import divisionRoutes from "./routes/divisionRoutes.js";
 
 import globalTrainingRoutes from "./routes/globalTrainingRoutes.js";
 
+import notificationRoutes from "./routes/notificationRoutes.js";
 
+import trainingRequestRoutes from "./routes/trainingRequestRoutes.js";
 
 // import safetyRouter from "./routes/safetyRoutes.js";
 // import medicalRouter from "./routes/medicalRoutes.js";
 // import requestRouter from "./routes/requestRoutes.js";
-
 
 // import bookingRouter from "./routes/bookingRoutes.js";
 // import vehicleRouter from "./routes/vehicleRoutes.js";
@@ -105,6 +106,9 @@ app.use("/api/divisions", divisionRoutes);
 
 app.use("/api/global-trainings", globalTrainingRoutes);
 
+app.use("/api/notifications", notificationRoutes);
+
+app.use("/api/training-requests", trainingRequestRoutes);
 
 // app.use("/api/safety", safetyRouter);
 // app.use("/api/medical", medicalRouter);
@@ -114,4 +118,3 @@ app.use("/api/global-trainings", globalTrainingRoutes);
 app.listen(port, () => {
   console.log(`🚀 Server running on http://localhost:${port}`);
 });
-
