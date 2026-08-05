@@ -58,13 +58,16 @@ export async function getProjectAllocationDetail(projectId) {
 }
 
 // ─── Step 8: Find workers + Eligibility check ───
-export async function findWorkers({ positionId, requestId, contractId }) {
+export async function findWorkers({ positionId, requestId, contractId, employeeIds }) {
   const where = {
     status: "active",
     availabilityStatus: "available",
   };
 
-  if (positionId) {
+  // ── ถ้ามี employeeIds ระบุมา (จาก quick search) — ดึงเฉพาะคนกลุ่มนี้ ไม่กรองด้วย positionId ──
+  if (employeeIds?.length > 0) {
+    where.id = { in: employeeIds };
+  } else if (positionId) {
     where.positionId = positionId;
   }
 
@@ -75,7 +78,7 @@ export async function findWorkers({ positionId, requestId, contractId }) {
     };
   }
 
-  // auto-filter คนที่เกษียณแล้ว (อายุ >= RETIREMENT_AGE) ออกจาก pool
+  // auto-filter คนที่เกษียณแล้ว
   const retirementCutoff = new Date();
   retirementCutoff.setFullYear(retirementCutoff.getFullYear() - RETIREMENT_AGE);
   where.OR = [{ birthDate: null }, { birthDate: { gt: retirementCutoff } }];

@@ -24,11 +24,13 @@ export async function getProjectDetail(req, res) {
 // GET /api/allocation/workers?positionId=&requestId=&contractId=
 export async function findWorkers(req, res) {
   try {
-    const { positionId, requestId, contractId } = req.query;
+    const { positionId, requestId, contractId, employeeIds } = req.query;
+    const parsedIds = employeeIds ? employeeIds.split(",") : undefined;
     const workers = await service.findWorkers({
       positionId,
       requestId,
       contractId,
+      employeeIds: parsedIds,
     });
     res.json(workers);
   } catch (error) {

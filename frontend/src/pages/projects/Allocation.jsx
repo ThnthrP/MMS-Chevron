@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, useRef } from "react";
+import { useState, useEffect, useContext, useRef, useMemo } from "react";
 import axios from "axios";
 import Select from "react-select";
 import { useNavigate } from "react-router-dom";
@@ -60,6 +60,10 @@ export default function Allocation() {
   const [rosterLoading, setRosterLoading] = useState(false);
   const [skillMatrixModal, setSkillMatrixModal] = useState(null);
   const [skillMatrixLoading, setSkillMatrixLoading] = useState(false);
+
+  const [quickMatchResults, setQuickMatchResults] = useState({});
+  const [loadingQuickMatch, setLoadingQuickMatch] = useState(false);
+  const [quickPickedWorkers, setQuickPickedWorkers] = useState([]); // worker objects ที่เลือกจาก quick search (คงอยู่แม้ลบคำค้นหา)
 
   useEffect(() => {
     fetchProjects();
@@ -160,6 +164,18 @@ export default function Allocation() {
     );
   };
 
+  // ── toggle worker จาก quick search (เก็บ object เต็มไว้ ไม่ใช่แค่ id เพื่อให้แสดงผลได้แม้ค้นหาใหม่/ลบคำค้นหา ──
+  const toggleQuickWorker = (w) => {
+    setSelectedWorkerIds((prev) =>
+      prev.includes(w.id) ? prev.filter((id) => id !== w.id) : [...prev, w.id],
+    );
+    setQuickPickedWorkers((prev) => {
+      const exists = prev.some((p) => p.id === w.id);
+      if (exists) return prev.filter((p) => p.id !== w.id);
+      return [...prev, w];
+    });
+  };
+
   const permCount = workers.filter((w) => w.isPermanent).length;
 
   const displayedWorkers = [...workers]
@@ -207,6 +223,7 @@ export default function Allocation() {
         { withCredentials: true },
       );
       setSelectedWorkerIds([]);
+      setQuickPickedWorkers([]); // ← เพิ่มใหม่ เคลียร์ตาราง preview ด้วย
       fetchShortlist(selectedProjectId);
       handleFindWorkers();
     } catch (error) {
@@ -756,15 +773,54 @@ export default function Allocation() {
       .catch((err) => console.error(err));
   }, [backendUrl]);
 
-  const quickSearchResults = quickSearch.trim()
-    ? allWorkers
-        .filter(
-          (w) =>
-            w.fullName?.toLowerCase().includes(quickSearch.toLowerCase()) ||
-            w.empCode?.toLowerCase().includes(quickSearch.toLowerCase()),
-        )
-        .slice(0, 8)
-    : [];
+  const quickSearchResults = useMemo(() => {
+    return quickSearch.trim()
+      ? allWorkers
+          .filter(
+            (w) =>
+              w.fullName?.toLowerCase().includes(quickSearch.toLowerCase()) ||
+              w.empCode?.toLowerCase().includes(quickSearch.toLowerCase()),
+          )
+          .slice(0, 8)
+      : [];
+  }, [quickSearch, allWorkers]);
+
+  useEffect(() => {
+    const idsSet = new Set([
+      ...quickSearchResults.map((w) => w.id),
+      ...quickPickedWorkers.map((w) => w.id),
+    ]);
+    const employeeIds = Array.from(idsSet);
+
+    if (!selectedRequest || employeeIds.length === 0) {
+      setQuickMatchResults({});
+      return;
+    }
+
+    setLoadingQuickMatch(true);
+    axios
+      .get(`${backendUrl}/api/allocation/workers`, {
+        withCredentials: true,
+        params: {
+          positionId: selectedRequest.position?.id,
+          requestId: selectedRequest.id,
+          contractId: selectedProject?.contractId,
+          employeeIds: employeeIds.join(","),
+        },
+      })
+      .then((res) => {
+        const map = {};
+        res.data.forEach((w) => (map[w.id] = w));
+        setQuickMatchResults(map);
+      })
+      .catch((err) => console.error(err))
+      .finally(() => setLoadingQuickMatch(false));
+  }, [
+    quickSearchResults,
+    quickPickedWorkers,
+    selectedRequest,
+    selectedProject,
+  ]);
 
   return (
     <div className="container-fluid p-0">
@@ -798,89 +854,6 @@ export default function Allocation() {
             <span style={{ color: "#6c757d", fontSize: "12px" }}>
               Steps 8–9: Filter & Match → Shortlist → Generate CV
             </span>
-          </div>
-        </div>
-
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "16px 20px",
-            marginBottom: "1.5rem",
-          }}
-        >
-          <div
-            style={{ fontWeight: 700, fontSize: "14px", marginBottom: "8px" }}
-          >
-            🔍 ค้นหา Worker คนใดก็ได้ (เช่น client เจาะจงชื่อมาตรงๆ)
-          </div>
-          <div style={{ position: "relative", maxWidth: "400px" }}>
-            <input
-              type="text"
-              placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน..."
-              value={quickSearch}
-              onChange={(e) => {
-                setQuickSearch(e.target.value);
-                setShowQuickResults(true);
-              }}
-              onFocus={() => setShowQuickResults(true)}
-              onBlur={() => setTimeout(() => setShowQuickResults(false), 150)}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                fontSize: "13px",
-                border: "1px solid #dee2e6",
-                borderRadius: "8px",
-                outline: "none",
-              }}
-            />
-            {showQuickResults && quickSearchResults.length > 0 && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "calc(100% + 4px)",
-                  left: 0,
-                  right: 0,
-                  background: "#fff",
-                  border: "1px solid #dee2e6",
-                  borderRadius: "8px",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                  zIndex: 1000,
-                  maxHeight: "260px",
-                  overflowY: "auto",
-                }}
-              >
-                {quickSearchResults.map((w) => (
-                  <div
-                    key={w.id}
-                    onClick={() => {
-                      handleViewEligibility(w);
-                      setQuickSearch("");
-                      setShowQuickResults(false);
-                    }}
-                    style={{
-                      padding: "10px 14px",
-                      cursor: "pointer",
-                      borderBottom: "1px solid #f1f3f5",
-                    }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = "#f8f9fa")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = "#fff")
-                    }
-                  >
-                    <div style={{ fontWeight: 600, fontSize: "13px" }}>
-                      {w.fullName}
-                    </div>
-                    <div style={{ fontSize: "11px", color: "#6c757d" }}>
-                      {w.empCode} · {w.position?.name || "—"}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
 
@@ -1019,7 +992,413 @@ export default function Allocation() {
                   🔍 Find Workers
                 </button>
               </div>
+              {/* ── Quick search: ค้นหา worker คนใดก็ได้ เทียบ % Match กับ Position Request ด้านบน ── */}
+              <div
+                style={{
+                  borderTop: "1px solid #f1f3f5",
+                  paddingTop: "16px",
+                  marginBottom: "16px",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "14px",
+                    marginBottom: "8px",
+                  }}
+                >
+                  🔍 ค้นหา Worker คนใดก็ได้ (เช่น client เจาะจงชื่อมาตรงๆ)
+                </div>
+                <div style={{ position: "relative", maxWidth: "400px" }}>
+                  <input
+                    type="text"
+                    placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน..."
+                    value={quickSearch}
+                    onChange={(e) => {
+                      setQuickSearch(e.target.value);
+                      setShowQuickResults(true);
+                    }}
+                    onFocus={() => setShowQuickResults(true)}
+                    onBlur={() =>
+                      setTimeout(() => setShowQuickResults(false), 200)
+                    }
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      fontSize: "13px",
+                      border: "1px solid #dee2e6",
+                      borderRadius: "8px",
+                      outline: "none",
+                    }}
+                  />
+                  {showQuickResults && quickSearchResults.length > 0 && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "calc(100% + 4px)",
+                        left: 0,
+                        right: 0,
+                        background: "#fff",
+                        border: "1px solid #dee2e6",
+                        borderRadius: "8px",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                        zIndex: 1000,
+                        maxHeight: "260px",
+                        overflowY: "auto",
+                      }}
+                    >
+                      {quickSearchResults.map((w) => {
+                        const selected = selectedWorkerIds.includes(w.id);
+                        return (
+                          <div
+                            key={w.id}
+                            onClick={() => toggleQuickWorker(w)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                              padding: "10px 14px",
+                              cursor: "pointer",
+                              borderBottom: "1px solid #f1f3f5",
+                              background: selected ? "#f0f7ff" : "#fff",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!selected)
+                                e.currentTarget.style.background = "#f8f9fa";
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!selected)
+                                e.currentTarget.style.background = "#fff";
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleQuickWorker(w)}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                width: "14px",
+                                height: "14px",
+                                cursor: "pointer",
+                              }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div
+                                style={{ fontWeight: 600, fontSize: "13px" }}
+                              >
+                                {w.fullName}
+                              </div>
+                              <div
+                                style={{ fontSize: "11px", color: "#6c757d" }}
+                              >
+                                {w.empCode} · {w.position?.name || "—"}
+                              </div>
+                            </div>
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewEligibility(w);
+                                setShowQuickResults(false);
+                              }}
+                              style={{
+                                fontSize: "11px",
+                                color: "#0d6efd",
+                                cursor: "pointer",
+                                fontWeight: 600,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              ดู Gap →
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
+                {/* ── ตาราง preview ของคนที่เลือกจาก quick search ── */}
+                {quickPickedWorkers.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      border: "1px solid #dee2e6",
+                      borderRadius: "8px",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: "8px 12px",
+                        background: "#f8f9fa",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        color: "#495057",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "6px",
+                      }}
+                    >
+                      <span>✅ เลือกแล้ว {quickPickedWorkers.length} คน</span>
+                      {!selectedRequest && (
+                        <span
+                          style={{
+                            color: "#664d03",
+                            fontWeight: 400,
+                            fontSize: "11px",
+                          }}
+                        >
+                          💡 เลือก Position Request ด้านบนเพื่อดู % Match
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ overflowX: "auto" }}>
+                      <table
+                        style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          fontSize: "12px",
+                        }}
+                      >
+                        <thead>
+                          <tr
+                            style={{
+                              background: "#fff",
+                              borderBottom: "1px solid #dee2e6",
+                            }}
+                          >
+                            <th
+                              style={{ padding: "8px 10px", width: "28px" }}
+                            ></th>
+                            {[
+                              "NAME",
+                              "RETIREMENT",
+                              "HEALTH RISK",
+                              "MEDICAL",
+                              "CERTIFICATIONS",
+                              "REST DAYS",
+                              "% MATCH",
+                            ].map((h) => (
+                              <th
+                                key={h}
+                                style={{
+                                  padding: "8px 10px",
+                                  fontSize: "10px",
+                                  fontWeight: 600,
+                                  color: "#6c757d",
+                                  textAlign: "left",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {quickPickedWorkers.map((w) => {
+                            const matched = quickMatchResults[w.id];
+                            const age = w.birthDate
+                              ? Math.floor(
+                                  (Date.now() -
+                                    new Date(w.birthDate).getTime()) /
+                                    (365.25 * 86400000),
+                                )
+                              : null;
+                            const health = matched?.healthRisk
+                              ? HEALTH_MAP[matched.healthRisk]
+                              : null;
+
+                            return (
+                              <tr
+                                key={w.id}
+                                style={{ borderTop: "1px solid #f1f3f5" }}
+                              >
+                                <td style={{ padding: "8px 10px" }}>
+                                  <button
+                                    onClick={() => toggleQuickWorker(w)}
+                                    title="เอาออก"
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      color: "#dc3545",
+                                      cursor: "pointer",
+                                      fontSize: "14px",
+                                      padding: 0,
+                                      lineHeight: 1,
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                </td>
+                                <td style={{ padding: "8px 10px" }}>
+                                  <div
+                                    onClick={() => handleViewEligibility(w)}
+                                    style={{
+                                      fontWeight: 600,
+                                      cursor: "pointer",
+                                      color: "#212529",
+                                    }}
+                                    title="คลิกดู eligibility"
+                                  >
+                                    {w.fullName}
+                                  </div>
+                                  <div
+                                    style={{
+                                      fontSize: "10px",
+                                      color: "#6c757d",
+                                    }}
+                                  >
+                                    {w.empCode} · {w.position?.name || "—"}
+                                  </div>
+                                </td>
+                                <td
+                                  style={{
+                                    padding: "8px 10px",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {age !== null ? `อายุ ${age}` : "—"}
+                                </td>
+                                <td style={{ padding: "8px 10px" }}>
+                                  {health ? (
+                                    <span
+                                      style={{
+                                        background: health.bg,
+                                        color: health.color,
+                                        borderRadius: "6px",
+                                        padding: "2px 6px",
+                                        fontSize: "10px",
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      {health.label}
+                                    </span>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td style={{ padding: "8px 10px" }}>
+                                  {matched
+                                    ? renderMedical(matched.medicalExpiry)
+                                    : "—"}
+                                </td>
+                                <td
+                                  style={{
+                                    padding: "8px 10px",
+                                    maxWidth: "140px",
+                                  }}
+                                >
+                                  {matched?.certifications?.length ? (
+                                    <span
+                                      title={matched.certifications.join(", ")}
+                                    >
+                                      {matched.certifications
+                                        .slice(0, 2)
+                                        .join(", ")}
+                                      {matched.certifications.length > 2 &&
+                                        ` +${matched.certifications.length - 2}`}
+                                    </span>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td
+                                  style={{
+                                    padding: "8px 10px",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {matched ? renderDayOff(matched.dayOff) : "—"}
+                                </td>
+                                <td
+                                  style={{
+                                    padding: "8px 10px",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {!selectedRequest ? (
+                                    <span
+                                      style={{
+                                        color: "#adb5bd",
+                                        fontSize: "10px",
+                                      }}
+                                    >
+                                      เลือก position ก่อน
+                                    </span>
+                                  ) : loadingQuickMatch ? (
+                                    <span style={{ color: "#adb5bd" }}>
+                                      ...
+                                    </span>
+                                  ) : matched?.matchPct != null ? (
+                                    <span
+                                      style={{
+                                        color:
+                                          matched.matchPct === 100
+                                            ? "#198754"
+                                            : matched.matchPct >= 70
+                                              ? "#cc8400"
+                                              : "#dc3545",
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      {matched.matchPct}%
+                                    </span>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {canManageAllocation && (
+                      <div
+                        style={{
+                          padding: "10px",
+                          borderTop: "1px solid #dee2e6",
+                          background: "#f8f9fa",
+                        }}
+                      >
+                        {!selectedRequest ? (
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: "#dc3545",
+                              textAlign: "center",
+                            }}
+                          >
+                            ⚠ ต้องเลือก Position Request ก่อนถึงจะ Add to
+                            Shortlist ได้
+                          </div>
+                        ) : (
+                          <button
+                            onClick={handleAddToShortlist}
+                            style={{
+                              width: "100%",
+                              background: "#198754",
+                              color: "#fff",
+                              border: "none",
+                              borderRadius: "8px",
+                              padding: "8px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            👥 Add Selected to Shortlist (
+                            {quickPickedWorkers.length})
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               {selectedProjectId && requestOptions.length === 0 && (
                 <div
                   style={{
@@ -2117,6 +2496,35 @@ export default function Allocation() {
                       ? "Generating..."
                       : "📋 Export Skill Matrix"}
                   </button>
+
+                  {/* ── ลิงก์ไปหน้า Discussion ของ project ที่เลือกอยู่ ── */}
+                  {selectedProjectId && (
+                    <button
+                      onClick={() =>
+                        navigate(
+                          `/projects/${selectedProjectId}?tab=discussion`,
+                        )
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "9px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        border: "1px solid #0d6efd",
+                        borderRadius: "8px",
+                        background: "#f0f7ff",
+                        color: "#0d6efd",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                        marginTop: "4px",
+                      }}
+                    >
+                      💬 ส่งไฟล์ให้ PE →
+                    </button>
+                  )}
                 </div>
               )}
             </div>

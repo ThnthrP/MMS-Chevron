@@ -201,7 +201,17 @@ const AppRouter = () => {
             path="/projects/:id"
             element={
               <ProtectedRoute
-                allowRoles={["admin", "hr", "manpower", "pe", "expert"]}
+                allowRoles={[
+                  "admin",
+                  "hr",
+                  "manpower",
+                  "pe",
+                  "expert",
+                  "supervisor",
+                  "executive",
+                  "manager",
+                  "pe_head",
+                ]}
               >
                 <ProjectDetail />
               </ProtectedRoute>
