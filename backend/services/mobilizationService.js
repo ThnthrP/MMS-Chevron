@@ -131,10 +131,10 @@ export async function deployToSite({ projectId, deployments }) {
     if (!d.employeeId || !d.mobDate || !d.platform) continue;
 
     const mob = new Date(d.mobDate);
-    const demob = addDays(mob, DEMOB_DAYS);
+    // ── ใช้ demobDate ที่ผู้ใช้กำหนดเองถ้ามี ไม่งั้น fallback = mobDate + 28 วัน ──
+    const demob = d.demobDate ? new Date(d.demobDate) : addDays(mob, DEMOB_DAYS);
     const status = statusByDate(mob, demob);
 
-    // snapshot ตำแหน่งปัจจุบันของพนักงาน ณ เวลา deploy
     const employee = await prisma.employee.findUnique({
       where: { id: d.employeeId },
       select: { positionId: true },

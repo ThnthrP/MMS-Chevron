@@ -158,16 +158,18 @@ export default function Mobilization() {
       const asg = w.assignment;
       const deployed = !!asg;
       const mobDate = asg?.mobDate ? ymd(asg.mobDate) : defaultMob;
+      const demobDate = asg?.demobDate
+        ? ymd(asg.demobDate)
+        : addDays(mobDate, DEMOB_DAYS);
       return {
         ...w,
-        // checklist (client-side gate; ถ้า deploy แล้วถือว่าผ่าน)
         ppe: deployed,
         safetyInduction: deployed,
-        // deployment
         mobDate,
+        demobDate,
         platform: asg?.platform ?? "",
         deployed,
-        deployedAt: asg?.createdAt ?? null, // ← Deployed on
+        deployedAt: asg?.createdAt ?? null,
       };
     });
   };
@@ -205,6 +207,7 @@ export default function Mobilization() {
           deployments: targets.map((r) => ({
             employeeId: r.employeeId,
             mobDate: r.mobDate,
+            demobDate: r.demobDate,
             platform: r.platform,
           })),
         },
@@ -540,8 +543,18 @@ export default function Mobilization() {
                           />
                         </td>
 
-                        <td style={{ ...td, color: "#6c757d" }}>
-                          {addDays(r.mobDate, DEMOB_DAYS) || "—"}
+                        <td style={td}>
+                          <input
+                            type="date"
+                            value={r.demobDate || ""}
+                            disabled={locked || !canManageMobilization}
+                            onChange={(e) =>
+                              updateRow(r.employeeId, {
+                                demobDate: e.target.value,
+                              })
+                            }
+                            style={input}
+                          />
                         </td>
 
                         <td style={td}>
