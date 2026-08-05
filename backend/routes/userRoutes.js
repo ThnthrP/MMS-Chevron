@@ -13,6 +13,8 @@ import {
   deleteUser,
   updateUserEmployee,
   getAvailableEmployees, // ← เพิ่ม
+  createRole, // ← เพิ่ม
+  deleteRole, // ← เพิ่ม
 } from "../controllers/userController.js";
 
 const userRouter = express.Router();
@@ -54,6 +56,16 @@ userRouter.get(
   userAuth,
   authorize("system", "manage"),
   getAvailableEmployees,
+);
+
+userRouter.get("/roles", userAuth, authorize("system", "manage"), getAllRoles);
+
+userRouter.post("/roles", userAuth, authorize("system", "manage"), createRole);
+userRouter.delete(
+  "/roles/:id",
+  userAuth,
+  authorize("system", "manage"),
+  deleteRole,
 );
 
 export default userRouter;

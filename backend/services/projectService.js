@@ -188,3 +188,23 @@ export async function deleteProjectRequest(projectId, requestId) {
     return tx.manpowerRequest.delete({ where: { id: String(requestId) } });
   });
 }
+
+export async function updateProjectRequestQuantity(
+  projectId,
+  requestId,
+  quantity,
+) {
+  const reqRow = await prisma.manpowerRequest.findFirst({
+    where: { id: String(requestId), projectId: String(projectId) },
+  });
+  if (!reqRow) {
+    const e = new Error("Request not found");
+    e.code = "P2025";
+    throw e;
+  }
+  return prisma.manpowerRequest.update({
+    where: { id: String(requestId) },
+    data: { quantity: Number(quantity) },
+    include: { position: true },
+  });
+}

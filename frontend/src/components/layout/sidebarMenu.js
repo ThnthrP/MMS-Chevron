@@ -21,6 +21,9 @@ export const APP_MENU = [
           "ta",
           "bd",
           "expert",
+          "supervisor", // ← เพิ่ม
+          "executive", // ← เพิ่ม
+          "manager", // ← เพิ่ม
         ],
       },
     ],
@@ -35,12 +38,12 @@ export const APP_MENU = [
       {
         name: "Workers",
         path: "/workers",
-        roles: ["admin", "hr", "manpower", "safety", "pe", "expert"],
+        roles: ["admin", "hr", "manpower", "safety", "pe", "expert", "pe_head"], // ← เพิ่ม pe_head
       },
       {
         name: "Add Worker",
         path: "/workers/add",
-        roles: ["admin", "hr"], // ← เปลี่ยนจาก ["admin", "hr", "manpower"]
+        roles: ["admin", "hr"],
       },
     ],
   },
@@ -54,16 +57,16 @@ export const APP_MENU = [
       {
         name: "Training Matrix",
         path: "/training-matrix",
-        roles: ["admin", "hr", "manpower", "pe", "expert"], // PE และ Expert เข้ามาดูเป็น Knowledge Base ได้เลยจากตรงนี้
+        roles: ["admin", "hr", "manpower", "pe", "expert"],
       },
       {
         name: "Compliance Center",
         path: "/compliance",
         roles: ["admin", "hr", "manpower", "safety", "nurse", "pe"],
-        badge: true, // ตัวเลขแจ้งเตือน Expired/Missing ดึงสเตตัสรวมในหน้านี้หน้าเดียว
+        badge: true,
       },
       {
-        name: "Certifications", // ← เพิ่มใหม่
+        name: "Certifications",
         path: "/certifications",
         roles: ["admin", "hr", "manpower", "safety", "nurse", "pe"],
       },
@@ -83,17 +86,17 @@ export const APP_MENU = [
     items: [
       {
         name: "Projects",
-        path: "/projects", // รองรับสเตตัส Open, In Progress, Archived และรองรับ Request ย่อยข้างใน
+        path: "/projects",
         roles: ["admin", "pe", "manpower", "hr", "pe_head"],
       },
       {
         name: "Allocation",
-        path: "/allocation", // หน้าจับคู่ Matching (คัดคนเดิม, สแกนหาคน Match 100%)
+        path: "/allocation",
         roles: ["admin", "manpower", "hr", "pe", "expert"],
       },
       {
         name: "Mobilization",
-        path: "/mobilization", // หน้าติดตามคนเข้าไซต์งาน / แผนปฏิทินฝึกอบรม / ขั้นตอนลดกำลังพล (D-Mob)
+        path: "/mobilization",
         roles: ["admin", "manpower", "hr", "pe", "safety", "nurse", "ta"],
       },
     ],
@@ -107,8 +110,17 @@ export const APP_MENU = [
     items: [
       {
         name: "Post-Project Review",
-        path: "/review", // บันทึกประวัติและ Log ผลงาน เพื่อให้ Manpower ค้นหา "คนเดิม" มาทำงานซ้ำได้แม่นยำ
-        roles: ["admin", "hr", "pe", "pe_head", "manpower"],
+        path: "/review",
+        roles: [
+          "admin",
+          "hr",
+          "pe",
+          "pe_head",
+          "manpower",
+          "supervisor", // ← เพิ่ม
+          "executive", // ← เพิ่ม
+          "manager", // ← เพิ่ม
+        ],
       },
     ],
   },
@@ -122,7 +134,22 @@ export const APP_MENU = [
       {
         name: "Analytics & Reports",
         path: "/reports",
-        roles: ["admin", "pe_head", "bd", "manager", "manpower", "hr", "pe"],
+        roles: [
+          "admin",
+          "pe_head",
+          "bd",
+          "manager",
+          "manpower",
+          "hr",
+          "pe",
+          "executive", // ← เพิ่ม
+          "supervisor", // ← เพิ่ม
+        ],
+      },
+      {
+        name: "Projects Overview",
+        path: "/supervisor-overview",
+        roles: ["admin", "supervisor", "executive", "manager", "pe_head"],
       },
     ],
   },

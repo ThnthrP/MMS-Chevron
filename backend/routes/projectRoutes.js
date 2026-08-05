@@ -22,6 +22,13 @@ router.post(
   requireRole("admin", "pe"),
   controller.addProjectRequest,
 );
+
+router.put(
+  "/:id/requests/:requestId",
+  requireRole("admin", "pe"),
+  controller.updateProjectRequest,
+);
+
 router.delete(
   "/:id/requests/:requestId",
   requireRole("admin", "pe"),

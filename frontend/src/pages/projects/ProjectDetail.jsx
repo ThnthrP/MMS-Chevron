@@ -1,24 +1,67 @@
-import { useState, useEffect, useContext } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useState, useEffect, useContext, useRef } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
 
+// ── role badge tones (เอาสไตล์เดียวกับ AdminUsers.jsx) ──
+const ROLE_TONE = {
+  admin: { bg: "#ede7f6", color: "#5e35b1" },
+  manpower: { bg: "#e3f2fd", color: "#1565c0" },
+  pe: { bg: "#fff3e0", color: "#e65100" },
+  pe_head: { bg: "#fff3e0", color: "#e65100" },
+  hr: { bg: "#e0f2f1", color: "#00695c" },
+};
+const roleTone = (name) =>
+  ROLE_TONE[(name || "").toLowerCase()] || { bg: "#f1f3f5", color: "#6c757d" };
+
+const FILE_ICON = {
+  pdf: "📄",
+  xlsx: "📊",
+  xls: "📊",
+  doc: "📝",
+  docx: "📝",
+  png: "🖼",
+  jpg: "🖼",
+  jpeg: "🖼",
+};
+
 export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { backendUrl, userData } = useContext(AppContent);
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const canManageProjects = ["admin", "pe"].includes(userData?.role?.name);
+  const canDiscuss = ["admin", "pe", "pe_head", "manpower"].includes(
+    userData?.role?.name,
+  );
 
   const [showAddPosition, setShowAddPosition] = useState(false);
   const [positions, setPositions] = useState([]);
-  const [positionForm, setPositionForm] = useState({
-    positionId: "",
-    quantity: 1,
-  });
+
+  // ── Discussion state ──
+  const [messages, setMessages] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(true);
+  const [newContent, setNewContent] = useState("");
+  const [newFiles, setNewFiles] = useState([]);
+
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0); // กัน flicker ตอนลากผ่าน child element
+
+  const [sending, setSending] = useState(false);
+  const discussionRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const messagesEndRef = useRef(null);
+
+  const [selectedPositionIds, setSelectedPositionIds] = useState([]);
+  const [savingPositions, setSavingPositions] = useState(false);
+
+  // ── แก้ headcount แบบ inline ──
+  const [quantityDraft, setQuantityDraft] = useState({}); // { requestId: quantity }
+  const [savingQuantityId, setSavingQuantityId] = useState(null);
 
   const fetchProject = async () => {
     try {
@@ -33,8 +76,6 @@ export default function ProjectDetail() {
     }
   };
 
-  // ใช้ /manage เพื่อให้ได้ _count.employees → กรองเฉพาะตำแหน่งที่มีพนักงาน
-  // ถ้า /manage ใช้ไม่ได้ (role) fallback /api/positions (โชว์ทั้งหมด)
   const fetchPositions = async () => {
     try {
       const res = await axios.get(`${backendUrl}/api/positions/manage`, {
@@ -53,10 +94,65 @@ export default function ProjectDetail() {
     }
   };
 
+  const fetchMessages = async () => {
+    try {
+      setMessagesLoading(true);
+      const res = await axios.get(`${backendUrl}/api/project-messages/${id}`, {
+        withCredentials: true,
+      });
+      setMessages(res.data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setMessagesLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchProject();
     fetchPositions();
+    if (canDiscuss) fetchMessages();
   }, [id]);
+
+  // ── auto-scroll ไป discussion section ถ้ามี ?tab=discussion ──
+  useEffect(() => {
+    if (searchParams.get("tab") === "discussion" && discussionRef.current) {
+      setTimeout(() => {
+        discussionRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 300);
+    }
+  }, [searchParams, messagesLoading]);
+
+  // ── auto-scroll ไปข้อความล่าสุดตอนโหลด/ส่งเสร็จ ──
+  useEffect(() => {
+    if (!messagesLoading) {
+      messagesEndRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [messages, messagesLoading]);
+
+  // ── กัน browser เปิดไฟล์เป็นแท็บใหม่เวลาลากไฟล์พลาดไม่ตรงกล่อง ──
+  useEffect(() => {
+    const preventDefaults = (e) => {
+      e.preventDefault();
+    };
+    window.addEventListener("dragover", preventDefaults);
+    window.addEventListener("drop", preventDefaults);
+    return () => {
+      window.removeEventListener("dragover", preventDefaults);
+      window.removeEventListener("drop", preventDefaults);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (project?.requests) {
+      const draft = {};
+      project.requests.forEach((r) => (draft[r.id] = r.quantity));
+      setQuantityDraft(draft);
+    }
+  }, [project]);
 
   if (loading) return <div className="p-4 text-muted">Loading...</div>;
   if (!project) return <div className="p-4 text-muted">Project not found</div>;
@@ -69,7 +165,6 @@ export default function ProjectDetail() {
       (a) => a.status === "active" || a.status === "completed",
     ).length ?? 0;
 
-  // ── ตัวเลือกตำแหน่งสำหรับ modal — เฉพาะที่มีพนักงาน + ค้นหาได้ ──
   const hasCounts = positions.some((p) => p._count);
   const selectablePositions = hasCounts
     ? positions.filter((p) => (p._count?.employees ?? 0) > 0)
@@ -79,23 +174,46 @@ export default function ProjectDetail() {
     label: `${p.name}${p._count ? ` (${p._count.employees})` : ""}`,
   }));
 
-  const handleAddPosition = async () => {
-    if (!positionForm.positionId) return;
+  const handleAddPositions = async () => {
+    if (selectedPositionIds.length === 0) return;
     try {
-      await axios.post(
-        `${backendUrl}/api/projects/${id}/requests`,
-        {
-          positionId: positionForm.positionId,
-          quantity: Number(positionForm.quantity),
-        },
-        { withCredentials: true },
+      setSavingPositions(true);
+      await Promise.all(
+        selectedPositionIds.map((positionId) =>
+          axios.post(
+            `${backendUrl}/api/projects/${id}/requests`,
+            { positionId, quantity: 1 }, // default = 1 คน — ไปปรับต่อในตาราง
+            { withCredentials: true },
+          ),
+        ),
       );
       setShowAddPosition(false);
-      setPositionForm({ positionId: "", quantity: 1 });
+      setSelectedPositionIds([]);
       fetchProject();
     } catch (error) {
       console.error(error);
       alert(error.response?.data?.message || "เพิ่ม position ไม่สำเร็จ");
+    } finally {
+      setSavingPositions(false);
+    }
+  };
+
+  const handleSaveQuantity = async (reqId) => {
+    const newQty = quantityDraft[reqId];
+    if (!newQty || Number(newQty) < 1) return;
+    try {
+      setSavingQuantityId(reqId);
+      await axios.put(
+        `${backendUrl}/api/projects/${id}/requests/${reqId}`,
+        { quantity: Number(newQty) },
+        { withCredentials: true },
+      );
+      fetchProject();
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.message || "แก้ headcount ไม่สำเร็จ");
+    } finally {
+      setSavingQuantityId(null);
     }
   };
 
@@ -115,13 +233,102 @@ export default function ProjectDetail() {
     }
   };
 
+  const addFiles = (fileList) => {
+    const files = Array.from(fileList || []);
+    setNewFiles((prev) => [...prev, ...files].slice(0, 5));
+  };
+
+  const handleFileSelect = (e) => {
+    addFiles(e.target.files);
+    e.target.value = "";
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    dragCounter.current += 1;
+    if (e.dataTransfer.types.includes("Files")) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault(); // จำเป็น — ไม่งั้น onDrop จะไม่ทำงาน
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragging(false);
+    addFiles(e.dataTransfer.files);
+  };
+
+  const removeSelectedFile = (idx) => {
+    setNewFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleSendMessage = async () => {
+    if (!newContent.trim() && newFiles.length === 0) return;
+    try {
+      setSending(true);
+      const formData = new FormData();
+      formData.append("content", newContent);
+      newFiles.forEach((f) => formData.append("files", f));
+
+      await axios.post(`${backendUrl}/api/project-messages/${id}`, formData, {
+        withCredentials: true,
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      setNewContent("");
+      setNewFiles([]);
+      fetchMessages();
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.message || "ส่งข้อความไม่สำเร็จ");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const fmtDateTime = (d) =>
+    new Date(d).toLocaleString("th-TH", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+  const fmtDate = (d) => (d ? new Date(d).toISOString().split("T")[0] : "—");
+
+  // ── styles ที่ใช้ซ้ำ ──
+  const card = {
+    background: "#fff",
+    border: "1px solid #dee2e6",
+    borderRadius: "10px",
+    overflow: "hidden",
+  };
+  const cardHeader = {
+    padding: "12px 18px",
+    borderBottom: "1px solid #dee2e6",
+    fontWeight: 700,
+    fontSize: "13px",
+  };
+
   return (
     <div className="container-fluid p-0">
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         {/* Back + Header */}
-        <div style={{ marginBottom: "1.5rem" }}>
+        <div style={{ marginBottom: "1.25rem" }}>
           <button
-            // onClick={() => navigate(-1)}
             onClick={() => navigate("/projects")}
             style={{
               background: "none",
@@ -153,353 +360,716 @@ export default function ProjectDetail() {
           </div>
         </div>
 
-        {/* Section 1: General Information */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            marginBottom: "1.5rem",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "14px 20px",
-              borderBottom: "1px solid #dee2e6",
-              fontWeight: 700,
-              fontSize: "14px",
-            }}
-          >
-            General Information
-          </div>
-          <div
-            style={{
-              padding: "20px",
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: "20px",
-            }}
-          >
-            {[
-              { label: "Client", value: project.contract?.client?.name || "—" },
-              { label: "Contract", value: project.contract?.name || "—" },
-              { label: "Location / Site", value: project.location || "—" },
-              {
-                label: "Start Date",
-                value: project.startDate
-                  ? new Date(project.startDate).toISOString().split("T")[0]
-                  : "—",
-              },
-              {
-                label: "End Date",
-                value: project.endDate
-                  ? new Date(project.endDate).toISOString().split("T")[0]
-                  : "—",
-              },
-              { label: "Offshore", value: project.isOffshore ? "Yes" : "No" },
-            ].map((item) => (
-              <div key={item.label}>
-                <div
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#6c757d",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    marginBottom: "4px",
-                  }}
-                >
-                  {item.label}
-                </div>
-                <div style={{ fontSize: "14px", fontWeight: 500 }}>
-                  {item.value}
-                </div>
-              </div>
-            ))}
-            {project.notes && (
-              <div style={{ gridColumn: "1 / -1" }}>
-                <div
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#6c757d",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    marginBottom: "4px",
-                  }}
-                >
-                  Notes
-                </div>
-                <div style={{ fontSize: "13px", color: "#495057" }}>
-                  {project.notes}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Section 2: Position Requests */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            marginBottom: "1.5rem",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "14px 20px",
-              borderBottom: "1px solid #dee2e6",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <span style={{ fontWeight: 700, fontSize: "14px" }}>
-              Position Requests
-            </span>
-            {canManageProjects && (
-              <button
-                onClick={() => setShowAddPosition(true)}
-                style={{
-                  background: "#0d6efd",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "6px",
-                  padding: "6px 14px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                + Add Position
-              </button>
-            )}
-          </div>
-          <div style={{ padding: "0" }}>
-            {!project.requests || project.requests.length === 0 ? (
-              <div
-                style={{
-                  padding: "32px",
-                  textAlign: "center",
-                  color: "#6c757d",
-                  fontSize: "13px",
-                }}
-              >
-                No position requests yet — click + Add Position to get started
-              </div>
-            ) : (
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: "13px",
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "#f8f9fa" }}>
-                    {[
-                      "POSITION",
-                      "HEADCOUNT",
-                      "ASSIGNED",
-                      "STATUS",
-                      ...(canManageProjects ? [""] : []),
-                    ].map((h, hi) => (
-                      <th
-                        key={hi}
-                        style={{
-                          padding: "10px 20px",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          color: "#6c757d",
-                          letterSpacing: "0.5px",
-                          textAlign: h === "" ? "center" : "left",
-                        }}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {project.requests.map((r) => (
-                    <tr key={r.id} style={{ borderTop: "1px solid #f1f3f5" }}>
-                      <td style={{ padding: "12px 20px", fontWeight: 600 }}>
-                        {r.position?.name || "—"}
-                      </td>
-                      <td style={{ padding: "12px 20px" }}>{r.quantity}</td>
-                      <td style={{ padding: "12px 20px" }}>
-                        {r.bookings?.length ?? 0} / {r.quantity}
-                      </td>
-                      <td style={{ padding: "12px 20px" }}>
-                        <span
-                          style={{
-                            background:
-                              r.status === "deployed"
-                                ? "#d1e7dd"
-                                : r.status === "approved" ||
-                                    r.status === "booked"
-                                  ? "#cff4fc"
-                                  : "#e9ecef",
-                            color:
-                              r.status === "deployed"
-                                ? "#0f5132"
-                                : r.status === "approved" ||
-                                    r.status === "booked"
-                                  ? "#055160"
-                                  : "#495057",
-                            borderRadius: "6px",
-                            padding: "3px 10px",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {r.status || "draft"}
-                        </span>
-                      </td>
-                      {canManageProjects && (
-                        <td
-                          style={{ padding: "12px 20px", textAlign: "center" }}
-                        >
-                          <button
-                            title="ลบ position request"
-                            onClick={() =>
-                              handleDeleteRequest(r.id, r.position?.name || "")
-                            }
-                            style={{
-                              background: "#fff",
-                              border: "1px solid #f5c6cb",
-                              borderRadius: "6px",
-                              padding: "4px 8px",
-                              cursor: "pointer",
-                              fontSize: "13px",
-                              lineHeight: 1,
-                            }}
-                          >
-                            🗑
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-
-        {/* Section 3 & 4: Allocation + Mobilization Summary */}
+        {/* ══════════════ Layout 2 คอลัมน์ ══════════════ */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "1.5rem",
+            gridTemplateColumns: "minmax(0, 1fr) 320px",
+            gap: "1.25rem",
+            alignItems: "start",
           }}
         >
-          {/* Allocation Summary */}
+          {/* ═══════════ คอลัมน์ซ้าย (กว้าง) ═══════════ */}
           <div
             style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1.25rem",
+              minWidth: 0,
             }}
           >
-            <div
-              style={{
-                padding: "14px 20px",
-                borderBottom: "1px solid #dee2e6",
-                fontWeight: 700,
-                fontSize: "14px",
-              }}
-            >
-              Allocation
-            </div>
-            <div style={{ padding: "20px" }}>
-              <div
-                style={{ fontSize: "28px", fontWeight: 700, color: "#0d6efd" }}
-              >
-                {totalAssigned} / {totalHeadcount}
-              </div>
+            {/* Position Requests */}
+            <div style={card}>
               <div
                 style={{
-                  fontSize: "13px",
-                  color: "#6c757d",
-                  marginBottom: "16px",
+                  ...cardHeader,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                 }}
               >
-                Workers assigned
+                <span>Position Requests</span>
+                {canManageProjects && (
+                  <button
+                    onClick={() => setShowAddPosition(true)}
+                    style={{
+                      background: "#0d6efd",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "5px 12px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    + Add Position
+                  </button>
+                )}
               </div>
-              <button
-                onClick={() => navigate("/allocation")}
+              <div style={{ padding: "0" }}>
+                {!project.requests || project.requests.length === 0 ? (
+                  <div
+                    style={{
+                      padding: "28px",
+                      textAlign: "center",
+                      color: "#6c757d",
+                      fontSize: "12px",
+                    }}
+                  >
+                    No position requests yet — click + Add Position to get
+                    started
+                  </div>
+                ) : (
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      fontSize: "12px",
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ background: "#f8f9fa" }}>
+                        {[
+                          "POSITION",
+                          "HEADCOUNT",
+                          "ASSIGNED",
+                          "STATUS",
+                          ...(canManageProjects ? [""] : []),
+                        ].map((h, hi) => (
+                          <th
+                            key={hi}
+                            style={{
+                              padding: "8px 16px",
+                              fontSize: "10px",
+                              fontWeight: 600,
+                              color: "#6c757d",
+                              letterSpacing: "0.4px",
+                              textAlign: h === "" ? "center" : "left",
+                            }}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {project.requests.map((r) => (
+                        <tr
+                          key={r.id}
+                          style={{ borderTop: "1px solid #f1f3f5" }}
+                        >
+                          <td style={{ padding: "8px 16px", fontWeight: 600 }}>
+                            {r.position?.name || "—"}
+                          </td>
+                          <td style={{ padding: "8px 16px" }}>
+                            {canManageProjects ? (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                }}
+                              >
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={quantityDraft[r.id] ?? r.quantity}
+                                  onChange={(e) =>
+                                    setQuantityDraft((prev) => ({
+                                      ...prev,
+                                      [r.id]: e.target.value,
+                                    }))
+                                  }
+                                  style={{
+                                    width: "54px",
+                                    padding: "3px 6px",
+                                    fontSize: "12px",
+                                    border: "1px solid #dee2e6",
+                                    borderRadius: "6px",
+                                  }}
+                                />
+                                {Number(quantityDraft[r.id]) !== r.quantity && (
+                                  <button
+                                    onClick={() => handleSaveQuantity(r.id)}
+                                    disabled={savingQuantityId === r.id}
+                                    title="บันทึก headcount"
+                                    style={{
+                                      background: "#198754",
+                                      color: "#fff",
+                                      border: "none",
+                                      borderRadius: "6px",
+                                      padding: "3px 8px",
+                                      fontSize: "10px",
+                                      fontWeight: 600,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {savingQuantityId === r.id ? "..." : "✓"}
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              r.quantity
+                            )}
+                          </td>
+                          <td style={{ padding: "8px 16px" }}>
+                            {r.bookings?.length ?? 0} / {r.quantity}
+                          </td>
+                          <td style={{ padding: "8px 16px" }}>
+                            <span
+                              style={{
+                                background:
+                                  r.status === "deployed"
+                                    ? "#d1e7dd"
+                                    : r.status === "approved" ||
+                                        r.status === "booked"
+                                      ? "#cff4fc"
+                                      : "#e9ecef",
+                                color:
+                                  r.status === "deployed"
+                                    ? "#0f5132"
+                                    : r.status === "approved" ||
+                                        r.status === "booked"
+                                      ? "#055160"
+                                      : "#495057",
+                                borderRadius: "6px",
+                                padding: "2px 8px",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {r.status || "draft"}
+                            </span>
+                          </td>
+                          {canManageProjects && (
+                            <td
+                              style={{
+                                padding: "8px 16px",
+                                textAlign: "center",
+                              }}
+                            >
+                              <button
+                                title="ลบ position request"
+                                onClick={() =>
+                                  handleDeleteRequest(
+                                    r.id,
+                                    r.position?.name || "",
+                                  )
+                                }
+                                style={{
+                                  background: "#fff",
+                                  border: "1px solid #f5c6cb",
+                                  borderRadius: "6px",
+                                  padding: "3px 7px",
+                                  cursor: "pointer",
+                                  fontSize: "12px",
+                                  lineHeight: 1,
+                                }}
+                              >
+                                🗑
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+            {/* ════════ Discussion — PE ↔ MP ════════ */}
+            {canDiscuss && (
+              <div
+                ref={discussionRef}
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
                 style={{
-                  background: "#f8f9fa",
-                  border: "1px solid #dee2e6",
-                  borderRadius: "6px",
-                  padding: "6px 14px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  width: "100%",
+                  ...card,
+                  border: isDragging
+                    ? "2px dashed #0d6efd"
+                    : "1px solid #dee2e6",
+                  position: "relative",
+                  transition: "border 0.15s",
                 }}
               >
-                Go to Allocation →
-              </button>
-            </div>
+                {isDragging && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "rgba(13,110,253,0.08)",
+                      color: "#0d6efd",
+                      fontSize: "15px",
+                      fontWeight: 700,
+                      pointerEvents: "none",
+                      zIndex: 10,
+                    }}
+                  >
+                    📎 วางไฟล์ตรงนี้เพื่อแนบ
+                  </div>
+                )}
+                <div
+                  style={{
+                    ...cardHeader,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span style={{ fontSize: "15px" }}>💬</span>
+                  <span>Discussion — PE ↔ Manpower</span>
+                  <span style={{ fontSize: "10px", color: "#adb5bd" }}>
+                    (ส่งไฟล์ CV/Roster/Skill Matrix และคุยผลจากลูกค้าที่นี่ —
+                    ลากไฟล์มาวางในกล่องนี้ หรือกด 📎 เพื่อแนบ)
+                  </span>
+                </div>
+
+                {/* Messages list */}
+                <div
+                  style={{
+                    padding: "14px 18px",
+                    maxHeight: "420px",
+                    overflowY: "auto",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px",
+                    background: "#fafbfc",
+                  }}
+                >
+                  {messagesLoading ? (
+                    <div
+                      style={{
+                        textAlign: "center",
+                        color: "#6c757d",
+                        padding: "18px",
+                        fontSize: "12px",
+                      }}
+                    >
+                      Loading...
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div
+                      style={{
+                        textAlign: "center",
+                        color: "#adb5bd",
+                        padding: "20px",
+                        fontSize: "12px",
+                      }}
+                    >
+                      ยังไม่มีข้อความ — เริ่มพิมพ์ด้านล่าง
+                      หรือลากไฟล์มาวางในกล่องนี้ได้เลย 📎
+                    </div>
+                  ) : (
+                    messages.map((m) => {
+                      const isMine = m.sender?.id === userData?.id;
+                      const tone = roleTone(m.sender?.role?.name);
+                      return (
+                        <div
+                          key={m.id}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: isMine ? "flex-end" : "flex-start",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              marginBottom: "3px",
+                              flexDirection: isMine ? "row-reverse" : "row",
+                            }}
+                          >
+                            <span style={{ fontWeight: 700, fontSize: "11px" }}>
+                              {m.sender?.name || "—"}
+                            </span>
+                            <span
+                              style={{
+                                background: tone.bg,
+                                color: tone.color,
+                                borderRadius: "5px",
+                                padding: "1px 6px",
+                                fontSize: "9px",
+                                fontWeight: 700,
+                                textTransform: "capitalize",
+                              }}
+                            >
+                              {m.sender?.role?.name || "—"}
+                            </span>
+                            <span style={{ fontSize: "9px", color: "#adb5bd" }}>
+                              {fmtDateTime(m.createdAt)}
+                            </span>
+                          </div>
+
+                          <div
+                            style={{
+                              maxWidth: "75%",
+                              background: isMine ? "#0d6efd" : "#fff",
+                              color: isMine ? "#fff" : "#212529",
+                              border: isMine ? "none" : "1px solid #e9ecef",
+                              borderRadius: "10px",
+                              padding: "8px 12px",
+                            }}
+                          >
+                            {m.content && (
+                              <div
+                                style={{
+                                  fontSize: "12px",
+                                  whiteSpace: "pre-wrap",
+                                  marginBottom:
+                                    m.attachments?.length > 0 ? "6px" : 0,
+                                }}
+                              >
+                                {m.content}
+                              </div>
+                            )}
+                            {m.attachments?.length > 0 && (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "5px",
+                                }}
+                              >
+                                {m.attachments.map((att) => (
+                                  <a
+                                    key={att.id}
+                                    href={`${backendUrl}${att.filePath}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "5px",
+                                      padding: "5px 8px",
+                                      background: isMine
+                                        ? "rgba(255,255,255,0.15)"
+                                        : "#f1f3f5",
+                                      borderRadius: "6px",
+                                      fontSize: "11px",
+                                      color: isMine ? "#fff" : "#0d6efd",
+                                      textDecoration: "none",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    <span>
+                                      {FILE_ICON[att.fileType] || "📎"}
+                                    </span>
+                                    <span
+                                      style={{
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      {att.fileName}
+                                    </span>
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                {/* Input area */}
+                <div
+                  style={{
+                    padding: "12px 18px",
+                    borderTop: "1px solid #dee2e6",
+                  }}
+                >
+                  {newFiles.length > 0 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "6px",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      {newFiles.map((f, i) => (
+                        <span
+                          key={i}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            background: "#e9ecef",
+                            borderRadius: "6px",
+                            padding: "4px 8px",
+                            fontSize: "11px",
+                          }}
+                        >
+                          📎 {f.name}
+                          <button
+                            onClick={() => removeSelectedFile(i)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              color: "#dc3545",
+                              cursor: "pointer",
+                              fontSize: "11px",
+                              padding: 0,
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "8px",
+                      alignItems: "flex-end",
+                    }}
+                  >
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                      multiple
+                      accept=".pdf,.xlsx,.xls,.doc,.docx,.png,.jpg,.jpeg"
+                      style={{ display: "none" }}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={newFiles.length >= 5}
+                      title="แนบไฟล์ (สูงสุด 5 ไฟล์)"
+                      style={{
+                        background: "#f8f9fa",
+                        border: "1px solid #dee2e6",
+                        borderRadius: "8px",
+                        padding: "8px 10px",
+                        fontSize: "15px",
+                        cursor:
+                          newFiles.length >= 5 ? "not-allowed" : "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      📎
+                    </button>
+                    <textarea
+                      value={newContent}
+                      onChange={(e) => setNewContent(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendMessage();
+                        }
+                      }}
+                      placeholder="พิมพ์ข้อความ... (Enter เพื่อส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"
+                      rows={1}
+                      style={{
+                        flex: 1,
+                        padding: "8px 12px",
+                        fontSize: "12px",
+                        border: "1px solid #dee2e6",
+                        borderRadius: "8px",
+                        outline: "none",
+                        resize: "none",
+                        fontFamily: "inherit",
+                      }}
+                    />
+                    <button
+                      onClick={handleSendMessage}
+                      disabled={
+                        sending || (!newContent.trim() && newFiles.length === 0)
+                      }
+                      style={{
+                        background:
+                          sending ||
+                          (!newContent.trim() && newFiles.length === 0)
+                            ? "#adb5bd"
+                            : "#0d6efd",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        padding: "8px 16px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor:
+                          sending ||
+                          (!newContent.trim() && newFiles.length === 0)
+                            ? "not-allowed"
+                            : "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {sending ? "..." : "ส่ง"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Mobilization Summary */}
+          {/* ═══════════ คอลัมน์ขวา (แคบ, sticky) ═══════════ */}
           <div
             style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1.25rem",
+              position: "sticky",
+              top: "20px",
             }}
           >
-            <div
-              style={{
-                padding: "14px 20px",
-                borderBottom: "1px solid #dee2e6",
-                fontWeight: 700,
-                fontSize: "14px",
-              }}
-            >
-              Mobilization
+            {/* General Information — แบบย่อ */}
+            <div style={card}>
+              <div style={cardHeader}>General Information</div>
+              <div style={{ padding: "10px 18px" }}>
+                {[
+                  ["Client", project.contract?.client?.name],
+                  ["Contract", project.contract?.name],
+                  ["Location", project.location],
+                  ["Start", fmtDate(project.startDate)],
+                  ["End", fmtDate(project.endDate)],
+                  ["Offshore", project.isOffshore ? "Yes" : "No"],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "8px",
+                      padding: "6px 0",
+                      borderBottom: "1px solid #f1f3f5",
+                      fontSize: "12px",
+                    }}
+                  >
+                    <span style={{ color: "#6c757d", flexShrink: 0 }}>
+                      {label}
+                    </span>
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        textAlign: "right",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {value || "—"}
+                    </span>
+                  </div>
+                ))}
+                {project.notes && (
+                  <div style={{ marginTop: "8px" }}>
+                    <div
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        color: "#6c757d",
+                        textTransform: "uppercase",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Notes
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#495057" }}>
+                      {project.notes}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-            <div style={{ padding: "20px" }}>
-              <div
-                style={{ fontSize: "28px", fontWeight: 700, color: "#198754" }}
-              >
-                {totalMobilized} / {totalAssigned}
+
+            {/* Allocation + Mobilization — รวมในการ์ดเดียว */}
+            <div style={card}>
+              <div style={{ padding: "16px 18px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    marginBottom: "4px",
+                  }}
+                >
+                  <span style={{ fontSize: "12px", color: "#6c757d" }}>
+                    Allocation
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "20px",
+                      fontWeight: 700,
+                      color: "#0d6efd",
+                    }}
+                  >
+                    {totalAssigned}/{totalHeadcount}
+                  </span>
+                </div>
+                <button
+                  onClick={() => navigate("/allocation")}
+                  style={{
+                    width: "100%",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    padding: "6px",
+                    border: "1px solid #dee2e6",
+                    borderRadius: "6px",
+                    background: "#f8f9fa",
+                    cursor: "pointer",
+                    marginBottom: "14px",
+                  }}
+                >
+                  Go to Allocation →
+                </button>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    marginBottom: "4px",
+                    paddingTop: "12px",
+                    borderTop: "1px solid #f1f3f5",
+                  }}
+                >
+                  <span style={{ fontSize: "12px", color: "#6c757d" }}>
+                    Mobilization
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "20px",
+                      fontWeight: 700,
+                      color: "#198754",
+                    }}
+                  >
+                    {totalMobilized}/{totalAssigned}
+                  </span>
+                </div>
+                <button
+                  onClick={() => navigate("/mobilization")}
+                  style={{
+                    width: "100%",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    padding: "6px",
+                    border: "1px solid #dee2e6",
+                    borderRadius: "6px",
+                    background: "#f8f9fa",
+                    cursor: "pointer",
+                  }}
+                >
+                  Go to Mobilization →
+                </button>
               </div>
-              <div
-                style={{
-                  fontSize: "13px",
-                  color: "#6c757d",
-                  marginBottom: "16px",
-                }}
-              >
-                Workers mobilized
-              </div>
-              <button
-                onClick={() => navigate("/mobilization")}
-                style={{
-                  background: "#f8f9fa",
-                  border: "1px solid #dee2e6",
-                  borderRadius: "6px",
-                  padding: "6px 14px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  width: "100%",
-                }}
-              >
-                Go to Mobilization →
-              </button>
             </div>
           </div>
         </div>
@@ -544,7 +1114,10 @@ export default function ProjectDetail() {
                 Add Position Request
               </span>
               <button
-                onClick={() => setShowAddPosition(false)}
+                onClick={() => {
+                  setShowAddPosition(false);
+                  setSelectedPositionIds([]);
+                }}
                 style={{
                   background: "none",
                   border: "none",
@@ -557,89 +1130,116 @@ export default function ProjectDetail() {
               </button>
             </div>
 
-            <div
-              style={{
-                padding: "24px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "16px",
-              }}
-            >
-              <div>
-                <label
-                  style={{
+            <div style={{ padding: "24px" }}>
+              <label
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  marginBottom: "6px",
+                  display: "block",
+                }}
+              >
+                Position * (เลือกได้หลายตำแหน่ง —{" "}
+                <span style={{ color: "#6c757d", fontWeight: 400 }}>
+                  เฉพาะตำแหน่งที่มีพนักงาน
+                </span>
+                )
+              </label>
+              <Select
+                isMulti
+                options={positionOptions}
+                value={positionOptions.filter((o) =>
+                  selectedPositionIds.includes(o.value),
+                )}
+                onChange={(selected) =>
+                  setSelectedPositionIds((selected || []).map((o) => o.value))
+                }
+                placeholder="ค้นหา / เลือกตำแหน่ง..."
+                menuPortalTarget={
+                  typeof document !== "undefined" ? document.body : null
+                }
+                menuPosition="fixed"
+                hideSelectedOptions={false}
+                closeMenuOnSelect={false}
+                components={{
+                  MultiValue: () => null, // ← ซ่อน tag ในกล่อง search
+                }}
+                styles={{
+                  menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
+                  control: (b) => ({
+                    ...b,
                     fontSize: "13px",
-                    fontWeight: 600,
-                    marginBottom: "6px",
-                    display: "block",
-                  }}
-                >
-                  Position *{" "}
-                  <span style={{ color: "#6c757d", fontWeight: 400 }}>
-                    (เฉพาะตำแหน่งที่มีพนักงาน)
-                  </span>
-                </label>
-                <Select
-                  options={positionOptions}
-                  value={
-                    positionOptions.find(
-                      (o) => o.value === positionForm.positionId,
-                    ) || null
-                  }
-                  onChange={(o) =>
-                    setPositionForm({
-                      ...positionForm,
-                      positionId: o ? o.value : "",
-                    })
-                  }
-                  placeholder="ค้นหา / เลือกตำแหน่ง..."
-                  isClearable
-                  menuPortalTarget={
-                    typeof document !== "undefined" ? document.body : null
-                  }
-                  menuPosition="fixed"
-                  styles={{
-                    menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
-                    control: (b) => ({ ...b, fontSize: "13px" }),
-                    option: (b) => ({ ...b, fontSize: "13px" }),
-                  }}
-                  noOptionsMessage={() =>
-                    hasCounts ? "ไม่มีตำแหน่งที่มีพนักงาน" : "ไม่มีตำแหน่ง"
-                  }
-                />
-              </div>
+                    minHeight: "38px",
+                  }),
+                  option: (b) => ({ ...b, fontSize: "13px" }),
+                  valueContainer: (b) => ({ ...b, flexWrap: "nowrap" }),
+                }}
+                noOptionsMessage={() =>
+                  hasCounts ? "ไม่มีตำแหน่งที่มีพนักงาน" : "ไม่มีตำแหน่ง"
+                }
+              />
 
-              <div>
-                <label
+              {/* ── Chip list ของตำแหน่งที่เลือกแล้ว — แยกออกมาข้างนอกกล่อง search ── */}
+              {selectedPositionIds.length > 0 && (
+                <div
                   style={{
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    marginBottom: "6px",
-                    display: "block",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "6px",
+                    marginTop: "10px",
                   }}
                 >
-                  Headcount *
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={positionForm.quantity}
-                  onChange={(e) =>
-                    setPositionForm({
-                      ...positionForm,
-                      quantity: e.target.value,
-                    })
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "8px 12px",
-                    fontSize: "13px",
-                    border: "1px solid #dee2e6",
-                    borderRadius: "8px",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
+                  {selectedPositionIds.map((posId) => {
+                    const opt = positionOptions.find((o) => o.value === posId);
+                    if (!opt) return null;
+                    return (
+                      <span
+                        key={posId}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          background: "#e7f1ff",
+                          color: "#0d6efd",
+                          borderRadius: "6px",
+                          padding: "5px 10px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {opt.label}
+                        <button
+                          onClick={() =>
+                            setSelectedPositionIds((prev) =>
+                              prev.filter((id) => id !== posId),
+                            )
+                          }
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#0d6efd",
+                            cursor: "pointer",
+                            fontSize: "13px",
+                            padding: 0,
+                            lineHeight: 1,
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "#adb5bd",
+                  marginTop: "10px",
+                }}
+              >
+                Headcount เริ่มต้น = 1 คนต่อตำแหน่ง ปรับได้ในตารางหลังเพิ่มแล้ว
               </div>
             </div>
 
@@ -653,7 +1253,10 @@ export default function ProjectDetail() {
               }}
             >
               <button
-                onClick={() => setShowAddPosition(false)}
+                onClick={() => {
+                  setShowAddPosition(false);
+                  setSelectedPositionIds([]);
+                }}
                 style={{
                   padding: "8px 20px",
                   fontSize: "13px",
@@ -666,20 +1269,28 @@ export default function ProjectDetail() {
                 Cancel
               </button>
               <button
-                onClick={handleAddPosition}
-                disabled={!positionForm.positionId}
+                onClick={handleAddPositions}
+                disabled={selectedPositionIds.length === 0 || savingPositions}
                 style={{
                   padding: "8px 20px",
                   fontSize: "13px",
                   border: "none",
                   borderRadius: "8px",
-                  background: positionForm.positionId ? "#0d6efd" : "#adb5bd",
+                  background:
+                    selectedPositionIds.length === 0 || savingPositions
+                      ? "#adb5bd"
+                      : "#0d6efd",
                   color: "#fff",
                   fontWeight: 600,
-                  cursor: positionForm.positionId ? "pointer" : "not-allowed",
+                  cursor:
+                    selectedPositionIds.length === 0 || savingPositions
+                      ? "not-allowed"
+                      : "pointer",
                 }}
               >
-                Save
+                {savingPositions
+                  ? "Saving..."
+                  : `Save (${selectedPositionIds.length})`}
               </button>
             </div>
           </div>

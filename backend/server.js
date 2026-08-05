@@ -35,6 +35,10 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 
 import trainingRequestRoutes from "./routes/trainingRequestRoutes.js";
 
+import supervisorRoutes from "./routes/supervisorRoutes.js";
+
+import projectMessageRoutes from "./routes/projectMessageRoutes.js";
+
 // import safetyRouter from "./routes/safetyRoutes.js";
 // import medicalRouter from "./routes/medicalRoutes.js";
 // import requestRouter from "./routes/requestRoutes.js";
@@ -109,6 +113,10 @@ app.use("/api/global-trainings", globalTrainingRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 app.use("/api/training-requests", trainingRequestRoutes);
+
+app.use("/api/supervisor", supervisorRoutes);
+
+app.use("/api/project-messages", projectMessageRoutes);
 
 // app.use("/api/safety", safetyRouter);
 // app.use("/api/medical", medicalRouter);

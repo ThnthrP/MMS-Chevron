@@ -46,6 +46,60 @@ export default function AdminUsers() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const [showRoles, setShowRoles] = useState(false);
+  const [newRoleName, setNewRoleName] = useState("");
+  const [creatingRole, setCreatingRole] = useState(false);
+  const [deletingRoleId, setDeletingRoleId] = useState(null);
+
+  const handleCreateRole = async () => {
+    if (!newRoleName.trim()) {
+      toast.error("กรอกชื่อ role");
+      return;
+    }
+    try {
+      setCreatingRole(true);
+      const res = await axios.post(
+        `${backendUrl}/api/user/roles`,
+        { name: newRoleName },
+        { withCredentials: true },
+      );
+      if (res.data.success) {
+        toast.success("เพิ่ม role แล้ว");
+        setNewRoleName("");
+        fetchAll();
+      } else {
+        toast.error(res.data.message || "เพิ่มไม่สำเร็จ");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("เกิดข้อผิดพลาด");
+    } finally {
+      setCreatingRole(false);
+    }
+  };
+
+  const handleDeleteRole = async (role) => {
+    if (!window.confirm(`ลบ role "${role.name}"?`)) return;
+    try {
+      setDeletingRoleId(role.id);
+      const res = await axios.delete(
+        `${backendUrl}/api/user/roles/${role.id}`,
+        { withCredentials: true },
+      );
+      if (res.data.success) {
+        toast.success("ลบ role แล้ว");
+        fetchAll();
+      } else {
+        toast.error(res.data.message || "ลบไม่สำเร็จ");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("เกิดข้อผิดพลาด");
+    } finally {
+      setDeletingRoleId(null);
+    }
+  };
+
   // add-user modal
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({
@@ -256,21 +310,38 @@ export default function AdminUsers() {
               จัดการบัญชีผู้ใช้ · role · การผูกกับ worker
             </div>
           </div>
-          <button
-            onClick={() => setShowAdd(true)}
-            style={{
-              background: "#0d6efd",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              padding: "9px 16px",
-              fontSize: "13px",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            ＋ Add User
-          </button>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <button
+              onClick={() => setShowRoles(true)}
+              style={{
+                background: "#fff",
+                color: "#0d6efd",
+                border: "1px solid #0d6efd",
+                borderRadius: "8px",
+                padding: "9px 16px",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              ⚙ Manage Roles
+            </button>
+            <button
+              onClick={() => setShowAdd(true)}
+              style={{
+                background: "#0d6efd",
+                color: "#fff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "9px 16px",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              ＋ Add User
+            </button>
+          </div>
         </div>
 
         {/* search */}
@@ -585,6 +656,186 @@ export default function AdminUsers() {
                   }}
                 >
                   {saving ? "Creating…" : "Create User"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showRoles && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              zIndex: 999999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "20px",
+            }}
+            onClick={() => setShowRoles(false)}
+          >
+            <div
+              style={{ ...card, width: "100%", maxWidth: "460px" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  background: "#1e3a5f",
+                  color: "#fff",
+                  padding: "14px 20px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ fontWeight: 700, fontSize: "15px" }}>
+                  ⚙ Manage Roles
+                </span>
+                <button
+                  onClick={() => setShowRoles(false)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#fff",
+                    fontSize: "20px",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Add new role */}
+              <div
+                style={{
+                  padding: "16px 20px",
+                  borderBottom: "1px solid #e9ecef",
+                  display: "flex",
+                  gap: "8px",
+                }}
+              >
+                <input
+                  style={input}
+                  placeholder="ชื่อ role ใหม่ เช่น supervisor"
+                  value={newRoleName}
+                  onChange={(e) => setNewRoleName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleCreateRole()}
+                />
+                <button
+                  onClick={handleCreateRole}
+                  disabled={creatingRole}
+                  style={{
+                    border: "none",
+                    background: creatingRole ? "#adb5bd" : "#198754",
+                    color: "#fff",
+                    borderRadius: "8px",
+                    padding: "9px 16px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: creatingRole ? "default" : "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {creatingRole ? "..." : "+ Add"}
+                </button>
+              </div>
+
+              {/* Role list */}
+              <div
+                style={{
+                  padding: "12px 20px",
+                  maxHeight: "360px",
+                  overflowY: "auto",
+                }}
+              >
+                {roleList.length === 0 ? (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      color: "#6c757d",
+                      padding: "20px",
+                    }}
+                  >
+                    ยังไม่มี role
+                  </div>
+                ) : (
+                  roleList.map((r) => {
+                    const inUse = (r.userCount ?? 0) > 0;
+                    return (
+                      <div
+                        key={r.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "8px 0",
+                          borderBottom: "1px solid #f1f3f5",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                          }}
+                        >
+                          <RoleBadge name={r.name} />
+                          <span style={{ fontSize: "11px", color: "#adb5bd" }}>
+                            {inUse
+                              ? `${r.userCount} user ใช้อยู่`
+                              : "ไม่มีคนใช้"}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteRole(r)}
+                          disabled={inUse || deletingRoleId === r.id}
+                          title={
+                            inUse
+                              ? "มี user ใช้ role นี้อยู่ ลบไม่ได้"
+                              : "ลบ role"
+                          }
+                          style={{
+                            border: `1px solid ${inUse ? "#dee2e6" : "#f5c2c7"}`,
+                            background: "#fff",
+                            color: inUse ? "#adb5bd" : "#842029",
+                            borderRadius: "6px",
+                            padding: "4px 10px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            cursor: inUse ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {deletingRoleId === r.id ? "..." : "Delete"}
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div
+                style={{
+                  padding: "14px 20px",
+                  borderTop: "1px solid #e9ecef",
+                  textAlign: "right",
+                }}
+              >
+                <button
+                  onClick={() => setShowRoles(false)}
+                  style={{
+                    border: "1px solid #dee2e6",
+                    background: "#fff",
+                    color: "#6c757d",
+                    borderRadius: "8px",
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Close
                 </button>
               </div>
             </div>

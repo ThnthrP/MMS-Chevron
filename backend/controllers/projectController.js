@@ -99,3 +99,24 @@ export async function deleteProjectRequest(req, res) {
     res.status(500).json({ message: "Failed to delete position request" });
   }
 }
+
+export async function updateProjectRequest(req, res) {
+  try {
+    const { id, requestId } = req.params;
+    const { quantity } = req.body;
+    if (!quantity || Number(quantity) < 1) {
+      return res.status(400).json({ message: "quantity must be at least 1" });
+    }
+    const updated = await service.updateProjectRequestQuantity(
+      id,
+      requestId,
+      quantity,
+    );
+    res.json(updated);
+  } catch (error) {
+    console.error(error);
+    res
+      .status(error.code === "P2025" ? 404 : 500)
+      .json({ message: error.message });
+  }
+}

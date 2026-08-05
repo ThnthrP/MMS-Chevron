@@ -248,6 +248,8 @@ model User {
 
   trainingRequestBatches TrainingRequestBatch[]
 
+  projectMessages ProjectMessage[]
+
   createdAt        DateTime  @default(now())
   resetOtp         String?
   resetOtpExpireAt DateTime?
@@ -696,6 +698,8 @@ model Project {
   status     ProjectStatus       @default(active)
   reviews    PerformanceReview[]
 
+  messages    ProjectMessage[]   // ← เพิ่มบรรทัดนี้
+
   createdAt DateTime @default(now())
 }
 
@@ -1122,4 +1126,33 @@ model TrainingRequestItem {
   clientName       String? // snapshot ชื่อ client ตอนขอ
 
   @@index([batchId])
+}
+
+model ProjectMessage {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id])
+
+  content   String?  @db.Text
+
+  attachments ProjectMessageAttachment[]
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId, createdAt])
+}
+
+model ProjectMessageAttachment {
+  id        String   @id @default(uuid())
+  messageId String
+  message   ProjectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  fileName  String
+  filePath  String
+  fileType  String?
+
+  createdAt DateTime @default(now())
 }

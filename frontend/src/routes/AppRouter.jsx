@@ -26,7 +26,7 @@ import EditProject from "../pages/projects/EditProject";
 import ManagePositions from "../pages/positions/ManagePositions";
 import MatrixEditor from "../pages/positions/MatrixEditor";
 import ManageDivisions from "../pages/positions/ManageDivisions";
-import ManageTrainings from "../pages/training/ManageTrainings"; // ← เพิ่มใหม่
+import ManageTrainings from "../pages/training/ManageTrainings";
 
 import Mobilization from "../pages/projects/Mobilization";
 import PostProjectReview from "../pages/projects/PostProjectReview";
@@ -36,21 +36,41 @@ import AnalyticsReports from "../pages/projects/AnalyticsReports";
 import Certifications from "../pages/compliance/Certifications";
 
 import TrainingRequestDetail from "../pages/compliance/TrainingRequestDetail";
-import TrainingRequestHistory from "../pages/compliance/TrainingRequestHistory"; // ← เพิ่มใหม่
+import TrainingRequestHistory from "../pages/compliance/TrainingRequestHistory";
+
+import SupervisorOverview from "../pages/projects/SupervisorOverview";
 
 const AppRouter = () => {
-  // const { userData } = useContext(AppContent);
-
-  // if (!userData) {
-  //   return <div>Loading...</div>;
-  // }
-
   return (
     <ProtectedRoute>
       <Layout>
         <Routes>
-          {/* Dashboard */}
-          <Route path="/" element={<AdminDashboard />} />
+          {/* Dashboard — ตรงกับ sidebarMenu.js section MAIN */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "pe",
+                  "pe_head",
+                  "hr",
+                  "manpower",
+                  "safety",
+                  "nurse",
+                  "ta",
+                  "bd",
+                  "expert",
+                  "supervisor",
+                  "executive",
+                  "manager",
+                ]}
+              >
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+
           {/* Training Matrix */}
           <Route
             path="/training-matrix"
@@ -62,6 +82,7 @@ const AppRouter = () => {
               </ProtectedRoute>
             }
           />
+
           <Route
             path="/workers"
             element={
@@ -73,6 +94,7 @@ const AppRouter = () => {
                   "safety",
                   "pe",
                   "expert",
+                  "pe_head",
                 ]}
               >
                 <Workers />
@@ -160,14 +182,11 @@ const AppRouter = () => {
             path="/training-requests/:id"
             element={
               <ProtectedRoute>
-                {" "}
-                {/* ทุก role login เข้าดูได้ */}
                 <TrainingRequestDetail />
               </ProtectedRoute>
             }
           />
 
-          {/* ดูได้ทุก role ที่เกี่ยวข้อง — Manage/View label ต่างกันแล้วใน UI */}
           <Route
             path="/projects"
             element={
@@ -189,7 +208,6 @@ const AppRouter = () => {
             }
           />
 
-          {/* Edit project (name/location/date ฯลฯ) — admin/pe เท่านั้น */}
           <Route
             path="/projects/:id/edit"
             element={
@@ -251,7 +269,16 @@ const AppRouter = () => {
             path="/review"
             element={
               <ProtectedRoute
-                allowRoles={["admin", "hr", "pe", "pe_head", "manpower"]}
+                allowRoles={[
+                  "admin",
+                  "hr",
+                  "pe",
+                  "pe_head",
+                  "manpower",
+                  "supervisor",
+                  "executive",
+                  "manager",
+                ]}
               >
                 <PostProjectReview />
               </ProtectedRoute>
@@ -270,9 +297,28 @@ const AppRouter = () => {
                   "manpower",
                   "hr",
                   "pe",
+                  "executive",
+                  "supervisor",
                 ]}
               >
                 <AnalyticsReports />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/supervisor-overview"
+            element={
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "supervisor",
+                  "executive",
+                  "manager",
+                  "pe_head",
+                ]}
+              >
+                <SupervisorOverview />
               </ProtectedRoute>
             }
           />

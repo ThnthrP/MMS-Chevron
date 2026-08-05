@@ -81,6 +81,23 @@ export default function Allocation() {
     }
   }, [selectedProjectId, projects]);
 
+  // ── ตั้งชื่อไฟล์ PDF ตอน Print/Save ให้ตรงกับประเภทเอกสาร ──
+  useEffect(() => {
+    const originalTitle = document.title;
+
+    if (cvModal) {
+      document.title = `CV_Summary_${cvModal.project?.name || "Project"}`;
+    } else if (rosterModal) {
+      document.title = `Roster_MOB-DMOB_${rosterModal.project?.name || "Project"}`;
+    } else if (skillMatrixModal) {
+      document.title = `Skill_Matrix_${skillMatrixModal.project?.name || "Project"}`;
+    }
+
+    return () => {
+      document.title = originalTitle;
+    };
+  }, [cvModal, rosterModal, skillMatrixModal]);
+
   const restoredRef = useRef(false);
   useEffect(() => {
     if (restoredRef.current) return;
@@ -655,6 +672,16 @@ export default function Allocation() {
   const [trainingCart, setTrainingCart] = useState([]); // [{employeeId, employeeName, trainingName, trainingId, clientName}]
   const [globalTrainingMap, setGlobalTrainingMap] = useState({}); // name -> id
   const [sendingCart, setSendingCart] = useState(false);
+
+  const [cartReviewOpen, setCartReviewOpen] = useState(false);
+
+  const removeFromCart = (employeeId, trainingId) => {
+    setTrainingCart((prev) =>
+      prev.filter(
+        (c) => !(c.employeeId === employeeId && c.trainingId === trainingId),
+      ),
+    );
+  };
 
   useEffect(() => {
     axios
@@ -3871,6 +3898,209 @@ export default function Allocation() {
           </div>
         </div>
       )}
+      {cartReviewOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 1000001,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+          onClick={() => setCartReviewOpen(false)}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "10px",
+              width: "100%",
+              maxWidth: "560px",
+              maxHeight: "80vh",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                background: "#1e3a5f",
+                color: "#fff",
+                padding: "16px 24px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: "16px" }}>
+                📦 รายการในตะกร้า ({trainingCart.length})
+              </span>
+              <button
+                onClick={() => setCartReviewOpen(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#fff",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: "16px 24px", overflowY: "auto", flex: 1 }}>
+              {trainingCart.length === 0 ? (
+                <div
+                  style={{
+                    textAlign: "center",
+                    color: "#6c757d",
+                    padding: "20px",
+                  }}
+                >
+                  ตะกร้าว่างเปล่า
+                </div>
+              ) : (
+                (() => {
+                  // จัดกลุ่มตาม employee เพื่อให้เห็นชัดว่าใครขอ training อะไรบ้าง
+                  const byEmployee = {};
+                  trainingCart.forEach((c) => {
+                    if (!byEmployee[c.employeeId]) {
+                      byEmployee[c.employeeId] = {
+                        employeeName: c.employeeName,
+                        items: [],
+                      };
+                    }
+                    byEmployee[c.employeeId].items.push(c);
+                  });
+
+                  return Object.entries(byEmployee).map(([empId, group]) => (
+                    <div key={empId} style={{ marginBottom: "16px" }}>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: "13px",
+                          color: "#1e3a5f",
+                          marginBottom: "8px",
+                          borderBottom: "1px solid #f1f3f5",
+                          paddingBottom: "6px",
+                        }}
+                      >
+                        👤 {group.employeeName}
+                      </div>
+                      {group.items.map((item) => (
+                        <div
+                          key={`${item.employeeId}-${item.trainingId}`}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "8px 12px",
+                            background: "#f8f9fa",
+                            borderRadius: "6px",
+                            marginBottom: "6px",
+                            gap: "8px",
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: "13px", fontWeight: 600 }}>
+                              {item.trainingName}
+                            </div>
+                            <div style={{ fontSize: "11px", color: "#6c757d" }}>
+                              Client: {item.clientName || "—"}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() =>
+                              removeFromCart(item.employeeId, item.trainingId)
+                            }
+                            title="เอาออกจากตะกร้า"
+                            style={{
+                              background: "none",
+                              border: "none",
+                              color: "#dc3545",
+                              fontSize: "14px",
+                              cursor: "pointer",
+                              padding: "0 4px",
+                              flexShrink: 0,
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ));
+                })()
+              )}
+            </div>
+
+            <div
+              style={{
+                padding: "14px 24px",
+                borderTop: "1px solid #dee2e6",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <button
+                onClick={() => setTrainingCart([])}
+                disabled={trainingCart.length === 0}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: trainingCart.length === 0 ? "#adb5bd" : "#dc3545",
+                  fontSize: "13px",
+                  cursor: trainingCart.length === 0 ? "default" : "pointer",
+                }}
+              >
+                ล้างตะกร้าทั้งหมด
+              </button>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={() => setCartReviewOpen(false)}
+                  style={{
+                    padding: "8px 20px",
+                    fontSize: "13px",
+                    border: "1px solid #dee2e6",
+                    borderRadius: "8px",
+                    background: "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  ปิด
+                </button>
+                <button
+                  onClick={() => {
+                    handleSendCart();
+                    setCartReviewOpen(false);
+                  }}
+                  disabled={trainingCart.length === 0 || sendingCart}
+                  style={{
+                    padding: "8px 20px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    border: "none",
+                    borderRadius: "8px",
+                    background: "#198754",
+                    color: "#fff",
+                    cursor:
+                      trainingCart.length === 0 || sendingCart
+                        ? "not-allowed"
+                        : "pointer",
+                  }}
+                >
+                  {sendingCart ? "กำลังส่ง..." : "แจ้ง HR →"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {trainingCart.length > 0 && (
         <div
           style={{
@@ -3886,12 +4116,35 @@ export default function Allocation() {
             alignItems: "center",
             gap: "14px",
             boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-            zIndex: 1000000, // ← เปลี่ยนจาก 999998
+            zIndex: 1000000,
           }}
         >
-          <span style={{ fontSize: "13px" }}>
+          <span
+            onClick={() => setCartReviewOpen(true)}
+            style={{
+              fontSize: "13px",
+              cursor: "pointer",
+              textDecoration: "underline",
+            }}
+            title="ดูรายการทั้งหมดในตะกร้า"
+          >
             📦 {trainingCart.length} รายการในตะกร้า
           </span>
+          <button
+            onClick={() => setCartReviewOpen(true)}
+            style={{
+              background: "none",
+              border: "1px solid #6c8fb0",
+              color: "#fff",
+              borderRadius: "8px",
+              padding: "6px 14px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            👁 ดูรายละเอียด
+          </button>
           <button
             onClick={handleSendCart}
             disabled={sendingCart}

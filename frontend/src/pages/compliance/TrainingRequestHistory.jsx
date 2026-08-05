@@ -21,7 +21,7 @@ export default function TrainingRequestHistory() {
 
   return (
     <div className="container-fluid p-0">
-      <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+      <div style={{ width: "100%" }}>
         <div
           style={{
             background: "#fff",
