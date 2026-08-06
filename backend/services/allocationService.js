@@ -58,7 +58,12 @@ export async function getProjectAllocationDetail(projectId) {
 }
 
 // ─── Step 8: Find workers + Eligibility check ───
-export async function findWorkers({ positionId, requestId, contractId, employeeIds }) {
+export async function findWorkers({
+  positionId,
+  requestId,
+  contractId,
+  employeeIds,
+}) {
   const where = {
     status: "active",
     availabilityStatus: "available",
@@ -350,7 +355,10 @@ export async function removeFromShortlist(candidateId) {
 // matchPct / eligible ของแต่ละ client อิงจากกลุ่ม mandatory เท่านั้น
 // (ตรงกับตรรกะเดียวกับ complianceService.js)
 // ============================================================
-export async function getWorkerEligibility(employeeId) {
+export async function getWorkerEligibility(
+  employeeId,
+  { positionId, contractId } = {},
+) {
   const employee = await prisma.employee.findUnique({
     where: { id: employeeId },
     include: {
@@ -375,12 +383,27 @@ export async function getWorkerEligibility(employeeId) {
   }
   const empTrainingIds = new Set(employeeTrainingByGlobalId.keys());
 
+  // ── ถ้ามี positionId ระบุมา (เช่น เปิดจาก quick search ที่เลือก Position Request ไว้แล้ว)
+  //    ให้เทียบกับตำแหน่งนั้นแทนตำแหน่งปัจจุบันของพนักงานเอง ──
+  const targetPositionId = positionId || employee.positionId;
+
+  // หาชื่อตำแหน่งเป้าหมาย เผื่อไม่ตรงกับตำแหน่งปัจจุบันของพนักงาน (ใช้แสดงใน "Matched: ...")
+  const targetPosition =
+    targetPositionId === employee.positionId
+      ? employee.position
+      : await prisma.position.findUnique({
+          where: { id: targetPositionId },
+        });
+
   const contracts = await prisma.contract.findMany({
-    where: { isActive: true },
+    where: {
+      isActive: true,
+      ...(contractId ? { id: contractId } : {}),
+    },
     include: {
       client: true,
       positionRequirements: {
-        where: { positionId: employee.positionId },
+        where: { positionId: targetPositionId },
         include: {
           clientTraining: { include: { globalTraining: true } },
         },
@@ -437,7 +460,7 @@ export async function getWorkerEligibility(employeeId) {
         contractId: contract.id,
         contractName: contract.name,
         clientName: contract.client.name,
-        positionMatched: employee.position?.name,
+        positionMatched: targetPosition?.name,
         mandatory,
         assigned,
         others,

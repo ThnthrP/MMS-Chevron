@@ -106,7 +106,11 @@ export async function removeFromShortlist(req, res) {
 
 export async function getWorkerEligibility(req, res) {
   try {
-    const data = await service.getWorkerEligibility(req.params.employeeId);
+    const { positionId, contractId } = req.query;
+    const data = await service.getWorkerEligibility(req.params.employeeId, {
+      positionId,
+      contractId,
+    });
     if (!data) return res.status(404).json({ message: "Worker not found" });
     res.json(data);
   } catch (error) {

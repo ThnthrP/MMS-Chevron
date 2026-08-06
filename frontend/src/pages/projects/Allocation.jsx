@@ -474,7 +474,15 @@ export default function Allocation() {
       setCompletedExpanded({});
       const res = await axios.get(
         `${backendUrl}/api/allocation/eligibility/${worker.id}`,
-        { withCredentials: true },
+        {
+          withCredentials: true,
+          params: selectedRequest
+            ? {
+                positionId: selectedRequest.position?.id,
+                contractId: selectedProject?.contractId,
+              }
+            : undefined,
+        },
       );
       setEligibilityModal(res.data);
     } catch (error) {
@@ -1292,15 +1300,46 @@ export default function Allocation() {
                                   }}
                                 >
                                   {matched?.certifications?.length ? (
-                                    <span
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        flexWrap: "wrap",
+                                        gap: "4px",
+                                      }}
                                       title={matched.certifications.join(", ")}
                                     >
                                       {matched.certifications
                                         .slice(0, 2)
-                                        .join(", ")}
-                                      {matched.certifications.length > 2 &&
-                                        ` +${matched.certifications.length - 2}`}
-                                    </span>
+                                        .map((c, i) => (
+                                          <span
+                                            key={i}
+                                            style={{
+                                              background: "#e9ecef",
+                                              color: "#495057",
+                                              borderRadius: "4px",
+                                              padding: "1px 6px",
+                                              fontSize: "11px",
+                                            }}
+                                          >
+                                            {c}
+                                          </span>
+                                        ))}
+                                      {matched.certifications.length > 2 && (
+                                        <span
+                                          style={{
+                                            fontSize: "11px",
+                                            color: "#6c757d",
+                                            cursor: "help",
+                                          }}
+                                          title={matched.certifications
+                                            .slice(2)
+                                            .join(", ")}
+                                        >
+                                          +{matched.certifications.length - 2}{" "}
+                                          more
+                                        </span>
+                                      )}
+                                    </div>
                                   ) : (
                                     "—"
                                   )}
@@ -1333,19 +1372,42 @@ export default function Allocation() {
                                       ...
                                     </span>
                                   ) : matched?.matchPct != null ? (
-                                    <span
+                                    <div
                                       style={{
-                                        color:
-                                          matched.matchPct === 100
-                                            ? "#198754"
-                                            : matched.matchPct >= 70
-                                              ? "#cc8400"
-                                              : "#dc3545",
-                                        fontWeight: 700,
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        alignItems: "flex-start",
+                                        gap: "2px",
                                       }}
                                     >
-                                      {matched.matchPct}%
-                                    </span>
+                                      <span
+                                        style={{
+                                          color:
+                                            matched.matchPct === 100
+                                              ? "#198754"
+                                              : matched.matchPct >= 70
+                                                ? "#cc8400"
+                                                : "#dc3545",
+                                          fontWeight: 700,
+                                        }}
+                                        title={matched.missingTrainings?.join(
+                                          ", ",
+                                        )}
+                                      >
+                                        {matched.matchPct}% Match
+                                      </span>
+                                      <span
+                                        onClick={() => handleViewEligibility(w)}
+                                        style={{
+                                          fontSize: "10px",
+                                          color: "#0d6efd",
+                                          cursor: "pointer",
+                                          fontWeight: 600,
+                                        }}
+                                      >
+                                        🔍 ดู Gap →
+                                      </span>
+                                    </div>
                                   ) : (
                                     "—"
                                   )}
