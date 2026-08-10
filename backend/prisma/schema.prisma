@@ -159,6 +159,17 @@ enum MobilizationTaskType {
   hotel_booking // จองห้องพัก standby ล่วงหน้า 1 วัน
   accounting_notify // แจ้งการเดินทางไปยังฝ่ายบัญชี
   drug_test // ใบเบิกชุดตรวจสาร (defer — ยังมีคำถามเปิด)
+  alcohol_test         // ใหม่ — ไฟล์ 1
+  ppe_inspection       // ใหม่ — ไฟล์ 3 (คนละอันกับ ppe_preparation ที่เป็นการ "จัดเตรียม")
+  pre_field_training   // ใหม่ — ไฟล์ 4
+  baggage_inspection   // ใหม่ — ไฟล์ 5
+  blood_pressure_check // ใหม่ — ไฟล์ 6
+}
+
+enum CheckResult {
+  pass
+  fail
+  not_applicable
 }
 
 enum MobilizationTaskStatus {
@@ -1040,6 +1051,13 @@ model MobilizationTask {
   dueDate     DateTime?
   completedAt DateTime?
   completedBy String?
+
+  resultStatus  CheckResult? // null = logistics task ทั่วไป, ใช้จริงเฉพาะ checklist type
+  checkedById   String?
+  checkedAt     DateTime?
+  measuredValue String?      // เก็บค่าที่วัด เช่น "0.00 mg%", "120/80"
+
+  itemsChecked  Json?        // ← ใหม่: สำหรับ task ที่มี checklist ย่อยหลายชิ้น เช่น PPE (array of {item, checked})
 
   vesselName     String?
   departureDate  DateTime?

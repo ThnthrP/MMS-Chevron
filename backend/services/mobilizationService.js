@@ -5,6 +5,16 @@ const prisma = new PrismaClient();
 const DEMOB_DAYS = 28; // rotation 4 สัปดาห์
 const norm = (s) => (s || "").replace(/\s+/g, "").toLowerCase();
 
+// ── Pre-Mob Checklist: 6 ไฟล์ตามที่พี่บอยส่งมา ──
+const CHECKLIST_TASK_TYPES = [
+  "alcohol_test",
+  "drug_test",
+  "ppe_inspection",
+  "pre_field_training",
+  "baggage_inspection",
+  "blood_pressure_check",
+];
+
 function addDays(date, days) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
@@ -20,8 +30,50 @@ function statusByDate(mob, demob) {
 }
 
 // ════════════════════════════════════════════════════════════════
+// COMPATIBILITY SHIM — หา/สร้าง Booking สำหรับ employee+request นี้
+//
+// MobilizationTask (checklist 6 ไฟล์) ผูกกับ bookingId ตาม schema เดิม
+// แต่ flow ปัจจุบัน (Allocation approve) ไม่เคยสร้าง Booking record
+// ฟังก์ชันนี้หา Booking ที่มีอยู่ก่อน ถ้าไม่มีค่อยสร้างให้ (status: approved)
+// ใช้เป็น "ที่เก็บ" checklist เท่านั้น — ไม่เกี่ยวกับ Assignment/Deploy
+// ซึ่งยังทำงานแบบ bookingId=null (roster) เหมือนเดิมทุกอย่าง
+// ════════════════════════════════════════════════════════════════
+async function findOrCreateBooking(requestId, employeeId) {
+  let booking = await prisma.booking.findFirst({
+    where: { requestId, employeeId },
+  });
+  if (!booking) {
+    booking = await prisma.booking.create({
+      data: { requestId, employeeId, status: "approved" },
+    });
+  }
+  return booking;
+}
+
+// ── seed checklist task ที่ยังไม่มีให้ booking นี้ ──
+async function seedChecklistTasks(bookingId, existingTasks) {
+  const existingTypes = new Set(existingTasks.map((t) => t.taskType));
+  const missing = CHECKLIST_TASK_TYPES.filter((t) => !existingTypes.has(t));
+  if (missing.length === 0) return existingTasks;
+
+  await prisma.mobilizationTask.createMany({
+    data: missing.map((taskType) => ({
+      bookingId,
+      taskType,
+      status: "pending",
+    })),
+  });
+
+  return prisma.mobilizationTask.findMany({
+    where: { bookingId, taskType: { in: CHECKLIST_TASK_TYPES } },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
 // GET — approved workers ของ project (ต่อจาก Allocation) + project info
 // กรองเฉพาะ status = "approved" + medical + assignment เดิม (ถ้าเคย deploy)
+// + seed/แนบ pre-mob checklist (6 ไฟล์) ให้แต่ละคน
 // ════════════════════════════════════════════════════════════════
 export async function getMobilizationList(projectId) {
   const project = await prisma.project.findUnique({
@@ -77,7 +129,19 @@ export async function getMobilizationList(projectId) {
         null;
       const asg = asgByEmp.get(c.employeeId) || null;
 
+      // ── หา/สร้าง booking แล้ว seed checklist 6 ไฟล์ ──
+      const booking = await findOrCreateBooking(req.id, e.id);
+      const existingTasks = await prisma.mobilizationTask.findMany({
+        where: {
+          bookingId: booking.id,
+          taskType: { in: CHECKLIST_TASK_TYPES },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      const checklist = await seedChecklistTasks(booking.id, existingTasks);
+
       workers.push({
+        bookingId: booking.id, // ← ใหม่: ใช้อ้างอิงตอน PATCH checklist ทาง frontend ไม่ต้องใช้ตรงๆ แต่เผื่อ debug
         candidateId: c.id,
         employeeId: e.id,
         empCode: e.empCode,
@@ -97,6 +161,7 @@ export async function getMobilizationList(projectId) {
               updatedAt: asg.updatedAt,
             }
           : null,
+        checklist, // ← ใหม่: array ของ MobilizationTask 6 รายการ
       });
     }
   }
@@ -112,6 +177,36 @@ export async function getMobilizationList(projectId) {
     demobDays: DEMOB_DAYS,
     workers,
   };
+}
+
+// ════════════════════════════════════════════════════════════════
+// PATCH — อัปเดตผล checklist ทีละรายการ (คนหน้างาน/manpower ติ๊ก)
+// ════════════════════════════════════════════════════════════════
+export async function updateChecklistTask(
+  taskId,
+  { resultStatus, measuredValue, itemsChecked, notes, userId, userName },
+) {
+  const data = {
+    itemsChecked: itemsChecked ?? undefined,
+  };
+
+  // อัปเดตฟิลด์เหล่านี้เฉพาะตอนที่มีการตัดสินผลจริง (resultStatus ถูกส่งมา)
+  // ป้องกันการ mark "completed" ทั้งที่แค่ติ๊ก checkbox บางส่วน (ยังไม่ครบ)
+  if (resultStatus !== undefined && resultStatus !== null) {
+    data.resultStatus = resultStatus;
+    data.measuredValue = measuredValue ?? undefined;
+    data.notes = notes ?? undefined;
+    data.checkedById = userId ?? null;
+    data.checkedAt = new Date();
+    data.status = "completed";
+    data.completedAt = new Date();
+    data.completedBy = userName ?? userId ?? null;
+  }
+
+  return prisma.mobilizationTask.update({
+    where: { id: taskId },
+    data,
+  });
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -131,8 +226,9 @@ export async function deployToSite({ projectId, deployments }) {
     if (!d.employeeId || !d.mobDate || !d.platform) continue;
 
     const mob = new Date(d.mobDate);
-    // ── ใช้ demobDate ที่ผู้ใช้กำหนดเองถ้ามี ไม่งั้น fallback = mobDate + 28 วัน ──
-    const demob = d.demobDate ? new Date(d.demobDate) : addDays(mob, DEMOB_DAYS);
+    const demob = d.demobDate
+      ? new Date(d.demobDate)
+      : addDays(mob, DEMOB_DAYS);
     const status = statusByDate(mob, demob);
 
     const employee = await prisma.employee.findUnique({
@@ -175,9 +271,6 @@ export async function undeployWorker({ projectId, employeeId }) {
 
 // ════════════════════════════════════════════════════════════════
 // DEV TOOL — ลบ Assignment ทั้งหมดของ project (bookingId=null เท่านั้น)
-//   ใช้ตอน dev/test เวลาแก้ position request แล้วมี Assignment ค้าง
-//   (orphaned) ที่ไม่ผูกกับ shortlist/candidate อีกต่อไป แต่ยังถูกนับ
-//   ใน Dashboard "Currently On-Site" เพราะ query อิง Assignment ตรงๆ
 // ════════════════════════════════════════════════════════════════
 export async function clearProjectDeployments(projectId) {
   if (!projectId) return { count: 0 };

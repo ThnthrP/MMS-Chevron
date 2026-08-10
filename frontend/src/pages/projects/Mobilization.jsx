@@ -79,6 +79,14 @@ export default function Mobilization() {
     userData?.role?.name,
   );
 
+  const canManageChecklist = [
+    "admin",
+    "manpower",
+    "safety",
+    "nurse",
+    "ta",
+  ].includes(userData?.role?.name);
+
   const [projects, setProjects] = useState([]);
   //   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useStickyState(
@@ -152,6 +160,121 @@ export default function Mobilization() {
     }
   };
 
+  const PPE_ITEMS = [
+    "Workwear",
+    "Hardhat Helmets",
+    "Welding Helmets",
+    "Safety glasses",
+    "Goggles",
+    "Face shields",
+    "Welding face shield",
+    "Foot Protection",
+    "Hearing Protection",
+    "Welding Gloves",
+    "G-tech Gloves",
+    "Impact Gloves",
+    "Half mask",
+    "Specialized Protection",
+  ];
+
+  const TRAINING_TOPICS = [
+    "Safety Oriented",
+    "Currently alert case from offshore work",
+    "Human performance issue",
+    "Knowledge sharing",
+    "28 Days plan",
+    "Other",
+  ];
+
+  const CHECKLIST_DEFS = [
+    { type: "alcohol_test", label: "ตรวจแอลกอฮอล์", valueLabel: "ระดับ (mg%)" },
+    {
+      type: "drug_test",
+      label: "ตรวจสารเสพติด",
+      note: "ตรวจ 9 สาร: Amphetamines, Methamphetamine, Ecstasy, Benzodiazepines, Cannabinoids, Cocaine Metabolites, Opiates, Phencyclidine, Mitragynine",
+    },
+    {
+      type: "ppe_inspection",
+      label: "ตรวจ PPE (Pre-Mob)",
+      items: PPE_ITEMS,
+    },
+    {
+      type: "pre_field_training",
+      label: "อบรมก่อนปฏิบัติงานนอกพื้นที่",
+      items: TRAINING_TOPICS,
+      notesLabel: "ระบุหัวข้อ Other...",
+    },
+    {
+      type: "baggage_inspection",
+      label: "ตรวจกระเป๋า Mob/D-Mob",
+      baggageFields: true, // ← ใหม่: trigger custom render แทน generic block
+    },
+    {
+      type: "blood_pressure_check",
+      label: "ตรวจความดันโลหิต",
+      vitalsFields: true, // ← ใหม่: มี 2 ค่า (BP + Pulse)
+    },
+  ];
+
+  const RESULT_TONE = { pass: "ok", fail: "danger", not_applicable: "muted" };
+  const RESULT_LABEL = { pass: "Pass", fail: "Fail", not_applicable: "N/A" };
+
+  function checklistSummary(checklist = []) {
+    const passed = checklist.filter(
+      (t) => t.resultStatus === "pass" || t.resultStatus === "not_applicable",
+    ).length;
+    return { passed, total: checklist.length || CHECKLIST_DEFS.length };
+  }
+
+  function checklistComplete(checklist = []) {
+    if (!checklist.length) return false;
+    return checklist.every(
+      (t) => t.resultStatus === "pass" || t.resultStatus === "not_applicable",
+    );
+  }
+
+  const [checklistModal, setChecklistModal] = useState(null); // row object
+  const [savingTaskId, setSavingTaskId] = useState(null);
+
+  const updateChecklistTask = async (taskId, patch) => {
+    try {
+      setSavingTaskId(taskId);
+      const res = await axios.patch(
+        `${backendUrl}/api/mobilization/task/${taskId}`,
+        patch,
+        { withCredentials: true },
+      );
+      // อัปเดต local state ทั้งใน rows และ modal ที่เปิดอยู่
+      setRows((prev) =>
+        prev.map((r) =>
+          r.checklist?.some((t) => t.id === taskId)
+            ? {
+                ...r,
+                checklist: r.checklist.map((t) =>
+                  t.id === taskId ? res.data : t,
+                ),
+              }
+            : r,
+        ),
+      );
+      setChecklistModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              checklist: prev.checklist.map((t) =>
+                t.id === taskId ? res.data : t,
+              ),
+            }
+          : prev,
+      );
+    } catch (err) {
+      console.error(err);
+      alert("บันทึกไม่สำเร็จ — ดู console");
+    } finally {
+      setSavingTaskId(null);
+    }
+  };
+
   const buildRows = (data) => {
     const defaultMob = ymd(data.project.startDate);
     return data.workers.map((w) => {
@@ -163,13 +286,12 @@ export default function Mobilization() {
         : addDays(mobDate, DEMOB_DAYS);
       return {
         ...w,
-        ppe: deployed,
-        safetyInduction: deployed,
         mobDate,
         demobDate,
         platform: asg?.platform ?? "",
         deployed,
         deployedAt: asg?.createdAt ?? null,
+        checklist: w.checklist ?? [], // ← ใหม่
       };
     });
   };
@@ -178,8 +300,7 @@ export default function Mobilization() {
   const isReady = (r) => {
     const med = medicalFit(r.medicalExpiry);
     return (
-      r.ppe &&
-      r.safetyInduction &&
+      checklistComplete(r.checklist) &&
       med.fit &&
       !!r.mobDate &&
       !!r.platform &&
@@ -472,11 +593,20 @@ export default function Mobilization() {
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
-                    <th style={th}>Worker</th>
+                    {/* <th style={th}>Worker</th>
                     <th style={th}>Position</th>
                     <th style={th}>Medical Fit</th>
                     <th style={th}>PPE</th>
                     <th style={th}>Safety Induction</th>
+                    <th style={th}>MOB</th>
+                    <th style={th}>D-MOB</th>
+                    <th style={th}>Platform</th>
+                    <th style={th}>Status</th>
+                    <th style={th}>Actions</th> */}
+                    <th style={th}>Worker</th>
+                    <th style={th}>Position</th>
+                    <th style={th}>Medical Fit</th>
+                    <th style={th}>Pre-Mob Checklist</th>
                     <th style={th}>MOB</th>
                     <th style={th}>D-MOB</th>
                     <th style={th}>Platform</th>
@@ -505,28 +635,28 @@ export default function Mobilization() {
                           <Badge tone={med.tone}>{med.label}</Badge>
                         </td>
 
-                        <td style={{ ...td, textAlign: "center" }}>
-                          <input
-                            type="checkbox"
-                            checked={r.ppe}
-                            disabled={locked || !canManageMobilization}
-                            onChange={(e) =>
-                              updateRow(r.employeeId, { ppe: e.target.checked })
-                            }
-                          />
-                        </td>
-
-                        <td style={{ ...td, textAlign: "center" }}>
-                          <input
-                            type="checkbox"
-                            checked={r.safetyInduction}
-                            disabled={locked || !canManageMobilization}
-                            onChange={(e) =>
-                              updateRow(r.employeeId, {
-                                safetyInduction: e.target.checked,
-                              })
-                            }
-                          />
+                        <td style={td}>
+                          {(() => {
+                            const { passed, total } = checklistSummary(
+                              r.checklist,
+                            );
+                            const complete = checklistComplete(r.checklist);
+                            return (
+                              <button
+                                onClick={() => setChecklistModal(r)}
+                                disabled={r.deployed}
+                                style={{
+                                  ...btnBase,
+                                  border: `1px solid ${complete ? "#0f5132" : "#dee2e6"}`,
+                                  color: complete ? "#0f5132" : "#495057",
+                                  background: complete ? "#d1e7dd" : "#fff",
+                                  cursor: r.deployed ? "default" : "pointer",
+                                }}
+                              >
+                                {passed}/{total} ✓
+                              </button>
+                            );
+                          })()}
                         </td>
 
                         <td style={td}>
@@ -647,6 +777,615 @@ export default function Mobilization() {
             </div>
           )}
         </div>
+
+        {checklistModal && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              zIndex: 999999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "20px",
+            }}
+            onClick={() => setChecklistModal(null)}
+          >
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: "10px",
+                width: "100%",
+                maxWidth: "560px",
+                maxHeight: "85vh",
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  background: "#1e3a5f",
+                  color: "#fff",
+                  padding: "16px 24px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "15px" }}>
+                    📋 Pre-Mob Checklist
+                  </div>
+                  <div style={{ fontSize: "12px", opacity: 0.8 }}>
+                    {checklistModal.fullName} · {checklistModal.empCode}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setChecklistModal(null)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#fff",
+                    fontSize: "20px",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={{ padding: "16px 24px", overflowY: "auto", flex: 1 }}>
+                {CHECKLIST_DEFS.map((def) => {
+                  const task = checklistModal.checklist.find(
+                    (t) => t.taskType === def.type,
+                  );
+                  if (!task) return null;
+                  const saving = savingTaskId === task.id;
+
+                  // ── คำนวณ "resultStatus ที่ควรแสดงจริง" ──
+                  //   ถ้า item นี้มี checklist ย่อย (def.items) และติ๊กยังไม่ครบ
+                  //   ให้ถือว่ายังไม่มีผลตัดสิน (ไม่แสดง badge ใดๆ) แม้ resultStatus
+                  //   จะค้างเป็น "pass" จากตอนติ๊กครบมาก่อนหน้านี้ก็ตาม
+                  // const displayResultStatus = (() => {
+                  //   if (!def.items) return task.resultStatus;
+                  //   const checkedItems = task.itemsChecked ?? [];
+                  //   const allChecked = def.items.every((i) =>
+                  //     checkedItems.includes(i),
+                  //   );
+                  //   return allChecked ? task.resultStatus : null;
+                  // })();
+
+                  return (
+                    <div
+                      key={def.type}
+                      style={{
+                        border: "1px solid #e9ecef",
+                        borderRadius: "8px",
+                        padding: "12px 14px",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      <div style={{ marginBottom: "8px" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <span style={{ fontWeight: 600, fontSize: "13px" }}>
+                            {def.label}
+                          </span>
+                          {task.resultStatus && (
+                            <Badge tone={RESULT_TONE[task.resultStatus]}>
+                              {def.baggageFields && task.resultStatus === "fail"
+                                ? "Reject"
+                                : RESULT_LABEL[task.resultStatus]}
+                            </Badge>
+                          )}
+                        </div>
+                        {def.note && (
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: "#6c757d",
+                              marginTop: "4px",
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {def.note}
+                          </div>
+                        )}
+                      </div>
+                      {def.baggageFields ? (
+                        <>
+                          <div style={{ marginBottom: "10px" }}>
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: 600,
+                                color: "#495057",
+                                display: "block",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              จำนวนกระเป๋า (ชิ้น)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="เช่น 2"
+                              defaultValue={task.measuredValue ?? ""}
+                              disabled={saving || !canManageChecklist}
+                              onBlur={(e) => {
+                                if (
+                                  e.target.value !== (task.measuredValue ?? "")
+                                ) {
+                                  updateChecklistTask(task.id, {
+                                    resultStatus: task.resultStatus ?? "pass",
+                                    measuredValue: e.target.value,
+                                  });
+                                }
+                              }}
+                              style={{
+                                ...input,
+                                maxWidth: "none",
+                                width: "100%",
+                              }}
+                            />
+                          </div>
+
+                          <div style={{ marginBottom: "10px" }}>
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: 600,
+                                color: "#495057",
+                                display: "block",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              Baggage
+                            </label>
+                            <div style={{ display: "flex", gap: "6px" }}>
+                              {[
+                                { value: "pass", label: "Pass", tone: "ok" },
+                                {
+                                  value: "fail",
+                                  label: "Reject",
+                                  tone: "danger",
+                                },
+                              ].map((opt) => {
+                                const isActive =
+                                  task.resultStatus === opt.value;
+                                const t = TONE[opt.tone];
+                                return (
+                                  <button
+                                    key={opt.value}
+                                    disabled={saving || !canManageChecklist}
+                                    onClick={() =>
+                                      updateChecklistTask(task.id, {
+                                        resultStatus: opt.value,
+                                        measuredValue: task.measuredValue,
+                                      })
+                                    }
+                                    style={{
+                                      ...btnBase,
+                                      flex: 1,
+                                      border: `1px solid ${isActive ? t.color : "#dee2e6"}`,
+                                      background: isActive ? t.bg : "#fff",
+                                      color: isActive ? t.color : "#495057",
+                                      cursor: canManageChecklist
+                                        ? "pointer"
+                                        : "not-allowed",
+                                    }}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: 600,
+                                color: "#495057",
+                                display: "block",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              Dress Code
+                            </label>
+                            <div style={{ display: "flex", gap: "6px" }}>
+                              {[
+                                { value: "good", label: "Good", tone: "ok" },
+                                {
+                                  value: "reject",
+                                  label: "Reject",
+                                  tone: "danger",
+                                },
+                              ].map((opt) => {
+                                const current = task.itemsChecked?.dressCode;
+                                const isActive = current === opt.value;
+                                const t = TONE[opt.tone];
+                                return (
+                                  <button
+                                    key={opt.value}
+                                    disabled={saving || !canManageChecklist}
+                                    onClick={() =>
+                                      updateChecklistTask(task.id, {
+                                        resultStatus:
+                                          task.resultStatus ?? "pass",
+                                        itemsChecked: {
+                                          ...(task.itemsChecked ?? {}),
+                                          dressCode: opt.value,
+                                        },
+                                      })
+                                    }
+                                    style={{
+                                      ...btnBase,
+                                      flex: 1,
+                                      border: `1px solid ${isActive ? t.color : "#dee2e6"}`,
+                                      background: isActive ? t.bg : "#fff",
+                                      color: isActive ? t.color : "#495057",
+                                      cursor: canManageChecklist
+                                        ? "pointer"
+                                        : "not-allowed",
+                                    }}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </>
+                      ) : def.vitalsFields ? (
+                        <>
+                          {/* ปุ่ม Pass/Fail/N/A ทั่วไป — ย้ายขึ้นมาบนสุด ให้ตรงกับ task อื่น */}
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "6px",
+                              marginBottom: "10px",
+                            }}
+                          >
+                            {["pass", "fail", "not_applicable"].map((val) => {
+                              const isActive = task.resultStatus === val;
+                              const activeTone = TONE[RESULT_TONE[val]];
+                              return (
+                                <button
+                                  key={val}
+                                  disabled={saving || !canManageChecklist}
+                                  onClick={() =>
+                                    updateChecklistTask(task.id, {
+                                      resultStatus: val,
+                                      measuredValue: task.measuredValue,
+                                    })
+                                  }
+                                  style={{
+                                    ...btnBase,
+                                    flex: 1,
+                                    border: `1px solid ${isActive ? activeTone.color : "#dee2e6"}`,
+                                    background: isActive
+                                      ? activeTone.bg
+                                      : "#fff",
+                                    color: isActive
+                                      ? activeTone.color
+                                      : "#495057",
+                                    cursor: canManageChecklist
+                                      ? "pointer"
+                                      : "not-allowed",
+                                  }}
+                                >
+                                  {RESULT_LABEL[val]}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* ค่าความดันโลหิต */}
+                          <div style={{ marginBottom: "10px" }}>
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: 600,
+                                color: "#495057",
+                                display: "block",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              ค่าความดันโลหิต (mm.Hg)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="เช่น 120/80"
+                              defaultValue={task.measuredValue ?? ""}
+                              disabled={saving || !canManageChecklist}
+                              onBlur={(e) => {
+                                if (
+                                  e.target.value !== (task.measuredValue ?? "")
+                                ) {
+                                  updateChecklistTask(task.id, {
+                                    resultStatus: task.resultStatus ?? "pass",
+                                    measuredValue: e.target.value,
+                                  });
+                                }
+                              }}
+                              style={{
+                                ...input,
+                                maxWidth: "none",
+                                width: "100%",
+                              }}
+                            />
+                          </div>
+
+                          {/* ชีพจร (ครั้ง/นาที) */}
+                          <div style={{ marginBottom: "10px" }}>
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: 600,
+                                color: "#495057",
+                                display: "block",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              ชีพจร (ครั้ง/นาที)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="เช่น 72"
+                              defaultValue={task.itemsChecked?.pulseRate ?? ""}
+                              disabled={saving || !canManageChecklist}
+                              onBlur={(e) => {
+                                if (
+                                  e.target.value !==
+                                  (task.itemsChecked?.pulseRate ?? "")
+                                ) {
+                                  updateChecklistTask(task.id, {
+                                    resultStatus: task.resultStatus ?? "pass",
+                                    itemsChecked: {
+                                      ...(task.itemsChecked ?? {}),
+                                      pulseRate: e.target.value,
+                                    },
+                                  });
+                                }
+                              }}
+                              style={{
+                                ...input,
+                                maxWidth: "none",
+                                width: "100%",
+                              }}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* ← เพิ่มกลับตรงนี้ */}
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "6px",
+                              marginBottom: def.valueLabel ? "8px" : 0,
+                            }}
+                          >
+                            {["pass", "fail", "not_applicable"].map((val) => {
+                              const itemsIncomplete =
+                                def.items &&
+                                val === "pass" &&
+                                !def.items.every((i) =>
+                                  (task.itemsChecked ?? []).includes(i),
+                                );
+                              const isActive = task.resultStatus === val;
+                              const activeTone = TONE[RESULT_TONE[val]];
+                              return (
+                                <button
+                                  key={val}
+                                  disabled={
+                                    saving ||
+                                    !canManageChecklist ||
+                                    itemsIncomplete
+                                  }
+                                  title={
+                                    itemsIncomplete
+                                      ? "ติ๊กให้ครบทุกชิ้นก่อนถึงจะกด Pass ได้"
+                                      : undefined
+                                  }
+                                  onClick={() =>
+                                    updateChecklistTask(task.id, {
+                                      resultStatus: val,
+                                      measuredValue: task.measuredValue,
+                                    })
+                                  }
+                                  style={{
+                                    ...btnBase,
+                                    flex: 1,
+                                    opacity: itemsIncomplete ? 0.5 : 1,
+                                    border: `1px solid ${isActive ? activeTone.color : "#dee2e6"}`,
+                                    background: isActive
+                                      ? activeTone.bg
+                                      : "#fff",
+                                    color: isActive
+                                      ? activeTone.color
+                                      : "#495057",
+                                    cursor:
+                                      canManageChecklist && !itemsIncomplete
+                                        ? "pointer"
+                                        : "not-allowed",
+                                  }}
+                                >
+                                  {RESULT_LABEL[val]}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {def.valueLabel && (
+                            <div style={{ marginTop: "8px" }}>
+                              <label
+                                style={{
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  color: "#495057",
+                                  display: "block",
+                                  marginBottom: "4px",
+                                }}
+                              >
+                                {def.valueLabel}
+                              </label>
+                              <input
+                                type="text"
+                                placeholder={def.valueLabel}
+                                defaultValue={task.measuredValue ?? ""}
+                                disabled={saving || !canManageChecklist}
+                                onBlur={(e) => {
+                                  if (
+                                    e.target.value !==
+                                    (task.measuredValue ?? "")
+                                  ) {
+                                    updateChecklistTask(task.id, {
+                                      resultStatus: task.resultStatus ?? "pass",
+                                      measuredValue: e.target.value,
+                                    });
+                                  }
+                                }}
+                                style={{
+                                  ...input,
+                                  maxWidth: "none",
+                                  width: "100%",
+                                }}
+                              />
+                            </div>
+                          )}
+                          {def.items && (
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "1fr 1fr",
+                                gap: "6px",
+                                marginTop: "4px",
+                              }}
+                            >
+                              {def.items.map((itemName) => {
+                                const checkedItems = task.itemsChecked ?? [];
+                                const isChecked =
+                                  checkedItems.includes(itemName);
+                                return (
+                                  <label
+                                    key={itemName}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "6px",
+                                      fontSize: "12px",
+                                      color: "#495057",
+                                      cursor: canManageChecklist
+                                        ? "pointer"
+                                        : "default",
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      disabled={saving || !canManageChecklist}
+                                      onChange={(e) => {
+                                        const next = e.target.checked
+                                          ? [...checkedItems, itemName]
+                                          : checkedItems.filter(
+                                              (i) => i !== itemName,
+                                            );
+
+                                        const allChecked = def.items.every(
+                                          (i) => next.includes(i),
+                                        );
+
+                                        const patch = { itemsChecked: next };
+                                        if (allChecked) {
+                                          patch.resultStatus = "pass";
+                                        }
+
+                                        updateChecklistTask(task.id, patch);
+                                      }}
+                                    />
+                                    {itemName}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {def.notesLabel &&
+                            (!def.items ||
+                              (task.itemsChecked ?? []).includes("Other")) && (
+                              <input
+                                type="text"
+                                placeholder={def.notesLabel}
+                                defaultValue={task.notes ?? ""}
+                                disabled={saving || !canManageChecklist}
+                                onBlur={(e) => {
+                                  if (e.target.value !== (task.notes ?? "")) {
+                                    updateChecklistTask(task.id, {
+                                      resultStatus: task.resultStatus ?? "pass",
+                                      notes: e.target.value,
+                                    });
+                                  }
+                                }}
+                                style={{
+                                  ...input,
+                                  maxWidth: "none",
+                                  width: "100%",
+                                  marginTop: "8px",
+                                }}
+                              />
+                            )}
+                        </>
+                      )}
+                      {task.checkedAt && (
+                        <div
+                          style={{
+                            fontSize: "10px",
+                            color: "#adb5bd",
+                            marginTop: "6px",
+                          }}
+                        >
+                          Checked{" "}
+                          {new Date(task.checkedAt).toLocaleString("th-TH")}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div
+                style={{
+                  padding: "14px 24px",
+                  borderTop: "1px solid #dee2e6",
+                  textAlign: "right",
+                }}
+              >
+                <button
+                  onClick={() => setChecklistModal(null)}
+                  style={{
+                    padding: "8px 24px",
+                    fontSize: "13px",
+                    border: "1px solid #dee2e6",
+                    borderRadius: "8px",
+                    background: "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -21,9 +21,9 @@ export const APP_MENU = [
           "ta",
           "bd",
           "expert",
-          "supervisor", // ← เพิ่ม
-          "executive", // ← เพิ่ม
-          "manager", // ← เพิ่ม
+          "supervisor",
+          "executive",
+          "manager",
         ],
       },
     ],
@@ -38,7 +38,17 @@ export const APP_MENU = [
       {
         name: "Workers",
         path: "/workers",
-        roles: ["admin", "hr", "manpower", "safety", "pe", "expert", "pe_head"], // ← เพิ่ม pe_head
+        roles: [
+          "admin",
+          "hr",
+          "manpower",
+          "safety",
+          "nurse", // ← เพิ่ม: nurse ต้องดูข้อมูลพนักงานคู่กับ medical check
+          "ta", // ← เพิ่ม: ta ต้องดูข้อมูลพนักงานคู่กับ training record
+          "pe",
+          "expert",
+          "pe_head",
+        ],
       },
       {
         name: "Add Worker",
@@ -57,23 +67,23 @@ export const APP_MENU = [
       {
         name: "Training Matrix",
         path: "/training-matrix",
-        roles: ["admin", "hr", "manpower", "pe", "expert"],
+        roles: ["admin", "hr", "manpower", "pe", "expert", "ta"], // ← เพิ่ม ta: ตรงหน้าที่โดยตรง
       },
       {
         name: "Compliance Center",
         path: "/compliance",
-        roles: ["admin", "hr", "manpower", "safety", "nurse", "pe"],
+        roles: ["admin", "hr", "manpower", "safety", "nurse", "pe", "ta"], // ← เพิ่ม ta
         badge: true,
       },
       {
         name: "Certifications",
         path: "/certifications",
-        roles: ["admin", "hr", "manpower", "safety", "nurse", "pe"],
+        roles: ["admin", "hr", "manpower", "safety", "nurse", "pe", "ta"], // ← เพิ่ม ta
       },
       {
         name: "Training Requests",
         path: "/training-requests-history",
-        roles: ["admin", "hr"],
+        roles: ["admin", "hr", "ta"], // ← เพิ่ม ta: เจ้าของงานจัด training โดยตรง
       },
     ],
   },
@@ -93,11 +103,13 @@ export const APP_MENU = [
         name: "Allocation",
         path: "/allocation",
         roles: ["admin", "manpower", "hr", "pe", "expert"],
+        // ไม่เพิ่ม safety/nurse/ta ตรงนี้ — เป็นขั้นตอนคัดเลือก/approve
+        // ยังไม่ใช่งานตรวจร่างกาย/training ที่ role พวกนี้รับผิดชอบ
       },
       {
         name: "Mobilization",
         path: "/mobilization",
-        roles: ["admin", "manpower", "hr", "pe", "safety", "nurse", "ta"],
+        roles: ["admin", "manpower", "hr", "pe", "safety", "nurse", "ta"], // ครบอยู่แล้ว
       },
     ],
   },
@@ -117,10 +129,11 @@ export const APP_MENU = [
           "pe",
           "pe_head",
           "manpower",
-          "supervisor", // ← เพิ่ม
-          "executive", // ← เพิ่ม
-          "manager", // ← เพิ่ม
+          "supervisor",
+          "executive",
+          "manager",
         ],
+        // ไม่เพิ่ม safety/nurse/ta — เป็นการประเมินผลงานทั่วไป ไม่เกี่ยวกับ compliance
       },
     ],
   },
@@ -142,8 +155,8 @@ export const APP_MENU = [
           "manpower",
           "hr",
           "pe",
-          "executive", // ← เพิ่ม
-          "supervisor", // ← เพิ่ม
+          "executive",
+          "supervisor",
         ],
       },
       {
@@ -173,7 +186,7 @@ export const APP_MENU = [
       {
         name: "Manage Trainings",
         path: "/trainings",
-        roles: ["admin", "hr", "manpower"],
+        roles: ["admin", "hr", "manpower", "ta"], // ← เพิ่ม ta: master data training ตรงสายงาน
       },
       {
         name: "Matrix Editor",

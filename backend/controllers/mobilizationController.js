@@ -12,6 +12,39 @@ export async function getList(req, res) {
   }
 }
 
+// PATCH /api/mobilization/task/:taskId
+// body: { resultStatus?: "pass"|"fail"|"not_applicable", measuredValue?, itemsChecked?, notes? }
+//   resultStatus เป็น optional ตอนนี้ — รองรับ partial update
+//   (เช่น ติ๊ก checkbox บางส่วนโดยยังไม่ auto-Pass จนกว่าจะครบ)
+export async function updateChecklistItem(req, res) {
+  try {
+    const { taskId } = req.params;
+    const { resultStatus, measuredValue, itemsChecked, notes } = req.body;
+
+    // validate เฉพาะตอนที่ "มีการส่ง resultStatus มาจริง" เท่านั้น
+    if (
+      resultStatus !== undefined &&
+      resultStatus !== null &&
+      !["pass", "fail", "not_applicable"].includes(resultStatus)
+    ) {
+      return res.status(400).json({ message: "Invalid resultStatus" });
+    }
+
+    const task = await service.updateChecklistTask(taskId, {
+      resultStatus,
+      measuredValue,
+      itemsChecked,
+      notes,
+      userId: req.userId,
+      userName: req.user.name,
+    });
+    res.json(task);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
 // POST /api/mobilization/deploy
 // body: { projectId, deployments: [{ employeeId, mobDate, platform }] }
 export async function deploy(req, res) {
