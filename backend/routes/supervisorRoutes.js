@@ -8,7 +8,15 @@ router.use(userAuth);
 
 router.get(
   "/projects-overview",
-  requireRole("admin", "supervisor", "executive", "manager", "pe_head"),
+  requireRole(
+    "admin",
+    "supervisor",
+    "executive",
+    "manager",
+    "pe_head",
+    "manpower",
+    "hr",
+  ),
   controller.getProjectsOverview,
 );
 

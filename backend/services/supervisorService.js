@@ -13,7 +13,7 @@ export async function getProjectsOverview() {
             take: 1,
             include: {
               candidates: {
-                select: { id: true, status: true },
+                select: { id: true, status: true, employeeId: true }, // ← เพิ่ม employeeId
               },
             },
           },
@@ -21,8 +21,13 @@ export async function getProjectsOverview() {
       },
       assignments: {
         include: {
-          employee: { select: { fullName: true, empCode: true } },
-          position: { select: { name: true } },
+          employee: {
+            select: {
+              fullName: true,
+              empCode: true,
+              position: { select: { name: true } }, // ← เพิ่ม: ตำแหน่งจริงของพนักงาน
+            },
+          },
         },
         orderBy: { mobDate: "asc" },
       },
@@ -51,11 +56,26 @@ export async function getProjectsOverview() {
       };
     });
 
+    // ── หา "requested position" ต่อ employeeId จาก approved candidates ──
+    //    (คนละความหมายกับตำแหน่งจริงของพนักงาน — นี่คือตำแหน่งที่ request ต้องการ)
+    const requestedPositionByEmp = new Map();
+    p.requests.forEach((req) => {
+      (req.rounds[0]?.candidates ?? []).forEach((c) => {
+        if (c.status === "approved" && c.employeeId) {
+          requestedPositionByEmp.set(c.employeeId, req.position?.name ?? null);
+        }
+      });
+    });
+
     const employees = p.assignments.map((a) => ({
       employeeId: a.employeeId,
       fullName: a.employee?.fullName,
       empCode: a.employee?.empCode,
-      position: a.position?.name ?? null,
+      employeePosition: a.employee?.position?.name ?? null, // ← ใหม่: ตำแหน่งจริงของพนักงาน
+      requestedPosition:
+        requestedPositionByEmp.get(a.employeeId) ??
+        a.employee?.position?.name ??
+        null, // ← ใหม่: ตำแหน่งที่ถูก request (fallback เป็นตำแหน่งจริงถ้าหาไม่เจอ)
       mobDate: a.mobDate,
       demobDate: a.demobDate,
       platform: a.platform,

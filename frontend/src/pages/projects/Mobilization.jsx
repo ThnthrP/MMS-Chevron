@@ -2,6 +2,7 @@ import { useState, useEffect, useContext, useMemo } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
+import { useNavigate } from "react-router-dom";
 
 const DEMOB_DAYS = 28;
 
@@ -74,6 +75,7 @@ const STATUS_LABEL = {
 
 export default function Mobilization() {
   const { backendUrl, userData } = useContext(AppContent);
+  const navigate = useNavigate();
 
   const canManageMobilization = ["admin", "manpower"].includes(
     userData?.role?.name,
@@ -124,7 +126,27 @@ export default function Mobilization() {
       );
       const data = res.data;
       setProject(data.project);
-      setRows(buildRows(data));
+
+      const freshRows = buildRows(data);
+
+      // ── รักษาค่า mobDate/demobDate/platform ที่พิมพ์ไว้ในเครื่อง
+      //    ของคนที่ "ยังไม่ deploy" ไม่ให้ถูกรีเซ็ตทับ ตอนที่ fetchList
+      //    ถูกเรียกใหม่จากการ deploy คนอื่นในรายการเดียวกัน ──
+      setRows((prevRows) =>
+        freshRows.map((freshRow) => {
+          if (freshRow.deployed) return freshRow; // คนที่ deploy แล้ว ใช้ค่าจาก server ตรงๆ
+          const prev = prevRows.find(
+            (r) => r.employeeId === freshRow.employeeId,
+          );
+          if (!prev || prev.deployed) return freshRow;
+          return {
+            ...freshRow,
+            mobDate: prev.mobDate,
+            demobDate: prev.demobDate,
+            platform: prev.platform,
+          };
+        }),
+      );
     } catch (err) {
       console.error(err);
       setProject(null);
@@ -395,6 +417,9 @@ export default function Mobilization() {
     [rows],
   );
 
+  // ── deploy ครบทุกคนในรายการแล้วหรือยัง ──
+  const allDeployed = rows.length > 0 && rows.every((r) => r.deployed);
+
   // ── styles ──
   const card = {
     background: "#fff",
@@ -576,6 +601,24 @@ export default function Mobilization() {
                     🚀 Deploy All Ready
                   </button>
                 )}
+
+                {allDeployed && (
+                  <button
+                    onClick={() => navigate(`/projects/${project.id}`)}
+                    style={{
+                      background: "#0d6efd",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "7px 14px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✅ Deploy ครบแล้ว — ดูสรุป Project →
+                  </button>
+                )}
               </span>
             )}
           </div>
@@ -604,7 +647,7 @@ export default function Mobilization() {
                     <th style={th}>Status</th>
                     <th style={th}>Actions</th> */}
                     <th style={th}>Worker</th>
-                    <th style={th}>Position</th>
+                    <th style={th}>Position Requested</th>
                     <th style={th}>Medical Fit</th>
                     <th style={th}>Pre-Mob Checklist</th>
                     <th style={th}>MOB</th>
@@ -627,9 +670,12 @@ export default function Mobilization() {
                           <div style={{ fontSize: "11px", color: "#6c757d" }}>
                             {r.empCode}
                             {age ? ` · Age ${age}` : ""}
+                            {r.employeePosition
+                              ? ` · ${r.employeePosition}`
+                              : ""}
                           </div>
                         </td>
-                        <td style={td}>{r.position}</td>
+                        <td style={td}>{r.requestedPosition ?? r.position}</td>
 
                         <td style={td}>
                           <Badge tone={med.tone}>{med.label}</Badge>
@@ -1112,7 +1158,6 @@ export default function Mobilization() {
                                   e.target.value !== (task.measuredValue ?? "")
                                 ) {
                                   updateChecklistTask(task.id, {
-                                    resultStatus: task.resultStatus ?? "pass",
                                     measuredValue: e.target.value,
                                   });
                                 }
@@ -1149,7 +1194,6 @@ export default function Mobilization() {
                                   (task.itemsChecked?.pulseRate ?? "")
                                 ) {
                                   updateChecklistTask(task.id, {
-                                    resultStatus: task.resultStatus ?? "pass",
                                     itemsChecked: {
                                       ...(task.itemsChecked ?? {}),
                                       pulseRate: e.target.value,
@@ -1179,9 +1223,11 @@ export default function Mobilization() {
                               const itemsIncomplete =
                                 def.items &&
                                 val === "pass" &&
-                                !def.items.every((i) =>
-                                  (task.itemsChecked ?? []).includes(i),
-                                );
+                                !def.items
+                                  .filter((i) => i !== "Other")
+                                  .every((i) =>
+                                    (task.itemsChecked ?? []).includes(i),
+                                  );
                               const isActive = task.resultStatus === val;
                               const activeTone = TONE[RESULT_TONE[val]];
                               return (
@@ -1249,7 +1295,6 @@ export default function Mobilization() {
                                     (task.measuredValue ?? "")
                                   ) {
                                     updateChecklistTask(task.id, {
-                                      resultStatus: task.resultStatus ?? "pass",
                                       measuredValue: e.target.value,
                                     });
                                   }
@@ -1263,62 +1308,133 @@ export default function Mobilization() {
                             </div>
                           )}
                           {def.items && (
-                            <div
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "1fr 1fr",
-                                gap: "6px",
-                                marginTop: "4px",
-                              }}
-                            >
-                              {def.items.map((itemName) => {
+                            <>
+                              {(() => {
                                 const checkedItems = task.itemsChecked ?? [];
-                                const isChecked =
-                                  checkedItems.includes(itemName);
+                                // "Other" ไม่นับเป็นส่วนหนึ่งของ Select All — ต้องติ๊กเองถ้าต้องการ
+                                const selectableItems = def.items.filter(
+                                  (i) => i !== "Other",
+                                );
+                                const allSelected = selectableItems.every((i) =>
+                                  checkedItems.includes(i),
+                                );
+
                                 return (
-                                  <label
-                                    key={itemName}
+                                  <div
                                     style={{
                                       display: "flex",
-                                      alignItems: "center",
-                                      gap: "6px",
-                                      fontSize: "12px",
-                                      color: "#495057",
-                                      cursor: canManageChecklist
-                                        ? "pointer"
-                                        : "default",
+                                      justifyContent: "flex-end",
+                                      marginTop: "4px",
+                                      marginBottom: "6px",
                                     }}
                                   >
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
+                                    <button
+                                      type="button"
                                       disabled={saving || !canManageChecklist}
-                                      onChange={(e) => {
-                                        const next = e.target.checked
-                                          ? [...checkedItems, itemName]
-                                          : checkedItems.filter(
-                                              (i) => i !== itemName,
+                                      onClick={() => {
+                                        // toggle: ถ้าเลือกครบแล้ว → ยกเลิกทั้งหมด, ถ้ายังไม่ครบ → เลือกให้ครบ (ไม่รวม Other)
+                                        const next = allSelected
+                                          ? checkedItems.filter(
+                                              (i) =>
+                                                !selectableItems.includes(i),
+                                            )
+                                          : Array.from(
+                                              new Set([
+                                                ...checkedItems,
+                                                ...selectableItems,
+                                              ]),
                                             );
 
-                                        const allChecked = def.items.every(
-                                          (i) => next.includes(i),
-                                        );
+                                        const allRequiredChecked =
+                                          selectableItems.every((i) =>
+                                            next.includes(i),
+                                          );
 
                                         const patch = { itemsChecked: next };
-                                        if (allChecked) {
+                                        if (allRequiredChecked) {
                                           patch.resultStatus = "pass";
                                         }
 
                                         updateChecklistTask(task.id, patch);
                                       }}
-                                    />
-                                    {itemName}
-                                  </label>
+                                      style={{
+                                        background: "none",
+                                        border: "none",
+                                        color: canManageChecklist
+                                          ? "#0d6efd"
+                                          : "#adb5bd",
+                                        fontSize: "11px",
+                                        fontWeight: 600,
+                                        cursor: canManageChecklist
+                                          ? "pointer"
+                                          : "not-allowed",
+                                        padding: 0,
+                                        textDecoration: "underline",
+                                      }}
+                                    >
+                                      {allSelected
+                                        ? "ยกเลิกทั้งหมด"
+                                        : "เลือกทั้งหมด"}
+                                    </button>
+                                  </div>
                                 );
-                              })}
-                            </div>
-                          )}
+                              })()}
 
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "1fr 1fr",
+                                  gap: "6px",
+                                }}
+                              >
+                                {def.items.map((itemName) => {
+                                  const checkedItems = task.itemsChecked ?? [];
+                                  const isChecked =
+                                    checkedItems.includes(itemName);
+                                  return (
+                                    <label
+                                      key={itemName}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        fontSize: "12px",
+                                        color: "#495057",
+                                        cursor: canManageChecklist
+                                          ? "pointer"
+                                          : "default",
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        disabled={saving || !canManageChecklist}
+                                        onChange={(e) => {
+                                          const next = e.target.checked
+                                            ? [...checkedItems, itemName]
+                                            : checkedItems.filter(
+                                                (i) => i !== itemName,
+                                              );
+
+                                          const allRequiredChecked = def.items
+                                            .filter((i) => i !== "Other")
+                                            .every((i) => next.includes(i));
+
+                                          const patch = { itemsChecked: next };
+                                          if (allRequiredChecked) {
+                                            patch.resultStatus = "pass";
+                                          }
+
+                                          updateChecklistTask(task.id, patch);
+                                        }}
+                                      />
+                                      {itemName}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          )}
                           {def.notesLabel &&
                             (!def.items ||
                               (task.itemsChecked ?? []).includes("Other")) && (

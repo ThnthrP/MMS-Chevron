@@ -162,7 +162,15 @@ export const APP_MENU = [
       {
         name: "Projects Overview",
         path: "/supervisor-overview",
-        roles: ["admin", "supervisor", "executive", "manager", "pe_head"],
+        roles: [
+          "admin",
+          "supervisor",
+          "executive",
+          "manager",
+          "pe_head",
+          "manpower",
+          "hr",
+        ],
       },
     ],
   },

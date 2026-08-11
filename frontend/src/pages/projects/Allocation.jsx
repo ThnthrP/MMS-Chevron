@@ -635,6 +635,17 @@ export default function Allocation() {
     0,
   );
 
+  // ── เช็คว่าทุก position ใน shortlist approve ครบหมดแล้วหรือยัง ──
+  // ต้องมีอย่างน้อย 1 request ที่มี candidate อยู่ และไม่มี proposed ค้างเลยสักคน
+  const requestsWithCandidates = shortlist.filter(
+    (r) => (r.candidates?.length ?? 0) > 0,
+  );
+  const allApproved =
+    requestsWithCandidates.length > 0 &&
+    requestsWithCandidates.every((r) =>
+      r.candidates.every((c) => c.status === "approved"),
+    );
+
   const currentRequestShortlisted = selectedRequest
     ? (shortlist.find((s) => s.requestId === selectedRequest.id)?.candidates
         ?.length ?? 0)
@@ -2480,6 +2491,30 @@ export default function Allocation() {
                     paddingTop: totalShortlisted > 0 ? "16px" : "0",
                   }}
                 >
+                  {/* ── โผล่เฉพาะตอน approve ครบทุก position แล้ว ── */}
+                  {allApproved && (
+                    <button
+                      onClick={() => navigate("/mobilization")}
+                      style={{
+                        width: "100%",
+                        padding: "9px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        border: "none",
+                        borderRadius: "8px",
+                        background: "#0f5132",
+                        color: "#fff",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      🚀 ทุกคน Approve แล้ว — ไป Mobilization →
+                    </button>
+                  )}
+
                   <button
                     onClick={handleGenerateCv}
                     disabled={totalShortlisted === 0 || cvLoading}

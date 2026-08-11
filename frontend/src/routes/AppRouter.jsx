@@ -326,6 +326,8 @@ const AppRouter = () => {
                   "executive",
                   "manager",
                   "pe_head",
+                  "manpower",
+                  "hr",
                 ]}
               >
                 <SupervisorOverview />

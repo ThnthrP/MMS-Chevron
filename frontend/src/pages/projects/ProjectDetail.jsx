@@ -166,9 +166,18 @@ export default function ProjectDetail() {
     ).length ?? 0;
 
   const hasCounts = positions.some((p) => p._count);
-  const selectablePositions = hasCounts
-    ? positions.filter((p) => (p._count?.employees ?? 0) > 0)
-    : positions;
+
+  // ── กันเลือกตำแหน่งที่มี Position Request อยู่แล้วในโปรเจกต์นี้ซ้ำ ──
+  const existingPositionIds = new Set(
+    (project.requests || []).map((r) => r.position?.id).filter(Boolean),
+  );
+
+  const selectablePositions = (
+    hasCounts
+      ? positions.filter((p) => (p._count?.employees ?? 0) > 0)
+      : positions
+  ).filter((p) => !existingPositionIds.has(p.id));
+
   const positionOptions = selectablePositions.map((p) => ({
     value: p.id,
     label: `${p.name}${p._count ? ` (${p._count.employees})` : ""}`,
@@ -575,6 +584,192 @@ export default function ProjectDetail() {
                       ))}
                     </tbody>
                   </table>
+                )}
+              </div>
+            </div>
+
+            {/* ════════ Employee Timeline (จัดกลุ่มตาม Position Requested) ════════ */}
+            <div style={card}>
+              <div style={cardHeader}>
+                Employee Timeline ({project.assignments?.length ?? 0} คน)
+              </div>
+              <div style={{ padding: "0" }}>
+                {!project.assignments || project.assignments.length === 0 ? (
+                  <div
+                    style={{
+                      padding: "28px",
+                      textAlign: "center",
+                      color: "#6c757d",
+                      fontSize: "12px",
+                    }}
+                  >
+                    ยังไม่มีพนักงานถูก mobilize เข้าโปรเจกต์นี้
+                  </div>
+                ) : (
+                  (() => {
+                    // ── หา "requested position" ต่อ employeeId จาก requests[].bookings[] ──
+                    const requestedPositionByEmp = new Map();
+                    (project.requests || []).forEach((r) => {
+                      (r.bookings || []).forEach((b) => {
+                        if (b.employeeId) {
+                          requestedPositionByEmp.set(
+                            b.employeeId,
+                            r.position?.name || null,
+                          );
+                        }
+                      });
+                    });
+
+                    // ── จัดกลุ่ม assignments ตาม requested position ──
+                    //    ลำดับกลุ่ม = ลำดับเดียวกับ project.requests (ให้ตรงกับ card ด้านบน)
+                    const groups = new Map(); // positionName -> assignments[]
+                    const ungrouped = [];
+
+                    project.assignments.forEach((a) => {
+                      const pos = requestedPositionByEmp.get(a.employeeId);
+                      if (pos) {
+                        if (!groups.has(pos)) groups.set(pos, []);
+                        groups.get(pos).push(a);
+                      } else {
+                        ungrouped.push(a);
+                      }
+                    });
+
+                    // เรียงกลุ่มตามลำดับ position ใน requests ก่อน ตามด้วยกลุ่มที่หา request ไม่เจอ (ถ้ามี)
+                    const orderedPositionNames = (project.requests || [])
+                      .map((r) => r.position?.name)
+                      .filter((name) => name && groups.has(name));
+                    const remainingNames = [...groups.keys()].filter(
+                      (name) => !orderedPositionNames.includes(name),
+                    );
+                    const orderedGroups = [
+                      ...orderedPositionNames,
+                      ...remainingNames,
+                    ].map((name) => [name, groups.get(name)]);
+
+                    const renderTable = (rows) => (
+                      <table
+                        style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          fontSize: "12px",
+                        }}
+                      >
+                        <thead>
+                          <tr style={{ background: "#f8f9fa" }}>
+                            {["NAME", "MOB DATE", "D-MOB DATE", "PLATFORM"].map(
+                              (h) => (
+                                <th
+                                  key={h}
+                                  style={{
+                                    padding: "6px 16px",
+                                    textAlign: "left",
+                                    fontWeight: 600,
+                                    color: "#6c757d",
+                                    fontSize: "10px",
+                                    letterSpacing: "0.4px",
+                                  }}
+                                >
+                                  {h}
+                                </th>
+                              ),
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((a) => {
+                            const employeePosition =
+                              a.employee?.position?.name || "";
+                            return (
+                              <tr
+                                key={a.id}
+                                style={{ borderTop: "1px solid #f1f3f5" }}
+                              >
+                                <td style={{ padding: "6px 16px" }}>
+                                  <div style={{ fontWeight: 600 }}>
+                                    {a.employee?.fullName || "—"}
+                                  </div>
+                                  <div
+                                    style={{
+                                      fontSize: "10px",
+                                      color: "#6c757d",
+                                    }}
+                                  >
+                                    {a.employee?.empCode || ""}
+                                    {employeePosition
+                                      ? ` · ${employeePosition}`
+                                      : ""}
+                                  </div>
+                                </td>
+                                <td style={{ padding: "6px 16px" }}>
+                                  {fmtDate(a.mobDate)}
+                                </td>
+                                <td style={{ padding: "6px 16px" }}>
+                                  {fmtDate(a.demobDate)}
+                                </td>
+                                <td style={{ padding: "6px 16px" }}>
+                                  {a.platform || "—"}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    );
+
+                    return (
+                      <div>
+                        {orderedGroups.map(([posName, rows]) => (
+                          <div
+                            key={posName}
+                            style={{ borderTop: "1px solid #f1f3f5" }}
+                          >
+                            <div
+                              style={{
+                                padding: "8px 16px",
+                                background: "#fafbfc",
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                color: "#495057",
+                                display: "flex",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <span>{posName}</span>
+                              <span
+                                style={{ color: "#6c757d", fontWeight: 500 }}
+                              >
+                                {rows.length} คน
+                              </span>
+                            </div>
+                            <div style={{ overflowX: "auto" }}>
+                              {renderTable(rows)}
+                            </div>
+                          </div>
+                        ))}
+
+                        {ungrouped.length > 0 && (
+                          <div style={{ borderTop: "1px solid #f1f3f5" }}>
+                            <div
+                              style={{
+                                padding: "8px 16px",
+                                background: "#fafbfc",
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                color: "#adb5bd",
+                              }}
+                            >
+                              ไม่พบ Position Request ที่ตรงกัน (
+                              {ungrouped.length} คน)
+                            </div>
+                            <div style={{ overflowX: "auto" }}>
+                              {renderTable(ungrouped)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
                 )}
               </div>
             </div>
@@ -1094,7 +1289,7 @@ export default function ProjectDetail() {
               background: "#fff",
               borderRadius: "10px",
               width: "100%",
-              maxWidth: "480px",
+              maxWidth: "700px",
               overflow: "visible",
             }}
           >
@@ -1141,105 +1336,160 @@ export default function ProjectDetail() {
               >
                 Position * (เลือกได้หลายตำแหน่ง —{" "}
                 <span style={{ color: "#6c757d", fontWeight: 400 }}>
-                  เฉพาะตำแหน่งที่มีพนักงาน
+                  เฉพาะตำแหน่งที่มีพนักงาน และยังไม่มีใน request ของโปรเจกต์นี้
                 </span>
                 )
               </label>
-              <Select
-                isMulti
-                options={positionOptions}
-                value={positionOptions.filter((o) =>
-                  selectedPositionIds.includes(o.value),
-                )}
-                onChange={(selected) =>
-                  setSelectedPositionIds((selected || []).map((o) => o.value))
-                }
-                placeholder="ค้นหา / เลือกตำแหน่ง..."
-                menuPortalTarget={
-                  typeof document !== "undefined" ? document.body : null
-                }
-                menuPosition="fixed"
-                hideSelectedOptions={false}
-                closeMenuOnSelect={false}
-                components={{
-                  MultiValue: () => null, // ← ซ่อน tag ในกล่อง search
-                }}
-                styles={{
-                  menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
-                  control: (b) => ({
-                    ...b,
-                    fontSize: "13px",
-                    minHeight: "38px",
-                  }),
-                  option: (b) => ({ ...b, fontSize: "13px" }),
-                  valueContainer: (b) => ({ ...b, flexWrap: "nowrap" }),
-                }}
-                noOptionsMessage={() =>
-                  hasCounts ? "ไม่มีตำแหน่งที่มีพนักงาน" : "ไม่มีตำแหน่ง"
-                }
-              />
-
-              {/* ── Chip list ของตำแหน่งที่เลือกแล้ว — แยกออกมาข้างนอกกล่อง search ── */}
-              {selectedPositionIds.length > 0 && (
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "6px",
-                    marginTop: "10px",
-                  }}
-                >
-                  {selectedPositionIds.map((posId) => {
-                    const opt = positionOptions.find((o) => o.value === posId);
-                    if (!opt) return null;
-                    return (
-                      <span
-                        key={posId}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          background: "#e7f1ff",
-                          color: "#0d6efd",
-                          borderRadius: "6px",
-                          padding: "5px 10px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {opt.label}
-                        <button
-                          onClick={() =>
-                            setSelectedPositionIds((prev) =>
-                              prev.filter((id) => id !== posId),
-                            )
-                          }
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "#0d6efd",
-                            cursor: "pointer",
-                            fontSize: "13px",
-                            padding: 0,
-                            lineHeight: 1,
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
 
               <div
                 style={{
-                  fontSize: "11px",
-                  color: "#adb5bd",
-                  marginTop: "10px",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 220px",
+                  gap: "20px",
+                  alignItems: "start",
                 }}
               >
-                Headcount เริ่มต้น = 1 คนต่อตำแหน่ง ปรับได้ในตารางหลังเพิ่มแล้ว
+                {/* ── ฝั่งซ้าย: ช่องค้นหา/dropdown ── */}
+                <div>
+                  <Select
+                    isMulti
+                    options={positionOptions}
+                    value={positionOptions.filter((o) =>
+                      selectedPositionIds.includes(o.value),
+                    )}
+                    onChange={(selected) =>
+                      setSelectedPositionIds(
+                        (selected || []).map((o) => o.value),
+                      )
+                    }
+                    placeholder="ค้นหา / เลือกตำแหน่ง..."
+                    menuPortalTarget={
+                      typeof document !== "undefined" ? document.body : null
+                    }
+                    menuPosition="fixed"
+                    hideSelectedOptions={false}
+                    closeMenuOnSelect={false}
+                    components={{
+                      MultiValue: () => null,
+                    }}
+                    styles={{
+                      menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
+                      control: (b) => ({
+                        ...b,
+                        fontSize: "13px",
+                        minHeight: "38px",
+                      }),
+                      option: (b) => ({ ...b, fontSize: "13px" }),
+                      valueContainer: (b) => ({ ...b, flexWrap: "nowrap" }),
+                    }}
+                    noOptionsMessage={() =>
+                      hasCounts
+                        ? "ไม่มีตำแหน่งที่มีพนักงาน หรือทุกตำแหน่งถูกเพิ่มแล้ว"
+                        : "ไม่มีตำแหน่ง"
+                    }
+                  />
+
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "#adb5bd",
+                      marginTop: "10px",
+                    }}
+                  >
+                    Headcount เริ่มต้น = 1 คนต่อตำแหน่ง
+                    ปรับได้ในตารางหลังเพิ่มแล้ว
+                  </div>
+                </div>
+
+                {/* ── ฝั่งขวา: รายการที่เลือกแล้ว — อยู่คนละตำแหน่งกับ dropdown เลยไม่โดนทับ ── */}
+                <div
+                  style={{
+                    border: "1px solid #e9ecef",
+                    borderRadius: "8px",
+                    padding: "10px",
+                    maxHeight: "260px",
+                    overflowY: "auto",
+                    background: "#f8f9fa",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#6c757d",
+                      marginBottom: "8px",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    เลือกแล้ว ({selectedPositionIds.length})
+                  </div>
+                  {selectedPositionIds.length === 0 ? (
+                    <div style={{ fontSize: "12px", color: "#adb5bd" }}>
+                      ยังไม่ได้เลือก
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "6px",
+                      }}
+                    >
+                      {selectedPositionIds.map((posId) => {
+                        const opt = positionOptions.find(
+                          (o) => o.value === posId,
+                        );
+                        if (!opt) return null;
+                        return (
+                          <div
+                            key={posId}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: "6px",
+                              background: "#e7f1ff",
+                              color: "#0d6efd",
+                              borderRadius: "6px",
+                              padding: "5px 8px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                            }}
+                          >
+                            <span
+                              style={{
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {opt.label}
+                            </span>
+                            <button
+                              onClick={() =>
+                                setSelectedPositionIds((prev) =>
+                                  prev.filter((id) => id !== posId),
+                                )
+                              }
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "#0d6efd",
+                                cursor: "pointer",
+                                fontSize: "13px",
+                                padding: 0,
+                                lineHeight: 1,
+                                flexShrink: 0,
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

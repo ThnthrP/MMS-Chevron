@@ -141,14 +141,17 @@ export async function getMobilizationList(projectId) {
       const checklist = await seedChecklistTasks(booking.id, existingTasks);
 
       workers.push({
-        bookingId: booking.id, // ← ใหม่: ใช้อ้างอิงตอน PATCH checklist ทาง frontend ไม่ต้องใช้ตรงๆ แต่เผื่อ debug
+        bookingId: booking.id,
         candidateId: c.id,
         employeeId: e.id,
         empCode: e.empCode,
         fullName: e.fullName,
-        position: e.position?.name || req.position?.name || null,
+        position: e.position?.name || req.position?.name || null, // เก็บไว้เผื่อที่อื่นยังใช้ (backward compat)
+        employeePosition: e.position?.name || null, // ← ใหม่: ตำแหน่งจริงของพนักงานคนนี้
+        requestedPosition: req.position?.name || null, // ← ใหม่: ตำแหน่งที่ position request ต้องการ
         birthDate: e.birthDate,
         requestId: req.id,
+
         medicalExpiry: medical?.expiryDate ?? null,
         medicalStatus: medical?.status ?? null,
         assignment: asg
@@ -187,15 +190,17 @@ export async function updateChecklistTask(
   { resultStatus, measuredValue, itemsChecked, notes, userId, userName },
 ) {
   const data = {
+    // ── field เหล่านี้เซฟได้เสมอ ไม่ว่าจะมี resultStatus มาด้วยหรือไม่ ──
     itemsChecked: itemsChecked ?? undefined,
+    measuredValue: measuredValue ?? undefined,
+    notes: notes ?? undefined,
   };
 
-  // อัปเดตฟิลด์เหล่านี้เฉพาะตอนที่มีการตัดสินผลจริง (resultStatus ถูกส่งมา)
-  // ป้องกันการ mark "completed" ทั้งที่แค่ติ๊ก checkbox บางส่วน (ยังไม่ครบ)
+  // ── field เหล่านี้ผูกกับ "การตัดสินผลจริง" เท่านั้น
+  //    อัปเดตเฉพาะตอนที่ resultStatus ถูกส่งมา ป้องกันการ mark
+  //    "completed" ทั้งที่แค่พิมพ์ค่า/ติ๊ก checkbox บางส่วน (ยังไม่ครบ) ──
   if (resultStatus !== undefined && resultStatus !== null) {
     data.resultStatus = resultStatus;
-    data.measuredValue = measuredValue ?? undefined;
-    data.notes = notes ?? undefined;
     data.checkedById = userId ?? null;
     data.checkedAt = new Date();
     data.status = "completed";

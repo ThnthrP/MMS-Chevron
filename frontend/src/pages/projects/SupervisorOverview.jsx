@@ -391,7 +391,7 @@ export default function SupervisorOverview() {
                               <tr style={{ background: "#f1f3f5" }}>
                                 {[
                                   "NAME",
-                                  "POSITION",
+                                  "POSITION REQUESTED",
                                   "MOB DATE",
                                   "D-MOB DATE",
                                   "PLATFORM",
@@ -428,10 +428,13 @@ export default function SupervisorOverview() {
                                       }}
                                     >
                                       {e.empCode}
+                                      {e.employeePosition
+                                        ? ` · ${e.employeePosition}`
+                                        : ""}
                                     </div>
                                   </td>
                                   <td style={{ padding: "8px 10px" }}>
-                                    {e.position || "—"}
+                                    {e.requestedPosition || "—"}
                                   </td>
                                   <td style={{ padding: "8px 10px" }}>
                                     {fmtDate(e.mobDate)}

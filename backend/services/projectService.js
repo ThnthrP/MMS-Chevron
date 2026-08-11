@@ -24,7 +24,29 @@ export async function getProjectById(id) {
         include: { client: true },
       },
       requests: {
-        include: { position: true, bookings: true },
+        include: {
+          position: true,
+          bookings: true,
+          rounds: {
+            orderBy: { round: "desc" },
+            take: 1,
+            include: {
+              candidates: {
+                where: { status: { not: "rejected" } },
+                include: {
+                  employee: {
+                    select: {
+                      id: true,
+                      empCode: true,
+                      fullName: true,
+                      mobilizationStatus: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
       assignments: {
         include: {
@@ -105,14 +127,19 @@ export async function addProjectRequest(projectId, data) {
 }
 
 // ─── Delete ManpowerRequest from Project ───
-// กันลบถ้ามี booking ผูกอยู่ (กันข้อมูล deploy หาย) — ต้องยกเลิก booking ก่อน
-// ลบ child rows ที่ปลอดภัย (rounds→candidates→gaps/score/approval, sseRecords,
-// subcontractorRequests→hires, workflowLogs) ใน transaction ก่อนลบ request
+// เดิม: กันลบถ้ามี booking ผูกอยู่ — แต่หลังเพิ่ม Mobilization checklist shim
+// (findOrCreateBooking ใน mobilizationService.js) ทุก candidate ที่ approved
+// จะมี Booking ติดมาด้วยเสมอ (ใช้เป็นที่เก็บ MobilizationTask เท่านั้น ไม่ใช่
+// deploy state จริง — deploy state จริงอยู่ที่ Assignment(bookingId=null))
+// จึงเปลี่ยนจาก "ห้ามลบ" เป็น "ลบ Booking + MobilizationTask ทิ้งไปด้วย"
+// ยกเว้นกรณีมี Assignment จริงผูกกับ Booking นั้น (deployed ผ่าน booking flow จริง)
 export async function deleteProjectRequest(projectId, requestId) {
   const reqRow = await prisma.manpowerRequest.findFirst({
     where: { id: String(requestId), projectId: String(projectId) },
     include: {
-      bookings: { select: { id: true } },
+      bookings: {
+        select: { id: true, assignment: { select: { id: true } } },
+      },
       rounds: { select: { id: true } },
     },
   });
@@ -123,16 +150,28 @@ export async function deleteProjectRequest(projectId, requestId) {
     throw e;
   }
 
-  // มี booking → ห้ามลบ (ผ่าน allocation/deploy ไปแล้ว)
-  if (reqRow.bookings.length > 0) {
-    const e = new Error("Request has bookings");
+  // มี Booking ที่ deploy จริงผ่าน booking flow (มี Assignment ผูกอยู่) → ห้ามลบ
+  const realBookings = reqRow.bookings.filter((b) => b.assignment);
+  if (realBookings.length > 0) {
+    const e = new Error("Request has real bookings with assignments");
     e.code = "REQUEST_HAS_BOOKINGS";
     throw e;
   }
 
+  const shimBookingIds = reqRow.bookings.map((b) => b.id);
   const roundIds = reqRow.rounds.map((r) => r.id);
 
   return prisma.$transaction(async (tx) => {
+    // 0) ลบ shim booking (checklist) ทิ้งไปก่อน — cascade MobilizationTask ด้วย
+    if (shimBookingIds.length > 0) {
+      await tx.mobilizationTask.deleteMany({
+        where: { bookingId: { in: shimBookingIds } },
+      });
+      await tx.booking.deleteMany({
+        where: { id: { in: shimBookingIds } },
+      });
+    }
+
     // 1) ลบสิ่งที่ห้อยใต้ candidates ก่อน
     if (roundIds.length > 0) {
       const cands = await tx.candidate.findMany({
