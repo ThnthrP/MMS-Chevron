@@ -76,7 +76,14 @@ const AppRouter = () => {
             path="/training-matrix"
             element={
               <ProtectedRoute
-                allowRoles={["admin", "hr", "manpower", "pe", "expert"]}
+                allowRoles={[
+                  "admin",
+                  "hr",
+                  "manpower",
+                  "pe",
+                  "pe_head",
+                  "expert",
+                ]}
               >
                 <TrainingMatrix />
               </ProtectedRoute>
@@ -145,6 +152,8 @@ const AppRouter = () => {
                   "safety",
                   "nurse",
                   "pe",
+                  "pe_head",
+                  "expert",
                 ]}
               >
                 <ComplianceDashboard />
@@ -162,6 +171,8 @@ const AppRouter = () => {
                   "safety",
                   "nurse",
                   "pe",
+                  "pe_head",
+                  "expert",
                 ]}
               >
                 <Certifications />
@@ -191,7 +202,14 @@ const AppRouter = () => {
             path="/projects"
             element={
               <ProtectedRoute
-                allowRoles={["admin", "hr", "manpower", "pe", "expert"]}
+                allowRoles={[
+                  "admin",
+                  "hr",
+                  "manpower",
+                  "pe",
+                  "pe_head",
+                  "expert",
+                ]}
               >
                 <Project />
               </ProtectedRoute>
@@ -231,7 +249,14 @@ const AppRouter = () => {
             path="/allocation"
             element={
               <ProtectedRoute
-                allowRoles={["admin", "manpower", "hr", "pe", "expert"]}
+                allowRoles={[
+                  "admin",
+                  "manpower",
+                  "hr",
+                  "pe",
+                  "pe_head",
+                  "expert",
+                ]}
               >
                 <Allocation />
               </ProtectedRoute>
@@ -265,6 +290,7 @@ const AppRouter = () => {
                   "manpower",
                   "hr",
                   "pe",
+                  "pe_head",
                   "safety",
                   "nurse",
                   "ta",
@@ -288,6 +314,7 @@ const AppRouter = () => {
                   "supervisor",
                   "executive",
                   "manager",
+                  "bd",
                 ]}
               >
                 <PostProjectReview />
@@ -329,6 +356,7 @@ const AppRouter = () => {
                   "manpower",
                   "hr",
                   "pe",
+                  "bd",
                 ]}
               >
                 <SupervisorOverview />

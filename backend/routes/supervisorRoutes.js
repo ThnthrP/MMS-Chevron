@@ -16,7 +16,8 @@ router.get(
     "pe_head",
     "manpower",
     "hr",
-    "pe",
+    "pe", // ← ยังไม่เคยเพิ่ม ต้องใส่ตอนนี้
+    "bd", // ← ใหม่
   ),
   controller.getProjectsOverview,
 );
