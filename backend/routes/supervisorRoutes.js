@@ -16,6 +16,7 @@ router.get(
     "pe_head",
     "manpower",
     "hr",
+    "pe",
   ),
   controller.getProjectsOverview,
 );

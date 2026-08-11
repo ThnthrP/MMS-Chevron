@@ -170,6 +170,7 @@ export const APP_MENU = [
           "pe_head",
           "manpower",
           "hr",
+          "pe",
         ],
       },
     ],
