@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext, useRef, useMemo } from "react";
 import axios from "axios";
 import Select from "react-select";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
 import { createPortal } from "react-dom";
@@ -65,9 +65,18 @@ export default function Allocation() {
   const [loadingQuickMatch, setLoadingQuickMatch] = useState(false);
   const [quickPickedWorkers, setQuickPickedWorkers] = useState([]); // worker objects ที่เลือกจาก quick search (คงอยู่แม้ลบคำค้นหา)
 
+  const [searchParams] = useSearchParams();
+
   useEffect(() => {
     fetchProjects();
   }, []);
+
+  useEffect(() => {
+    const pid = searchParams.get("projectId");
+    if (pid) {
+      setSelectedProjectId(pid);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!selectedProjectId) {

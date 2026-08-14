@@ -694,6 +694,9 @@ model Project {
   contractId String
   contract   Contract @relation(fields: [contractId], references: [id])
 
+  masterProjectRecordId String?              @unique
+  masterProjectRecord   MasterProjectRecord? @relation(fields: [masterProjectRecordId], references: [id])
+
   location   String?
   notes      String?  @db.Text
   isOffshore Boolean  @default(false)
@@ -712,6 +715,36 @@ model Project {
   messages    ProjectMessage[]   // ← เพิ่มบรรทัดนี้
 
   createdAt DateTime @default(now())
+}
+
+model MasterProjectRecord {
+  id String @id @default(uuid())
+
+  owner        String?  // เจ้าของงาน — string เฉยๆ ไม่ผูก User
+  year         Int
+  projectCode  String   @unique // "Project On" เช่น "ON/015-01/2024"
+  jobTitle     String   // "Project / Job"
+  ccNo         String?  // "CC. No."
+  engineer     String?  // "Project Engineer" — string เฉยๆ ไม่ผูก User
+  customerName String?  // "Customer Name"
+  wrPoSr       String?  // "WR / PO / SR"
+  woAfe        String?  // "WO / AFE"
+  wa           String?  // "WA"
+  exptEq       String?  // "Expt EQ" — raw string ตามต้นฉบับ
+  termOfPaymentDays Int?
+  company      String?
+  team         String?
+  paymentTerms String?
+  totalValue   Decimal? @db.Decimal(14, 2)
+
+  linkedProject Project?
+
+  sourceFile String?
+  importedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([year])
+  @@index([company])
 }
 
 // ─────────────────────────────────────────────────────────

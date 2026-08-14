@@ -28,6 +28,7 @@ services:
       - ./backend:/app
       - /app/node_modules
       - ./training_record_from_hr:/training_record_from_hr
+      - ./master_project_register:/master_project_register
     depends_on:
       db:
         condition: service_healthy

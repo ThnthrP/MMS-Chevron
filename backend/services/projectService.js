@@ -59,21 +59,53 @@ export async function getProjectById(id) {
   });
 }
 
+// แก้ createProject: ไม่รับ name จาก input แล้ว — ดึงจาก masterRecord.jobTitle เสมอ
 export async function createProject(data) {
-  const { name, contractId, location, notes, startDate, endDate, isOffshore } =
-    data;
+  const { contractId, masterProjectRecordId, location, notes, startDate, endDate, isOffshore } = data;
+
+  if (!masterProjectRecordId) {
+    const e = new Error("ต้องระบุ ON Number");
+    e.code = "MASTER_RECORD_REQUIRED";
+    throw e;
+  }
+  if (!contractId) {
+    const e = new Error("ต้องเลือก Client/Contract");
+    e.code = "CONTRACT_REQUIRED";
+    throw e;
+  }
+
+  const masterRecord = await prisma.masterProjectRecord.findUnique({
+    where: { id: masterProjectRecordId },
+  });
+  if (!masterRecord) {
+    const e = new Error("ไม่พบ Master Project Record นี้");
+    e.code = "MASTER_RECORD_NOT_FOUND";
+    throw e;
+  }
+
+  const existing = await prisma.project.findUnique({
+    where: { masterProjectRecordId },
+  });
+  if (existing) {
+    const e = new Error("ON Number นี้ถูกเปิดใช้งานไปแล้ว");
+    e.code = "MASTER_RECORD_ALREADY_LINKED";
+    throw e;
+  }
+
   return prisma.project.create({
     data: {
-      name,
+      name: masterRecord.jobTitle, // ← auto จาก master record เสมอ ไม่รับจาก input
       contractId,
       location: location || null,
       notes: notes || null,
       startDate: startDate ? new Date(startDate) : null,
       endDate: endDate ? new Date(endDate) : null,
-      isOffshore: isOffshore ?? false, // ← เพิ่มบรรทัดนี้
+      isOffshore: isOffshore ?? false,
+      masterProjectRecordId,
     },
     include: {
       contract: { include: { client: true } },
+      masterProjectRecord: true,
     },
   });
 }
@@ -99,8 +131,76 @@ export async function updateProject(id, data) {
 }
 
 export async function deleteProject(id) {
-  return prisma.project.delete({
-    where: { id: String(id) },
+  const projectId = String(id);
+
+  return prisma.$transaction(async (tx) => {
+    const requests = await tx.manpowerRequest.findMany({
+      where: { projectId },
+      select: { id: true },
+    });
+    const requestIds = requests.map((r) => r.id);
+
+    const rounds = await tx.candidateRound.findMany({
+      where: { requestId: { in: requestIds } },
+      select: { id: true },
+    });
+    const roundIds = rounds.map((r) => r.id);
+
+    const candidates = await tx.candidate.findMany({
+      where: { roundId: { in: roundIds } },
+      select: { id: true },
+    });
+    const candidateIds = candidates.map((c) => c.id);
+
+    const bookings = await tx.booking.findMany({
+      where: { requestId: { in: requestIds } },
+      select: { id: true },
+    });
+    const bookingIds = bookings.map((b) => b.id);
+
+    const subReqs = await tx.subcontractorRequest.findMany({
+      where: { requestId: { in: requestIds } },
+      select: { id: true },
+    });
+    const subReqIds = subReqs.map((s) => s.id);
+
+    await tx.candidateGap.deleteMany({
+      where: { candidateId: { in: candidateIds } },
+    });
+    await tx.candidateScore.deleteMany({
+      where: { candidateId: { in: candidateIds } },
+    });
+    await tx.clientApproval.deleteMany({
+      where: { requestId: { in: requestIds } },
+    });
+    await tx.candidate.deleteMany({ where: { roundId: { in: roundIds } } });
+    await tx.candidateRound.deleteMany({
+      where: { requestId: { in: requestIds } },
+    });
+    await tx.mobilizationTask.deleteMany({
+      where: { bookingId: { in: bookingIds } },
+    });
+    await tx.assignment.deleteMany({
+      where: {
+        OR: [{ projectId }, { bookingId: { in: bookingIds } }],
+      },
+    });
+    await tx.booking.deleteMany({ where: { requestId: { in: requestIds } } });
+    await tx.sSERecord.deleteMany({ where: { requestId: { in: requestIds } } });
+    await tx.subcontractorHire.deleteMany({
+      where: { subcontractorRequestId: { in: subReqIds } },
+    });
+    await tx.subcontractorRequest.deleteMany({
+      where: { requestId: { in: requestIds } },
+    });
+    await tx.workflowLog.deleteMany({
+      where: { requestId: { in: requestIds } },
+    });
+    await tx.manpowerRequest.deleteMany({ where: { id: { in: requestIds } } });
+    await tx.performanceReview.deleteMany({ where: { projectId } });
+    await tx.projectMessage.deleteMany({ where: { projectId } }); // attachments cascade อัตโนมัติ
+
+    return tx.project.delete({ where: { id: projectId } });
   });
 }
 
@@ -246,4 +346,82 @@ export async function updateProjectRequestQuantity(
     data: { quantity: Number(quantity) },
     include: { position: true },
   });
+}
+
+// ════════════════════════════════════════════════════════════════
+// ค้นหา MasterProjectRecord ที่ยังไม่ถูกผูกกับ Project ไหน (สำหรับ autocomplete)
+// ════════════════════════════════════════════════════════════════
+export async function searchMasterProjectRecords(search) {
+  const q = (search || "").trim();
+
+  return prisma.masterProjectRecord.findMany({
+    where: {
+      linkedProject: null, // ยังไม่ถูกผูกกับ Project ไหน
+      ...(q
+        ? {
+            OR: [
+              { projectCode: { contains: q, mode: "insensitive" } },
+              { jobTitle: { contains: q, mode: "insensitive" } },
+              { customerName: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { projectCode: "asc" },
+    take: 20,
+  });
+}
+
+// รายการปีทั้งหมดที่มีใน Master Project Register (สำหรับทำ tabs)
+export async function getMasterProjectYears() {
+  const rows = await prisma.masterProjectRecord.findMany({
+    distinct: ["year"],
+    select: { year: true },
+    orderBy: { year: "desc" },
+  });
+  return rows.map((r) => r.year);
+}
+
+// list แบบ paginate ต่อปี พร้อมสถานะว่าถูกเปิดใช้งาน (linked) แล้วหรือยัง
+export async function browseMasterProjectRecords({ year, search, page = 1, pageSize = 15 }) {
+  const q = (search || "").trim();
+
+  const where = {
+    ...(year ? { year: Number(year) } : {}),
+    ...(q
+      ? {
+          OR: [
+            { projectCode: { contains: q, mode: "insensitive" } },
+            { jobTitle: { contains: q, mode: "insensitive" } },
+            { customerName: { contains: q, mode: "insensitive" } },
+            { engineer: { contains: q, mode: "insensitive" } },
+            { owner: { contains: q, mode: "insensitive" } },
+            { ccNo: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const skip = (Number(page) - 1) * Number(pageSize);
+
+  const [records, total] = await Promise.all([
+    prisma.masterProjectRecord.findMany({
+      where,
+      include: {
+        linkedProject: { select: { id: true, name: true } },
+      },
+      orderBy: { projectCode: "asc" },
+      skip,
+      take: Number(pageSize),
+    }),
+    prisma.masterProjectRecord.count({ where }),
+  ]);
+
+  return {
+    records,
+    total,
+    page: Number(page),
+    pageSize: Number(pageSize),
+    totalPages: Math.max(1, Math.ceil(total / Number(pageSize))),
+  };
 }

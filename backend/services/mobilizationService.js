@@ -284,3 +284,55 @@ export async function clearProjectDeployments(projectId) {
   });
   return { count: result.count };
 }
+
+// ════════════════════════════════════════════════════════════════
+// POST/DELETE — จัดการรูปแนบของ checklist task (เช่น Baggage inspection)
+// เก็บ path รูปไว้ใน itemsChecked.photos (array of string)
+// ════════════════════════════════════════════════════════════════
+export async function addTaskPhoto(taskId, photoPath) {
+  const task = await prisma.mobilizationTask.findUnique({
+    where: { id: taskId },
+  });
+  if (!task) {
+    const e = new Error("Task not found");
+    e.code = "P2025";
+    throw e;
+  }
+
+  const current = task.itemsChecked || {};
+  const photos = Array.isArray(current.photos) ? current.photos : [];
+
+  return prisma.mobilizationTask.update({
+    where: { id: taskId },
+    data: {
+      itemsChecked: {
+        ...current,
+        photos: [...photos, photoPath],
+      },
+    },
+  });
+}
+
+export async function removeTaskPhoto(taskId, photoPath) {
+  const task = await prisma.mobilizationTask.findUnique({
+    where: { id: taskId },
+  });
+  if (!task) {
+    const e = new Error("Task not found");
+    e.code = "P2025";
+    throw e;
+  }
+
+  const current = task.itemsChecked || {};
+  const photos = Array.isArray(current.photos) ? current.photos : [];
+
+  return prisma.mobilizationTask.update({
+    where: { id: taskId },
+    data: {
+      itemsChecked: {
+        ...current,
+        photos: photos.filter((p) => p !== photoPath),
+      },
+    },
+  });
+}

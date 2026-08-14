@@ -197,6 +197,7 @@ export default function Mobilization() {
     "Impact Gloves",
     "Half mask",
     "Specialized Protection",
+    "Other",
   ];
 
   const TRAINING_TOPICS = [
@@ -219,6 +220,7 @@ export default function Mobilization() {
       type: "ppe_inspection",
       label: "ตรวจ PPE (Pre-Mob)",
       items: PPE_ITEMS,
+      notesLabel: "ระบุอุปกรณ์ Other...",
     },
     {
       type: "pre_field_training",
@@ -257,6 +259,9 @@ export default function Mobilization() {
 
   const [checklistModal, setChecklistModal] = useState(null); // row object
   const [savingTaskId, setSavingTaskId] = useState(null);
+  const [uploadingTaskId, setUploadingTaskId] = useState(null); // ← ใหม่
+
+  const [otherDraft, setOtherDraft] = useState({}); // { [taskId]: "ข้อความที่กำลังพิมพ์" }
 
   const updateChecklistTask = async (taskId, patch) => {
     try {
@@ -294,6 +299,91 @@ export default function Mobilization() {
       alert("บันทึกไม่สำเร็จ — ดู console");
     } finally {
       setSavingTaskId(null);
+    }
+  };
+
+  const uploadTaskPhoto = async (taskId, file) => {
+    try {
+      setUploadingTaskId(taskId);
+      const formData = new FormData();
+      formData.append("photo", file);
+      const res = await axios.post(
+        `${backendUrl}/api/mobilization/task/${taskId}/photo`,
+        formData,
+        {
+          withCredentials: true,
+          headers: { "Content-Type": "multipart/form-data" },
+        },
+      );
+      // อัปเดต local state เหมือน updateChecklistTask
+      setRows((prev) =>
+        prev.map((r) =>
+          r.checklist?.some((t) => t.id === taskId)
+            ? {
+                ...r,
+                checklist: r.checklist.map((t) =>
+                  t.id === taskId ? res.data : t,
+                ),
+              }
+            : r,
+        ),
+      );
+      setChecklistModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              checklist: prev.checklist.map((t) =>
+                t.id === taskId ? res.data : t,
+              ),
+            }
+          : prev,
+      );
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || "อัปโหลดรูปไม่สำเร็จ — ดู console");
+    } finally {
+      setUploadingTaskId(null);
+    }
+  };
+
+  const removeTaskPhoto = async (taskId, photoPath) => {
+    if (!window.confirm("ลบรูปนี้?")) return;
+    try {
+      setUploadingTaskId(taskId);
+      const res = await axios.delete(
+        `${backendUrl}/api/mobilization/task/${taskId}/photo`,
+        {
+          withCredentials: true,
+          data: { photoPath },
+        },
+      );
+      setRows((prev) =>
+        prev.map((r) =>
+          r.checklist?.some((t) => t.id === taskId)
+            ? {
+                ...r,
+                checklist: r.checklist.map((t) =>
+                  t.id === taskId ? res.data : t,
+                ),
+              }
+            : r,
+        ),
+      );
+      setChecklistModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              checklist: prev.checklist.map((t) =>
+                t.id === taskId ? res.data : t,
+              ),
+            }
+          : prev,
+      );
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || "ลบรูปไม่สำเร็จ — ดู console");
+    } finally {
+      setUploadingTaskId(null);
     }
   };
 
@@ -1090,6 +1180,151 @@ export default function Mobilization() {
                               })}
                             </div>
                           </div>
+
+                          {/* ── รูปแนบ — เพิ่มได้หลายรูป ── */}
+                          {(() => {
+                            const photos = Array.isArray(
+                              task.itemsChecked?.photos,
+                            )
+                              ? task.itemsChecked.photos
+                              : [];
+                            const isUploading = uploadingTaskId === task.id;
+
+                            return (
+                              <div
+                                style={{
+                                  marginTop: "10px",
+                                  paddingTop: "10px",
+                                  borderTop: "1px dashed #dee2e6",
+                                }}
+                              >
+                                <label
+                                  style={{
+                                    fontSize: "12px",
+                                    fontWeight: 600,
+                                    color: "#495057",
+                                    display: "block",
+                                    marginBottom: "6px",
+                                  }}
+                                >
+                                  รูปแนบ
+                                </label>
+
+                                {photos.length > 0 && (
+                                  <div
+                                    style={{
+                                      display: "grid",
+                                      gridTemplateColumns:
+                                        "repeat(auto-fill, 64px)",
+                                      gap: "8px",
+                                      marginBottom: "8px",
+                                    }}
+                                  >
+                                    {photos.map((photoPath, pi) => (
+                                      <div
+                                        key={pi}
+                                        style={{
+                                          position: "relative",
+                                          width: "64px",
+                                          height: "64px",
+                                        }}
+                                      >
+                                        <a
+                                          href={`${backendUrl}${photoPath}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          title="ดูรูปเต็ม"
+                                        >
+                                          <img
+                                            src={`${backendUrl}${photoPath}`}
+                                            alt={`baggage-${pi}`}
+                                            style={{
+                                              width: "64px",
+                                              height: "64px",
+                                              objectFit: "cover",
+                                              borderRadius: "6px",
+                                              border: "1px solid #dee2e6",
+                                              display: "block",
+                                            }}
+                                          />
+                                        </a>
+                                        {canManageChecklist && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeTaskPhoto(
+                                                task.id,
+                                                photoPath,
+                                              )
+                                            }
+                                            disabled={isUploading}
+                                            title="ลบรูปนี้"
+                                            style={{
+                                              position: "absolute",
+                                              top: "-6px",
+                                              right: "-6px",
+                                              width: "18px",
+                                              height: "18px",
+                                              borderRadius: "50%",
+                                              background: "#dc3545",
+                                              color: "#fff",
+                                              border: "2px solid #fff",
+                                              fontSize: "10px",
+                                              lineHeight: 1,
+                                              cursor: isUploading
+                                                ? "not-allowed"
+                                                : "pointer",
+                                              display: "flex",
+                                              alignItems: "center",
+                                              justifyContent: "center",
+                                              padding: 0,
+                                            }}
+                                          >
+                                            ✕
+                                          </button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {canManageChecklist && (
+                                  <label
+                                    style={{
+                                      ...btnBase,
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "6px",
+                                      border: "1px solid #dee2e6",
+                                      color: isUploading
+                                        ? "#adb5bd"
+                                        : "#495057",
+                                      cursor: isUploading
+                                        ? "not-allowed"
+                                        : "pointer",
+                                    }}
+                                  >
+                                    {isUploading
+                                      ? "กำลังอัปโหลด..."
+                                      : "📷 แนบรูป"}
+                                    <input
+                                      type="file"
+                                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                                      disabled={isUploading}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                          uploadTaskPhoto(task.id, file);
+                                        }
+                                        e.target.value = ""; // เคลียร์ input เผื่ออัปโหลดไฟล์ชื่อซ้ำติดกัน
+                                      }}
+                                      style={{ display: "none" }}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </>
                       ) : def.vitalsFields ? (
                         <>
@@ -1311,7 +1546,6 @@ export default function Mobilization() {
                             <>
                               {(() => {
                                 const checkedItems = task.itemsChecked ?? [];
-                                // "Other" ไม่นับเป็นส่วนหนึ่งของ Select All — ต้องติ๊กเองถ้าต้องการ
                                 const selectableItems = def.items.filter(
                                   (i) => i !== "Other",
                                 );
@@ -1332,7 +1566,6 @@ export default function Mobilization() {
                                       type="button"
                                       disabled={saving || !canManageChecklist}
                                       onClick={() => {
-                                        // toggle: ถ้าเลือกครบแล้ว → ยกเลิกทั้งหมด, ถ้ายังไม่ครบ → เลือกให้ครบ (ไม่รวม Other)
                                         const next = allSelected
                                           ? checkedItems.filter(
                                               (i) =>
@@ -1344,17 +1577,13 @@ export default function Mobilization() {
                                                 ...selectableItems,
                                               ]),
                                             );
-
                                         const allRequiredChecked =
                                           selectableItems.every((i) =>
                                             next.includes(i),
                                           );
-
                                         const patch = { itemsChecked: next };
-                                        if (allRequiredChecked) {
+                                        if (allRequiredChecked)
                                           patch.resultStatus = "pass";
-                                        }
-
                                         updateChecklistTask(task.id, patch);
                                       }}
                                       style={{
@@ -1380,6 +1609,7 @@ export default function Mobilization() {
                                 );
                               })()}
 
+                              {/* ── รายการหลัก (ไม่รวม Other) — grid 2 คอลัมน์ ── */}
                               <div
                                 style={{
                                   display: "grid",
@@ -1387,78 +1617,278 @@ export default function Mobilization() {
                                   gap: "6px",
                                 }}
                               >
-                                {def.items.map((itemName) => {
-                                  const checkedItems = task.itemsChecked ?? [];
-                                  const isChecked =
-                                    checkedItems.includes(itemName);
-                                  return (
-                                    <label
-                                      key={itemName}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "6px",
-                                        fontSize: "12px",
-                                        color: "#495057",
-                                        cursor: canManageChecklist
-                                          ? "pointer"
-                                          : "default",
-                                      }}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        disabled={saving || !canManageChecklist}
-                                        onChange={(e) => {
-                                          const next = e.target.checked
-                                            ? [...checkedItems, itemName]
-                                            : checkedItems.filter(
-                                                (i) => i !== itemName,
+                                {def.items
+                                  .filter((i) => i !== "Other")
+                                  .map((itemName) => {
+                                    const checkedItems =
+                                      task.itemsChecked ?? [];
+                                    const isChecked =
+                                      checkedItems.includes(itemName);
+                                    return (
+                                      <label
+                                        key={itemName}
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "6px",
+                                          fontSize: "12px",
+                                          color: "#495057",
+                                          cursor: canManageChecklist
+                                            ? "pointer"
+                                            : "default",
+                                        }}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          disabled={
+                                            saving || !canManageChecklist
+                                          }
+                                          onChange={(e) => {
+                                            const next = e.target.checked
+                                              ? [...checkedItems, itemName]
+                                              : checkedItems.filter(
+                                                  (i) => i !== itemName,
+                                                );
+
+                                            const selectableItems =
+                                              def.items.filter(
+                                                (i) => i !== "Other",
+                                              );
+                                            const allRequiredChecked =
+                                              selectableItems.every((i) =>
+                                                next.includes(i),
                                               );
 
-                                          const allRequiredChecked = def.items
-                                            .filter((i) => i !== "Other")
-                                            .every((i) => next.includes(i));
-
-                                          const patch = { itemsChecked: next };
-                                          if (allRequiredChecked) {
-                                            patch.resultStatus = "pass";
-                                          }
-
-                                          updateChecklistTask(task.id, patch);
-                                        }}
-                                      />
-                                      {itemName}
-                                    </label>
-                                  );
-                                })}
+                                            const patch = {
+                                              itemsChecked: next,
+                                            };
+                                            if (allRequiredChecked)
+                                              patch.resultStatus = "pass";
+                                            updateChecklistTask(task.id, patch);
+                                          }}
+                                        />
+                                        {itemName}
+                                      </label>
+                                    );
+                                  })}
                               </div>
-                            </>
-                          )}
-                          {def.notesLabel &&
-                            (!def.items ||
-                              (task.itemsChecked ?? []).includes("Other")) && (
-                              <input
-                                type="text"
-                                placeholder={def.notesLabel}
-                                defaultValue={task.notes ?? ""}
-                                disabled={saving || !canManageChecklist}
-                                onBlur={(e) => {
-                                  if (e.target.value !== (task.notes ?? "")) {
+
+                              {/* ── Other — พิมพ์เพิ่มได้หลายรายการ ── */}
+                              {def.items.includes("Other") &&
+                                (() => {
+                                  const checkedItems = task.itemsChecked ?? [];
+                                  const otherChecked =
+                                    checkedItems.includes("Other");
+                                  const otherItems = (task.notes || "")
+                                    .split("\n")
+                                    .map((s) => s.trim())
+                                    .filter(Boolean);
+                                  const draftValue = otherDraft[task.id] ?? "";
+
+                                  const commitItems = (nextItems) => {
                                     updateChecklistTask(task.id, {
                                       resultStatus: task.resultStatus ?? "pass",
-                                      notes: e.target.value,
+                                      notes: nextItems.join("\n"),
                                     });
-                                  }
-                                }}
-                                style={{
-                                  ...input,
-                                  maxWidth: "none",
-                                  width: "100%",
-                                  marginTop: "8px",
-                                }}
-                              />
-                            )}
+                                  };
+
+                                  const addItem = () => {
+                                    const v = draftValue.trim();
+                                    if (!v) return;
+                                    commitItems([...otherItems, v]);
+                                    setOtherDraft((prev) => ({
+                                      ...prev,
+                                      [task.id]: "",
+                                    }));
+                                  };
+
+                                  const removeItem = (idx) => {
+                                    commitItems(
+                                      otherItems.filter((_, i) => i !== idx),
+                                    );
+                                  };
+
+                                  return (
+                                    <div
+                                      style={{
+                                        marginTop: "8px",
+                                        paddingTop: "8px",
+                                        borderTop: "1px dashed #dee2e6",
+                                      }}
+                                    >
+                                      <label
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "6px",
+                                          fontSize: "12px",
+                                          color: "#495057",
+                                          cursor: canManageChecklist
+                                            ? "pointer"
+                                            : "default",
+                                          marginBottom: otherChecked
+                                            ? "8px"
+                                            : 0,
+                                        }}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={otherChecked}
+                                          disabled={
+                                            saving || !canManageChecklist
+                                          }
+                                          onChange={(e) => {
+                                            const next = e.target.checked
+                                              ? [...checkedItems, "Other"]
+                                              : checkedItems.filter(
+                                                  (i) => i !== "Other",
+                                                );
+
+                                            const selectableItems =
+                                              def.items.filter(
+                                                (i) => i !== "Other",
+                                              );
+                                            const allRequiredChecked =
+                                              selectableItems.every((i) =>
+                                                next.includes(i),
+                                              );
+
+                                            const patch = {
+                                              itemsChecked: next,
+                                            };
+                                            if (allRequiredChecked)
+                                              patch.resultStatus = "pass";
+                                            updateChecklistTask(task.id, patch);
+                                          }}
+                                        />
+                                        Other
+                                      </label>
+
+                                      {otherChecked && (
+                                        <div>
+                                          {/* ── รายการที่เพิ่มแล้ว ── */}
+                                          {otherItems.length > 0 && (
+                                            <div
+                                              style={{
+                                                display: "flex",
+                                                flexDirection: "column",
+                                                gap: "4px",
+                                                marginBottom: "8px",
+                                              }}
+                                            >
+                                              {otherItems.map((item, idx) => (
+                                                <div
+                                                  key={idx}
+                                                  style={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    gap: "6px",
+                                                    background: "#f8f9fa",
+                                                    borderRadius: "6px",
+                                                    padding: "5px 8px",
+                                                    fontSize: "12px",
+                                                  }}
+                                                >
+                                                  <span
+                                                    style={{
+                                                      color: "#6c757d",
+                                                      minWidth: "16px",
+                                                      flexShrink: 0,
+                                                    }}
+                                                  >
+                                                    {idx + 1}.
+                                                  </span>
+                                                  <span style={{ flex: 1 }}>
+                                                    {item}
+                                                  </span>
+                                                  {canManageChecklist && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() =>
+                                                        removeItem(idx)
+                                                      }
+                                                      disabled={saving}
+                                                      title="ลบรายการนี้"
+                                                      style={{
+                                                        background: "none",
+                                                        border: "none",
+                                                        color: "#dc3545",
+                                                        cursor: "pointer",
+                                                        fontSize: "13px",
+                                                        padding: 0,
+                                                        lineHeight: 1,
+                                                      }}
+                                                    >
+                                                      ✕
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+
+                                          {/* ── ช่องพิมพ์เพิ่มรายการใหม่ ── */}
+                                          {canManageChecklist && (
+                                            <div
+                                              style={{
+                                                display: "flex",
+                                                gap: "6px",
+                                              }}
+                                            >
+                                              <input
+                                                type="text"
+                                                placeholder={
+                                                  def.notesLabel ||
+                                                  "พิมพ์รายการ..."
+                                                }
+                                                value={draftValue}
+                                                disabled={saving}
+                                                onChange={(e) =>
+                                                  setOtherDraft((prev) => ({
+                                                    ...prev,
+                                                    [task.id]: e.target.value,
+                                                  }))
+                                                }
+                                                onKeyDown={(e) => {
+                                                  if (e.key === "Enter") {
+                                                    e.preventDefault();
+                                                    addItem();
+                                                  }
+                                                }}
+                                                style={{
+                                                  ...input,
+                                                  maxWidth: "none",
+                                                  flex: 1,
+                                                }}
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={addItem}
+                                                disabled={
+                                                  saving || !draftValue.trim()
+                                                }
+                                                style={{
+                                                  ...btnBase,
+                                                  border: "1px solid #0d6efd",
+                                                  color: "#0d6efd",
+                                                  cursor:
+                                                    saving || !draftValue.trim()
+                                                      ? "not-allowed"
+                                                      : "pointer",
+                                                }}
+                                              >
+                                                + เพิ่ม
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                            </>
+                          )}
                         </>
                       )}
                       {task.checkedAt && (

@@ -8,7 +8,10 @@ const router = express.Router();
 // ต้อง login ก่อนถึงจะเรียก route ใดๆ ในไฟล์นี้ได้
 router.use(userAuth);
 
+router.get("/master-records/years", controller.getMasterProjectYears);
+router.get("/master-records/browse", controller.browseMasterProjectRecords);
 // ── Read — ทุก role ที่ login แล้วดูได้ (คุม role ระดับหน้าใน AppRouter อยู่แล้ว) ──
+router.get("/master-records", controller.searchMasterProjectRecords); // ← ต้องอยู่ก่อน "/:id"
 router.get("/", controller.getProjects);
 router.get("/:id", controller.getProjectById);
 

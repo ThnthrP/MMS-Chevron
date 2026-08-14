@@ -97,3 +97,43 @@ export async function clearProject(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
+
+// POST /api/mobilization/task/:taskId/photo
+// multipart/form-data — field name "photo"
+export async function uploadTaskPhoto(req, res) {
+  try {
+    const { taskId } = req.params;
+    if (!req.file) {
+      return res.status(400).json({ message: "ไม่พบไฟล์รูปภาพ" });
+    }
+    const photoPath = `/uploads/mobilization/${req.file.filename}`;
+    const task = await service.addTaskPhoto(taskId, photoPath);
+    res.status(201).json(task);
+  } catch (error) {
+    console.error(error);
+    if (error.code === "P2025") {
+      return res.status(404).json({ message: "ไม่พบ task นี้" });
+    }
+    res.status(500).json({ message: error.message });
+  }
+}
+
+// DELETE /api/mobilization/task/:taskId/photo
+// body: { photoPath }
+export async function removeTaskPhoto(req, res) {
+  try {
+    const { taskId } = req.params;
+    const { photoPath } = req.body;
+    if (!photoPath) {
+      return res.status(400).json({ message: "photoPath is required" });
+    }
+    const task = await service.removeTaskPhoto(taskId, photoPath);
+    res.json(task);
+  } catch (error) {
+    console.error(error);
+    if (error.code === "P2025") {
+      return res.status(404).json({ message: "ไม่พบ task นี้" });
+    }
+    res.status(500).json({ message: error.message });
+  }
+}

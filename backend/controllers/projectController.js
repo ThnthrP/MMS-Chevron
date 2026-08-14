@@ -25,26 +25,22 @@ export async function getProjectById(req, res) {
 export async function createProject(req, res) {
   try {
     const project = await service.createProject(req.body);
-
-    // ── แจ้งเตือน manpower ทุกคน ──
-    // ไม่ await แบบ block response — ถ้า notify พังไม่ควรทำให้สร้าง project ล้มเหลว
-    notifyRole("manpower", {
-      type: "project_created",
-      title: "มี Project ใหม่ถูกสร้าง",
-      message: `${project.name}${
-        project.contract?.client?.name
-          ? ` — ${project.contract.client.name}`
-          : ""
-      }`,
-      link: `/projects/${project.id}`,
-    }).catch((err) =>
-      console.error("notifyRole (project_created) failed:", err),
-    );
-
     res.status(201).json(project);
   } catch (error) {
+    if (
+      [
+        "MASTER_RECORD_REQUIRED",
+        "CONTRACT_REQUIRED",
+        "MASTER_RECORD_NOT_FOUND",
+      ].includes(error.code)
+    ) {
+      return res.status(400).json({ message: error.message });
+    }
+    if (error.code === "MASTER_RECORD_ALREADY_LINKED") {
+      return res.status(409).json({ message: error.message });
+    }
     console.error(error);
-    res.status(500).json({ message: "Failed to create project" });
+    res.status(500).json({ message: error.message });
   }
 }
 
@@ -118,5 +114,37 @@ export async function updateProjectRequest(req, res) {
     res
       .status(error.code === "P2025" ? 404 : 500)
       .json({ message: error.message });
+  }
+}
+
+// GET /api/projects/master-records?search=...
+export async function searchMasterProjectRecords(req, res) {
+  try {
+    const records = await service.searchMasterProjectRecords(req.query.search);
+    res.json(records);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+export async function getMasterProjectYears(req, res) {
+  try {
+    const years = await service.getMasterProjectYears();
+    res.json(years);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+export async function browseMasterProjectRecords(req, res) {
+  try {
+    const { year, search, page, pageSize } = req.query;
+    const result = await service.browseMasterProjectRecords({ year, search, page, pageSize });
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
   }
 }
