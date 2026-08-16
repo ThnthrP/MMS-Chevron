@@ -61,7 +61,15 @@ export async function getProjectById(id) {
 
 // แก้ createProject: ไม่รับ name จาก input แล้ว — ดึงจาก masterRecord.jobTitle เสมอ
 export async function createProject(data) {
-  const { contractId, masterProjectRecordId, location, notes, startDate, endDate, isOffshore } = data;
+  const {
+    contractId,
+    masterProjectRecordId,
+    location,
+    notes,
+    startDate,
+    endDate,
+    isOffshore,
+  } = data;
 
   if (!masterProjectRecordId) {
     const e = new Error("ต้องระบุ ON Number");
@@ -83,18 +91,9 @@ export async function createProject(data) {
     throw e;
   }
 
-  const existing = await prisma.project.findUnique({
-    where: { masterProjectRecordId },
-  });
-  if (existing) {
-    const e = new Error("ON Number นี้ถูกเปิดใช้งานไปแล้ว");
-    e.code = "MASTER_RECORD_ALREADY_LINKED";
-    throw e;
-  }
-
   return prisma.project.create({
     data: {
-      name: masterRecord.jobTitle, // ← auto จาก master record เสมอ ไม่รับจาก input
+      name: masterRecord.jobTitle,
       contractId,
       location: location || null,
       notes: notes || null,
@@ -355,18 +354,15 @@ export async function searchMasterProjectRecords(search) {
   const q = (search || "").trim();
 
   return prisma.masterProjectRecord.findMany({
-    where: {
-      linkedProject: null, // ยังไม่ถูกผูกกับ Project ไหน
-      ...(q
-        ? {
-            OR: [
-              { projectCode: { contains: q, mode: "insensitive" } },
-              { jobTitle: { contains: q, mode: "insensitive" } },
-              { customerName: { contains: q, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    },
+    where: q
+      ? {
+          OR: [
+            { projectCode: { contains: q, mode: "insensitive" } },
+            { jobTitle: { contains: q, mode: "insensitive" } },
+            { customerName: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {},
     orderBy: { projectCode: "asc" },
     take: 20,
   });
@@ -383,9 +379,13 @@ export async function getMasterProjectYears() {
 }
 
 // list แบบ paginate ต่อปี พร้อมสถานะว่าถูกเปิดใช้งาน (linked) แล้วหรือยัง
-export async function browseMasterProjectRecords({ year, search, page = 1, pageSize = 15 }) {
+export async function browseMasterProjectRecords({
+  year,
+  search,
+  page = 1,
+  pageSize = 15,
+}) {
   const q = (search || "").trim();
-
   const where = {
     ...(year ? { year: Number(year) } : {}),
     ...(q
@@ -401,14 +401,16 @@ export async function browseMasterProjectRecords({ year, search, page = 1, pageS
         }
       : {}),
   };
-
   const skip = (Number(page) - 1) * Number(pageSize);
 
   const [records, total] = await Promise.all([
     prisma.masterProjectRecord.findMany({
       where,
       include: {
-        linkedProject: { select: { id: true, name: true } },
+        linkedProjects: {
+          select: { id: true, name: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+        },
       },
       orderBy: { projectCode: "asc" },
       skip,

@@ -15,6 +15,7 @@ export async function getProjectsForDropdown() {
     include: {
       contract: { include: { client: true } },
       requests: { include: { position: true } },
+      masterProjectRecord: { select: { projectCode: true } }, // ← เพิ่ม
     },
     orderBy: { createdAt: "desc" },
   });
@@ -119,18 +120,22 @@ export async function findWorkers({
   // เฉพาะ requirementType ที่เป็น Mandatory (required + mandatory) — ไม่นับ assigned
   // (ให้ % Match ที่นี่ตรงกับคอลัมน์ CHEVRON MATCH ในหน้า Compliance)
   let requiredTrainings = [];
+  let hasMatrix = false; // ← ใหม่: แยก "ไม่มี Matrix เลย" ออกจาก "มี Matrix แต่ไม่มี mandatory"
 
   if (positionId && contractId) {
-    const requirements = await prisma.positionRequirement.findMany({
-      where: {
-        positionId,
-        contractId,
-        requirementType: { in: MANDATORY_REQUIREMENT_TYPES },
-      },
+    // ดึงทุก requirement ของ position+contract นี้ก่อน (ไม่กรอง type) เพื่อเช็คว่ามี Matrix ตั้งไว้หรือยัง
+    const allRequirements = await prisma.positionRequirement.findMany({
+      where: { positionId, contractId },
       include: {
         clientTraining: { include: { globalTraining: true } },
       },
     });
+
+    hasMatrix = allRequirements.length > 0;
+
+    const requirements = allRequirements.filter((r) =>
+      MANDATORY_REQUIREMENT_TYPES.includes(r.requirementType),
+    );
 
     requiredTrainings = requirements.map((r) => ({
       globalTrainingId: r.clientTraining.globalTrainingId,
@@ -164,7 +169,9 @@ export async function findWorkers({
               requiredTrainings.length) *
               100,
           )
-        : null;
+        : hasMatrix
+          ? 100 // มี Matrix ตั้งไว้แล้ว แต่ไม่มี mandatory requirement เลย → ถือว่าผ่าน 100%
+          : null; // ไม่มี Matrix เลย → ไม่ทราบ (frontend จะโชว์ "No Matrix")
 
     const eligibility = missingTrainings.length === 0;
 
@@ -193,6 +200,7 @@ export async function findWorkers({
       eligibility,
       missingTrainings,
       matchPct,
+      hasMatrix,
 
       // ── roster (คนติดตัว) ──
       isPermanent: emp.isPermanent,

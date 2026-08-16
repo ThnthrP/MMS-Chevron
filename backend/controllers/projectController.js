@@ -36,9 +36,6 @@ export async function createProject(req, res) {
     ) {
       return res.status(400).json({ message: error.message });
     }
-    if (error.code === "MASTER_RECORD_ALREADY_LINKED") {
-      return res.status(409).json({ message: error.message });
-    }
     console.error(error);
     res.status(500).json({ message: error.message });
   }
@@ -141,7 +138,12 @@ export async function getMasterProjectYears(req, res) {
 export async function browseMasterProjectRecords(req, res) {
   try {
     const { year, search, page, pageSize } = req.query;
-    const result = await service.browseMasterProjectRecords({ year, search, page, pageSize });
+    const result = await service.browseMasterProjectRecords({
+      year,
+      search,
+      page,
+      pageSize,
+    });
     res.json(result);
   } catch (error) {
     console.error(error);

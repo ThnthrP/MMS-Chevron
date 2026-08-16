@@ -957,6 +957,9 @@ export default function Allocation() {
                     <option value="">-- Select Project --</option>
                     {projects.map((p) => (
                       <option key={p.id} value={p.id}>
+                        {p.masterProjectRecord?.projectCode
+                          ? `[${p.masterProjectRecord.projectCode}] `
+                          : ""}
                         {p.name} — {p.contract?.client?.name}
                       </option>
                     ))}
@@ -1428,6 +1431,18 @@ export default function Allocation() {
                                         🔍 ดู Gap →
                                       </span>
                                     </div>
+                                  ) : matched && !matched.hasMatrix ? (
+                                    <span
+                                      title="ยังไม่มี Training Matrix สำหรับตำแหน่งนี้ + Client นี้"
+                                      style={{
+                                        color: "#b08900",
+                                        fontSize: "10px",
+                                        fontWeight: 600,
+                                        cursor: "help",
+                                      }}
+                                    >
+                                      ⚠ No Matrix
+                                    </span>
                                   ) : (
                                     "—"
                                   )}
@@ -2133,7 +2148,17 @@ export default function Allocation() {
                                   }}
                                 >
                                   {w.matchPct === null ? (
-                                    <span style={{ color: "#6c757d" }}>—</span>
+                                    <span
+                                      title="ยังไม่มี Training Matrix สำหรับตำแหน่งนี้ + Client นี้ — ไปที่ Manage Positions → Matrix Editor เพื่อเพิ่ม"
+                                      style={{
+                                        color: "#b08900",
+                                        fontSize: "11px",
+                                        fontWeight: 600,
+                                        cursor: "help",
+                                      }}
+                                    >
+                                      ⚠ No Matrix
+                                    </span>
                                   ) : (
                                     <div
                                       style={{

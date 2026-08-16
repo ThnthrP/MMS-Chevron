@@ -2,10 +2,10 @@ import { useState, useEffect, useContext } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import { useNavigate } from "react-router-dom";
+import AsyncSelect from "react-select/async";
 
 const PAGE_SIZE = 15;
 
-// ── field labels สำหรับ View Details modal ──
 const DETAIL_FIELDS = [
   ["owner", "เจ้าของงาน"],
   ["year", "Year"],
@@ -41,18 +41,21 @@ export default function Project() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const [clients, setClients] = useState([]);
-  const [activatingRecord, setActivatingRecord] = useState(null);
-  const [activateContractId, setActivateContractId] = useState("");
-  const [activateForm, setActivateForm] = useState({
+  const [viewingRecord, setViewingRecord] = useState(null);
+  const [linkedProjectsModal, setLinkedProjectsModal] = useState(null);
+
+  // ── Start Project modal (แทนที่ Activate modal เดิม) ──
+  const [startModalOpen, setStartModalOpen] = useState(false);
+  const [selectedMasterRecord, setSelectedMasterRecord] = useState(null);
+  const [startContractId, setStartContractId] = useState("");
+  const [startForm, setStartForm] = useState({
     location: "",
     startDate: "",
     endDate: "",
     isOffshore: false,
     notes: "",
   });
-  const [activating, setActivating] = useState(false);
-
-  const [viewingRecord, setViewingRecord] = useState(null); // ← ใหม่: View Details modal
+  const [starting, setStarting] = useState(false);
 
   const fetchYears = async () => {
     try {
@@ -138,10 +141,52 @@ export default function Project() {
     return "";
   };
 
-  const openActivateModal = (record) => {
-    setActivatingRecord(record);
-    setActivateContractId(guessContract(record));
-    setActivateForm({
+  // ── โหลด options สำหรับ AsyncSelect ค้นหา ON Number (ค้นได้ทุก record ไม่ว่าจะเคย start ไปแล้วหรือยัง) ──
+  const loadMasterRecordOptions = async (inputValue) => {
+    try {
+      const res = await axios.get(`${backendUrl}/api/projects/master-records`, {
+        withCredentials: true,
+        params: { search: inputValue },
+      });
+      return res.data.map((r) => ({
+        value: r.id,
+        label: `${r.projectCode} — ${r.jobTitle}`,
+        record: r,
+      }));
+    } catch (error) {
+      console.error(error);
+      return [];
+    }
+  };
+
+  // ── เปิด Start Project modal — prefillRecord ถ้ามาจากปุ่ม "Start อีกอัน" ในหน้า Linked Projects ──
+  const openStartModal = (prefillRecord = null) => {
+    if (prefillRecord) {
+      setSelectedMasterRecord({
+        value: prefillRecord.id,
+        label: `${prefillRecord.projectCode} — ${prefillRecord.jobTitle}`,
+        record: prefillRecord,
+      });
+      setStartContractId(guessContract(prefillRecord));
+    } else {
+      setSelectedMasterRecord(null);
+      setStartContractId("");
+    }
+    setStartForm({
+      location: "",
+      startDate: "",
+      endDate: "",
+      isOffshore: false,
+      notes: "",
+    });
+    setStartModalOpen(true);
+  };
+
+  const closeStartModal = () => {
+    setStartModalOpen(false);
+    setSelectedMasterRecord(null);
+    setStartContractId("");
+    setStartForm({
       location: "",
       startDate: "",
       endDate: "",
@@ -150,45 +195,37 @@ export default function Project() {
     });
   };
 
-  const closeActivateModal = () => {
-    setActivatingRecord(null);
-    setActivateContractId("");
-    setActivateForm({
-      location: "",
-      startDate: "",
-      endDate: "",
-      isOffshore: false,
-      notes: "",
-    });
-  };
-
-  const handleActivate = async () => {
-    if (!activateContractId) {
+  const handleStartSubmit = async () => {
+    if (!selectedMasterRecord) {
+      alert("กรุณาเลือก ON Number ก่อน");
+      return;
+    }
+    if (!startContractId) {
       alert("กรุณาเลือก Client/Contract");
       return;
     }
     try {
-      setActivating(true);
+      setStarting(true);
       const res = await axios.post(
         `${backendUrl}/api/projects`,
         {
-          masterProjectRecordId: activatingRecord.id,
-          contractId: activateContractId,
-          location: activateForm.location || null,
-          startDate: activateForm.startDate || null,
-          endDate: activateForm.endDate || null,
-          isOffshore: activateForm.isOffshore,
-          notes: activateForm.notes || null,
+          masterProjectRecordId: selectedMasterRecord.value,
+          contractId: startContractId,
+          location: startForm.location || null,
+          startDate: startForm.startDate || null,
+          endDate: startForm.endDate || null,
+          isOffshore: startForm.isOffshore,
+          notes: startForm.notes || null,
         },
         { withCredentials: true },
       );
-      closeActivateModal();
+      closeStartModal();
       navigate(`/projects/${res.data.id}`);
     } catch (error) {
       console.error(error);
       alert(error.response?.data?.message || "เปิดใช้งาน Project ไม่สำเร็จ");
     } finally {
-      setActivating(false);
+      setStarting(false);
     }
   };
 
@@ -217,8 +254,8 @@ export default function Project() {
     borderRadius: "8px",
     outline: "none",
     boxSizing: "border-box",
-    background: "#fff", // ← เพิ่ม
-    color: "#212529", // ← เพิ่ม
+    background: "#fff",
+    color: "#212529",
   };
   const labelStyle = {
     fontSize: "13px",
@@ -232,16 +269,15 @@ export default function Project() {
     fontWeight: 600,
     borderRadius: "6px",
     cursor: "pointer",
-    whiteSpace: "nowrap", // ← เพิ่ม กันตัดบรรทัด
-    minWidth: "72px", // ← เพิ่ม ให้ทุกปุ่มกว้างเท่ากันขั้นต่ำ
+    whiteSpace: "nowrap",
+    minWidth: "72px",
   };
 
   const getPageNumbers = (current, total) => {
-    const delta = 2; // แสดงกี่หน้าซ้าย-ขวาของหน้าปัจจุบัน
+    const delta = 2;
     const range = [];
     const rangeWithDots = [];
     let last;
-
     for (let i = 1; i <= total; i++) {
       if (
         i === 1 ||
@@ -251,21 +287,37 @@ export default function Project() {
         range.push(i);
       }
     }
-
     range.forEach((i) => {
       if (last) {
-        if (i - last === 2) {
-          rangeWithDots.push(last + 1);
-        } else if (i - last > 2) {
-          rangeWithDots.push("...");
-        }
+        if (i - last === 2) rangeWithDots.push(last + 1);
+        else if (i - last > 2) rangeWithDots.push("...");
       }
       rangeWithDots.push(i);
       last = i;
     });
-
     return rangeWithDots;
   };
+
+  // ── grid label-value สำหรับสรุป record ที่เลือก (ใช้ทั้งใน Start modal และ View modal) ──
+  const RecordSummaryGrid = ({ record }) => (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "110px 1fr",
+        rowGap: "4px",
+        fontSize: "12px",
+      }}
+    >
+      <div style={{ fontWeight: 600, color: "#6c757d" }}>ON Number</div>
+      <div>{record.projectCode}</div>
+      <div style={{ fontWeight: 600, color: "#6c757d" }}>Project / Job</div>
+      <div>{record.jobTitle}</div>
+      <div style={{ fontWeight: 600, color: "#6c757d" }}>Customer</div>
+      <div>{record.customerName || "—"}</div>
+      <div style={{ fontWeight: 600, color: "#6c757d" }}>Company</div>
+      <div>{record.company || "—"}</div>
+    </div>
+  );
 
   return (
     <div className="container-fluid p-0">
@@ -280,35 +332,57 @@ export default function Project() {
             marginBottom: "1.5rem",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "20px" }}>🗂</span>
-            <span style={{ fontSize: "18px", fontWeight: 700 }}>Projects</span>
-            <span
-              style={{
-                background: "#e9f5fb",
-                color: "#0d6efd",
-                borderRadius: "6px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-              }}
-            >
-              Phase 3
-            </span>
-            <span style={{ color: "#6c757d", fontSize: "12px" }}>
-              Master Project Register — เลือก ON Number เพื่อเปิด/ดู Project
-            </span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "10px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "20px" }}>🗂</span>
+              <span style={{ fontSize: "18px", fontWeight: 700 }}>
+                Projects
+              </span>
+              <span
+                style={{
+                  background: "#e9f5fb",
+                  color: "#0d6efd",
+                  borderRadius: "6px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                }}
+              >
+                Phase 3
+              </span>
+              <span style={{ color: "#6c757d", fontSize: "12px" }}>
+                Master Project Register — เลือก ON Number เพื่อเปิด/ดู Project
+              </span>
+            </div>
+
+            {canManageProjects && (
+              <button
+                onClick={() => openStartModal(null)}
+                style={{
+                  ...btnBase,
+                  background: "#198754",
+                  color: "#fff",
+                  border: "none",
+                  padding: "9px 18px",
+                  fontSize: "13px",
+                }}
+              >
+                🚀 Start New Project
+              </button>
+            )}
           </div>
         </div>
 
         {/* Search Bar */}
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            marginBottom: "1rem",
-          }}
-        >
+        <div style={{ display: "flex", gap: "8px", marginBottom: "1rem" }}>
           <input
             type="text"
             placeholder="ค้นหา ON Number / ชื่องาน / ลูกค้า / Engineer..."
@@ -413,7 +487,7 @@ export default function Project() {
                   ["COMPANY", ""],
                   ["TEAM", ""],
                   ["STATUS", ""],
-                  ["ACTIONS", "170px"], // ← กำหนด width ชัดเจน
+                  ["ACTIONS", "170px"],
                 ].map(([h, w], i) => (
                   <th
                     key={h}
@@ -456,114 +530,101 @@ export default function Project() {
                   </td>
                 </tr>
               ) : (
-                data.records.map((r, idx) => (
-                  <tr
-                    key={r.id}
-                    style={{
-                      borderBottom:
-                        idx < data.records.length - 1
-                          ? "1px solid #f1f3f5"
-                          : "none",
-                    }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = "#f8f9fa")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = "#fff")
-                    }
-                  >
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>
-                      {r.projectCode}
-                    </td>
-                    <td style={tdStyle}>{r.jobTitle}</td>
-                    <td style={tdStyle}>{r.customerName || "—"}</td>
-                    <td style={tdStyle}>{r.company || "—"}</td>
-                    <td style={tdStyle}>{r.team || "—"}</td>
-                    <td style={tdStyle}>
-                      {r.linkedProject ? (
-                        <span
-                          style={{
-                            background: "#d1e7dd",
-                            color: "#0f5132",
-                            borderRadius: "6px",
-                            padding: "3px 10px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          ✓ เปิดใช้งานแล้ว
-                        </span>
-                      ) : (
-                        <span
-                          style={{
-                            background: "#fff3cd",
-                            color: "#664d03",
-                            borderRadius: "6px",
-                            padding: "3px 10px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          ยังไม่เปิดใช้งาน
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "center",
-                          gap: "6px",
-                        }}
-                      >
-                        <button
-                          title="ดูรายละเอียดทั้งหมด"
-                          onClick={() => setViewingRecord(r)}
-                          style={{
-                            ...btnBase,
-                            background: "#fff",
-                            color: "#495057",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          👁 View
-                        </button>
-
-                        {r.linkedProject ? (
-                          <button
-                            onClick={() =>
-                              navigate(`/projects/${r.linkedProject.id}`)
-                            }
+                data.records.map((r, idx) => {
+                  const linkedCount = r.linkedProjects?.length ?? 0;
+                  return (
+                    <tr
+                      key={r.id}
+                      style={{
+                        borderBottom:
+                          idx < data.records.length - 1
+                            ? "1px solid #f1f3f5"
+                            : "none",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = "#f8f9fa")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "#fff")
+                      }
+                    >
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>
+                        {r.projectCode}
+                      </td>
+                      <td style={tdStyle}>{r.jobTitle}</td>
+                      <td style={tdStyle}>{r.customerName || "—"}</td>
+                      <td style={tdStyle}>{r.company || "—"}</td>
+                      <td style={tdStyle}>{r.team || "—"}</td>
+                      <td style={tdStyle}>
+                        {linkedCount > 0 ? (
+                          <span
                             style={{
-                              ...btnBase,
-                              background: "#0d6efd",
-                              color: "#fff",
-                              border: "none",
+                              background: "#d1e7dd",
+                              color: "#0f5132",
+                              borderRadius: "6px",
+                              padding: "3px 10px",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
                             }}
                           >
-                            Manage
-                          </button>
+                            ✓ เปิดใช้งานแล้ว ({linkedCount})
+                          </span>
                         ) : (
-                          canManageProjects && (
+                          <span
+                            style={{
+                              background: "#fff3cd",
+                              color: "#664d03",
+                              borderRadius: "6px",
+                              padding: "3px 10px",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            ยังไม่เปิดใช้งาน
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <button
+                            title="ดูรายละเอียดทั้งหมด"
+                            onClick={() => setViewingRecord(r)}
+                            style={{
+                              ...btnBase,
+                              background: "#fff",
+                              color: "#495057",
+                              border: "1px solid #dee2e6",
+                            }}
+                          >
+                            👁 View
+                          </button>
+
+                          {linkedCount > 0 && (
                             <button
-                              onClick={() => openActivateModal(r)}
+                              onClick={() => setLinkedProjectsModal(r)}
                               style={{
                                 ...btnBase,
-                                background: "#198754",
+                                background: "#0d6efd",
                                 color: "#fff",
                                 border: "none",
                               }}
                             >
-                              🚀 Start
+                              📂 รายการ ({linkedCount})
                             </button>
-                          )
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -663,7 +724,7 @@ export default function Project() {
         </div>
       </div>
 
-      {/* ════════ View Details Modal — แสดงข้อมูลครบทุก field ════════ */}
+      {/* ════════ View Details Modal ════════ */}
       {viewingRecord && (
         <div
           style={{
@@ -763,7 +824,7 @@ export default function Project() {
                       สถานะ
                     </td>
                     <td style={{ padding: "8px 0" }}>
-                      {viewingRecord.linkedProject ? (
+                      {(viewingRecord.linkedProjects?.length ?? 0) > 0 ? (
                         <span
                           style={{
                             background: "#d1e7dd",
@@ -774,7 +835,8 @@ export default function Project() {
                             fontWeight: 600,
                           }}
                         >
-                          ✓ เปิดใช้งานแล้ว — {viewingRecord.linkedProject.name}
+                          ✓ เปิดใช้งานแล้ว (
+                          {viewingRecord.linkedProjects.length} Project)
                         </span>
                       ) : (
                         <span
@@ -818,11 +880,12 @@ export default function Project() {
               >
                 ปิด
               </button>
-              {viewingRecord.linkedProject ? (
+              {(viewingRecord.linkedProjects?.length ?? 0) > 0 && (
                 <button
-                  onClick={() =>
-                    navigate(`/projects/${viewingRecord.linkedProject.id}`)
-                  }
+                  onClick={() => {
+                    setViewingRecord(null);
+                    setLinkedProjectsModal(viewingRecord);
+                  }}
                   style={{
                     padding: "8px 20px",
                     fontSize: "13px",
@@ -834,37 +897,36 @@ export default function Project() {
                     cursor: "pointer",
                   }}
                 >
-                  ไป Manage Project →
+                  ดูรายการ Project →
                 </button>
-              ) : (
-                canManageProjects && (
-                  <button
-                    onClick={() => {
-                      setViewingRecord(null);
-                      openActivateModal(viewingRecord);
-                    }}
-                    style={{
-                      padding: "8px 20px",
-                      fontSize: "13px",
-                      border: "none",
-                      borderRadius: "8px",
-                      background: "#198754",
-                      color: "#fff",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    🚀 เปิดใช้งาน Project →
-                  </button>
-                )
+              )}
+              {canManageProjects && (
+                <button
+                  onClick={() => {
+                    setViewingRecord(null);
+                    openStartModal(viewingRecord);
+                  }}
+                  style={{
+                    padding: "8px 20px",
+                    fontSize: "13px",
+                    border: "none",
+                    borderRadius: "8px",
+                    background: "#198754",
+                    color: "#fff",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  🚀 เปิดใช้งาน Project →
+                </button>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Activate Modal — เดิมทั้งหมด ไม่แก้ */}
-      {activatingRecord && canManageProjects && (
+      {/* ════════ Linked Projects Modal ════════ */}
+      {linkedProjectsModal && (
         <div
           style={{
             position: "fixed",
@@ -876,7 +938,159 @@ export default function Project() {
             justifyContent: "center",
             padding: "20px",
           }}
-          onClick={closeActivateModal}
+          onClick={() => setLinkedProjectsModal(null)}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "10px",
+              width: "100%",
+              maxWidth: "480px",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                background: "#1e3a5f",
+                color: "#fff",
+                padding: "16px 24px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: "16px" }}>
+                📂 Projects จาก {linkedProjectsModal.projectCode}
+              </span>
+              <button
+                onClick={() => setLinkedProjectsModal(null)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#fff",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: "20px 24px" }}>
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "#6c757d",
+                  marginBottom: "12px",
+                }}
+              >
+                {linkedProjectsModal.jobTitle}
+              </div>
+
+              {linkedProjectsModal.linkedProjects.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 12px",
+                    background: "#f8f9fa",
+                    borderRadius: "6px",
+                    marginBottom: "6px",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: "13px" }}>
+                      {p.name}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#6c757d" }}>
+                      สร้างเมื่อ{" "}
+                      {new Date(p.createdAt).toLocaleDateString("th-TH")}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigate(`/projects/${p.id}`)}
+                    style={{
+                      padding: "5px 12px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      border: "none",
+                      borderRadius: "6px",
+                      background: "#0d6efd",
+                      color: "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Manage →
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div
+              style={{
+                padding: "14px 24px",
+                borderTop: "1px solid #dee2e6",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              {canManageProjects && (
+                <button
+                  onClick={() => {
+                    const record = linkedProjectsModal;
+                    setLinkedProjectsModal(null);
+                    openStartModal(record);
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    border: "1px solid #198754",
+                    borderRadius: "8px",
+                    background: "#fff",
+                    color: "#198754",
+                    cursor: "pointer",
+                  }}
+                >
+                  + Start อีกอันจาก ON นี้
+                </button>
+              )}
+              <button
+                onClick={() => setLinkedProjectsModal(null)}
+                style={{
+                  padding: "8px 20px",
+                  fontSize: "13px",
+                  border: "1px solid #dee2e6",
+                  borderRadius: "8px",
+                  background: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════ Start New Project Modal ════════ */}
+      {startModalOpen && canManageProjects && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 999999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+          onClick={closeStartModal}
         >
           <div
             style={{
@@ -899,10 +1113,10 @@ export default function Project() {
               }}
             >
               <span style={{ fontWeight: 600, fontSize: "16px" }}>
-                🗂 เปิดใช้งาน Project
+                🚀 Start New Project
               </span>
               <button
-                onClick={closeActivateModal}
+                onClick={closeStartModal}
                 style={{
                   background: "none",
                   border: "none",
@@ -916,58 +1130,82 @@ export default function Project() {
             </div>
 
             <div style={{ padding: "24px" }}>
-              <div
-                style={{
-                  marginBottom: "16px",
-                  padding: "10px 12px",
-                  background: "#f8f9fa",
-                  borderRadius: "8px",
-                  fontSize: "13px",
+              <label style={labelStyle}>
+                ON Number (Master Project Register) *
+              </label>
+              <AsyncSelect
+                cacheOptions
+                defaultOptions
+                loadOptions={loadMasterRecordOptions}
+                value={selectedMasterRecord}
+                onChange={(option) => {
+                  setSelectedMasterRecord(option);
+                  setStartContractId(
+                    option?.record ? guessContract(option.record) : "",
+                  );
                 }}
-              >
-                <div style={{ fontWeight: 700 }}>
-                  {activatingRecord.projectCode}
-                </div>
-                <div style={{ color: "#495057", marginTop: "2px" }}>
-                  {activatingRecord.jobTitle}
-                </div>
+                placeholder="ค้นหา ON Number หรือชื่องาน..."
+                isClearable
+                noOptionsMessage={({ inputValue }) =>
+                  inputValue
+                    ? "ไม่พบ ON Number ที่ตรงกัน"
+                    : "พิมพ์เพื่อค้นหา ON Number..."
+                }
+                styles={{
+                  control: (base) => ({
+                    ...base,
+                    borderColor: "#dee2e6",
+                    borderRadius: "8px",
+                    minHeight: "38px",
+                    fontSize: "13px",
+                  }),
+                  menuPortal: (base) => ({ ...base, zIndex: 1000001 }),
+                }}
+                menuPortalTarget={
+                  typeof document !== "undefined" ? document.body : null
+                }
+              />
+
+              {selectedMasterRecord && (
                 <div
                   style={{
-                    color: "#6c757d",
-                    fontSize: "11px",
-                    marginTop: "4px",
+                    marginTop: "8px",
+                    padding: "10px 12px",
+                    background: "#f0f7ff",
+                    border: "1px solid #cfe2ff",
+                    borderRadius: "8px",
                   }}
                 >
-                  Company: {activatingRecord.company || "—"} · Customer:{" "}
-                  {activatingRecord.customerName || "—"}
+                  <RecordSummaryGrid record={selectedMasterRecord.record} />
                 </div>
-              </div>
+              )}
 
-              <label style={labelStyle}>Client / Contract *</label>
-              <select
-                value={activateContractId}
-                onChange={(e) => setActivateContractId(e.target.value)}
-                style={{ ...inputStyle, background: "#fff" }}
-              >
-                <option value="">Select client...</option>
-                {clients.map((c) =>
-                  c.contracts?.map((ct) => (
-                    <option key={ct.id} value={ct.id}>
-                      {c.name} — {ct.name}
-                    </option>
-                  )),
-                )}
-              </select>
-              <div
-                style={{
-                  fontSize: "11px",
-                  color: "#adb5bd",
-                  marginTop: "6px",
-                  marginBottom: "16px",
-                }}
-              >
-                Project Name จะใช้ชื่อจาก "Project / Job" ของ Master Register
-                อัตโนมัติ
+              <div style={{ marginTop: "16px" }}>
+                <label style={labelStyle}>Client / Contract *</label>
+                <select
+                  value={startContractId}
+                  onChange={(e) => setStartContractId(e.target.value)}
+                  style={{ ...inputStyle, background: "#fff" }}
+                >
+                  <option value="">Select client...</option>
+                  {clients.map((c) =>
+                    c.contracts?.map((ct) => (
+                      <option key={ct.id} value={ct.id}>
+                        {c.name} — {ct.name}
+                      </option>
+                    )),
+                  )}
+                </select>
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "#adb5bd",
+                    marginTop: "6px",
+                  }}
+                >
+                  Project Name จะใช้ชื่อจาก "Project / Job" ของ Master Register
+                  อัตโนมัติ
+                </div>
               </div>
 
               <div
@@ -975,7 +1213,7 @@ export default function Project() {
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr",
                   gap: "16px",
-                  marginBottom: "16px",
+                  marginTop: "16px",
                 }}
               >
                 <div>
@@ -983,9 +1221,9 @@ export default function Project() {
                   <input
                     type="text"
                     placeholder="e.g., Offshore Platform A"
-                    value={activateForm.location}
+                    value={startForm.location}
                     onChange={(e) =>
-                      setActivateForm((prev) => ({
+                      setStartForm((prev) => ({
                         ...prev,
                         location: e.target.value,
                       }))
@@ -997,9 +1235,9 @@ export default function Project() {
                 <div>
                   <label style={labelStyle}>Onshore / Offshore</label>
                   <select
-                    value={activateForm.isOffshore ? "offshore" : "onshore"}
+                    value={startForm.isOffshore ? "offshore" : "onshore"}
                     onChange={(e) =>
-                      setActivateForm((prev) => ({
+                      setStartForm((prev) => ({
                         ...prev,
                         isOffshore: e.target.value === "offshore",
                       }))
@@ -1015,9 +1253,9 @@ export default function Project() {
                   <label style={labelStyle}>Start Date</label>
                   <input
                     type="date"
-                    value={activateForm.startDate}
+                    value={startForm.startDate}
                     onChange={(e) =>
-                      setActivateForm((prev) => ({
+                      setStartForm((prev) => ({
                         ...prev,
                         startDate: e.target.value,
                       }))
@@ -1030,9 +1268,9 @@ export default function Project() {
                   <label style={labelStyle}>End Date</label>
                   <input
                     type="date"
-                    value={activateForm.endDate}
+                    value={startForm.endDate}
                     onChange={(e) =>
-                      setActivateForm((prev) => ({
+                      setStartForm((prev) => ({
                         ...prev,
                         endDate: e.target.value,
                       }))
@@ -1042,16 +1280,13 @@ export default function Project() {
                 </div>
               </div>
 
-              <div>
+              <div style={{ marginTop: "16px" }}>
                 <label style={labelStyle}>Notes</label>
                 <textarea
                   rows={3}
-                  value={activateForm.notes}
+                  value={startForm.notes}
                   onChange={(e) =>
-                    setActivateForm((prev) => ({
-                      ...prev,
-                      notes: e.target.value,
-                    }))
+                    setStartForm((prev) => ({ ...prev, notes: e.target.value }))
                   }
                   style={{ ...inputStyle, resize: "vertical" }}
                 />
@@ -1068,7 +1303,7 @@ export default function Project() {
               }}
             >
               <button
-                onClick={closeActivateModal}
+                onClick={closeStartModal}
                 style={{
                   padding: "8px 20px",
                   fontSize: "13px",
@@ -1081,24 +1316,26 @@ export default function Project() {
                 Cancel
               </button>
               <button
-                onClick={handleActivate}
-                disabled={!activateContractId || activating}
+                onClick={handleStartSubmit}
+                disabled={!selectedMasterRecord || !startContractId || starting}
                 style={{
                   padding: "8px 20px",
                   fontSize: "13px",
                   border: "none",
                   borderRadius: "8px",
                   background:
-                    !activateContractId || activating ? "#adb5bd" : "#0d6efd",
+                    !selectedMasterRecord || !startContractId || starting
+                      ? "#adb5bd"
+                      : "#0d6efd",
                   color: "#fff",
                   fontWeight: 600,
                   cursor:
-                    !activateContractId || activating
+                    !selectedMasterRecord || !startContractId || starting
                       ? "not-allowed"
                       : "pointer",
                 }}
               >
-                {activating ? "กำลังเปิดใช้งาน..." : "เปิดใช้งาน →"}
+                {starting ? "กำลังเปิดใช้งาน..." : "เปิดใช้งาน →"}
               </button>
             </div>
           </div>

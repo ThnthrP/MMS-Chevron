@@ -694,7 +694,7 @@ model Project {
   contractId String
   contract   Contract @relation(fields: [contractId], references: [id])
 
-  masterProjectRecordId String?              @unique
+  masterProjectRecordId String?   
   masterProjectRecord   MasterProjectRecord? @relation(fields: [masterProjectRecordId], references: [id])
 
   location   String?
@@ -737,7 +737,7 @@ model MasterProjectRecord {
   paymentTerms String?
   totalValue   Decimal? @db.Decimal(14, 2)
 
-  linkedProject Project?
+  linkedProjects Project[]
 
   sourceFile String?
   importedAt DateTime @default(now())
