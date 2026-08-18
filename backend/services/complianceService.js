@@ -1,4 +1,8 @@
 import { PrismaClient } from "@prisma/client";
+import {
+  getExpiryBucket,
+  getMedicalExpiryBucket,
+} from "../utils/expiryStatus.js";
 
 const prisma = new PrismaClient();
 
@@ -11,6 +15,21 @@ const prisma = new PrismaClient();
 // ดังนั้นนับรวมทั้งสองค่าเป็นกลุ่มเดียว (Mandatory) เพื่อไม่ให้ 44 requirement
 // ที่ import มาจริงหายไปจากการคำนวณ % Match
 const MANDATORY_REQUIREMENT_TYPES = ["required", "mandatory"];
+
+// checkType ที่ต้องใช้ threshold ยาวกว่าปกติ (90 วัน แทน 60 วัน) เพราะนัดคิว
+// โรงพยาบาล/ส่งต่อแพทย์เฉพาะทางใช้เวลานานกว่าจะจัด training ใหม่ได้
+// ดู utils/expiryStatus.js สำหรับที่มาของ threshold นี้ (ตรงกับสูตร col AN
+// ในไฟล์ PE tracking Excel ที่ทีม HR ใช้จริง)
+const MEDICAL_EXAM_CHECK_TYPES = ["Medical Check up"];
+
+// เลือก bucket calculator ให้ตรงกับประเภทของ MedicalCheck —
+// รวมจุดตัดสินใจนี้ไว้ที่เดียว กันไม่ให้ threshold เพี้ยนไปคนละที่คนละทาง
+// ในทั้ง 3 ฟังก์ชันด้านล่างที่ loop ผ่าน medicalChecks
+function getMedicalCheckBucket(medicalCheck) {
+  return MEDICAL_EXAM_CHECK_TYPES.includes(medicalCheck.checkType)
+    ? getMedicalExpiryBucket(medicalCheck.expiryDate)
+    : getExpiryBucket(medicalCheck.expiryDate);
+}
 
 export async function getComplianceDashboard() {
   const employees = await prisma.employee.findMany({
@@ -72,43 +91,15 @@ export async function getComplianceDashboard() {
     // =========================
     // Cert Alerts (Training + Medical)
     // =========================
-    let expired = 0,
-      critical = 0,
-      warning = 0,
-      valid = 0;
-    const today = new Date();
+    const alerts = { expired: 0, critical: 0, warning: 0, valid: 0 };
 
     for (const t of employee.trainings) {
-      // ไม่มีวันหมดอายุ = permanent = valid (ไม่ใช่ข้าม)
-      if (!t.expiryDate) {
-        valid++;
-        continue;
-      }
-      const days = Math.ceil(
-        (new Date(t.expiryDate) - today) / (1000 * 60 * 60 * 24),
-      );
-      if (days < 0) expired++;
-      else if (days < 30) critical++;
-      else if (days <= 60) warning++;
-      else valid++;
+      alerts[getExpiryBucket(t.expiryDate)]++;
     }
 
     for (const m of employee.medicalChecks) {
-      // ไม่มีวันหมดอายุ = valid
-      if (!m.expiryDate) {
-        valid++;
-        continue;
-      }
-      const days = Math.ceil(
-        (new Date(m.expiryDate) - today) / (1000 * 60 * 60 * 24),
-      );
-      if (days < 0) expired++;
-      else if (days < 30) critical++;
-      else if (days <= 60) warning++;
-      else valid++;
+      alerts[getMedicalCheckBucket(m)]++;
     }
-
-    const alerts = { expired, critical, warning, valid };
 
     // =========================
     // Employee Training IDs
@@ -303,38 +294,15 @@ export async function getComplianceStats() {
     },
   });
 
-  const today = new Date();
   const stats = { expired: 0, critical: 0, warning: 0, valid: 0 };
 
   for (const employee of employees) {
     for (const cert of employee.trainings) {
-      // ไม่มีวันหมดอายุ = permanent = valid (ไม่ใช่ข้าม)
-      if (!cert.expiryDate) {
-        stats.valid++;
-        continue;
-      }
-      const daysLeft = Math.ceil(
-        (new Date(cert.expiryDate) - today) / (1000 * 60 * 60 * 24),
-      );
-      if (daysLeft < 0) stats.expired++;
-      else if (daysLeft < 30) stats.critical++;
-      else if (daysLeft <= 60) stats.warning++;
-      else stats.valid++;
+      stats[getExpiryBucket(cert.expiryDate)]++;
     }
 
     for (const medical of employee.medicalChecks) {
-      // ไม่มีวันหมดอายุ = valid
-      if (!medical.expiryDate) {
-        stats.valid++;
-        continue;
-      }
-      const daysLeft = Math.ceil(
-        (new Date(medical.expiryDate) - today) / (1000 * 60 * 60 * 24),
-      );
-      if (daysLeft < 0) stats.expired++;
-      else if (daysLeft < 30) stats.critical++;
-      else if (daysLeft <= 60) stats.warning++;
-      else stats.valid++;
+      stats[getMedicalCheckBucket(medical)]++;
     }
   }
 
@@ -342,7 +310,6 @@ export async function getComplianceStats() {
 }
 
 export async function getWorkerAlerts(employeeId) {
-  const today = new Date();
   const employee = await prisma.employee.findUnique({
     where: { id: employeeId },
     include: {
@@ -358,36 +325,37 @@ export async function getWorkerAlerts(employeeId) {
     critical = [],
     warning = [];
 
+  const pushByBucket = (bucket, item) => {
+    if (bucket === "expired") expired.push(item);
+    else if (bucket === "critical") critical.push(item);
+    else if (bucket === "warning") warning.push(item);
+    // "valid" → ไม่ต้องขึ้น alert
+  };
+
   for (const t of employee.trainings) {
     if (!t.expiryDate) continue;
     const daysLeft = Math.ceil(
-      (new Date(t.expiryDate) - today) / (1000 * 60 * 60 * 24),
+      (new Date(t.expiryDate) - Date.now()) / 86400000,
     );
-    const item = {
+    pushByBucket(getExpiryBucket(t.expiryDate), {
       type: "Training",
       name: t.globalTraining?.name || t.rawTrainingName,
       expiryDate: t.expiryDate,
       daysLeft,
-    };
-    if (daysLeft < 0) expired.push(item);
-    else if (daysLeft < 30) critical.push(item);
-    else if (daysLeft <= 60) warning.push(item);
+    });
   }
 
   for (const m of employee.medicalChecks) {
     if (!m.expiryDate) continue;
     const daysLeft = Math.ceil(
-      (new Date(m.expiryDate) - today) / (1000 * 60 * 60 * 24),
+      (new Date(m.expiryDate) - Date.now()) / 86400000,
     );
-    const item = {
+    pushByBucket(getMedicalCheckBucket(m), {
       type: "Medical",
       name: m.checkType,
       expiryDate: m.expiryDate,
       daysLeft,
-    };
-    if (daysLeft < 0) expired.push(item);
-    else if (daysLeft < 30) critical.push(item);
-    else if (daysLeft <= 60) warning.push(item);
+    });
   }
 
   return { fullName: employee.fullName, expired, critical, warning };
@@ -420,7 +388,6 @@ export async function getCertificationDetail(globalTrainingId) {
     orderBy: { empCode: "asc" },
   });
 
-  const today = new Date();
   const stats = { expired: 0, critical: 0, warning: 0, valid: 0, missing: 0 };
 
   const workers = employees.map((employee) => {
@@ -435,29 +402,9 @@ export async function getCertificationDetail(globalTrainingId) {
       stats.missing++;
     } else {
       completedDate = t.completedDate ?? null;
-
-      if (!t.expiryDate) {
-        bucket = "valid";
-        stats.valid++;
-      } else {
-        expiryDate = t.expiryDate;
-        const days = Math.ceil(
-          (new Date(t.expiryDate) - today) / (1000 * 60 * 60 * 24),
-        );
-        if (days < 0) {
-          bucket = "expired";
-          stats.expired++;
-        } else if (days < 30) {
-          bucket = "critical";
-          stats.critical++;
-        } else if (days <= 60) {
-          bucket = "warning";
-          stats.warning++;
-        } else {
-          bucket = "valid";
-          stats.valid++;
-        }
-      }
+      expiryDate = t.expiryDate ?? null;
+      bucket = getExpiryBucket(t.expiryDate);
+      stats[bucket]++;
     }
 
     return {

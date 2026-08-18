@@ -2,7 +2,7 @@ import { useState, useEffect, useContext, useMemo } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const DEMOB_DAYS = 28;
 
@@ -100,6 +100,8 @@ export default function Mobilization() {
   const [loading, setLoading] = useState(false);
   const [clearing, setClearing] = useState(false);
 
+  const [searchParams] = useSearchParams();
+
   // dropdown — reuse allocation projects endpoint
   useEffect(() => {
     axios
@@ -107,6 +109,15 @@ export default function Mobilization() {
       .then((res) => setProjects(res.data))
       .catch((err) => console.error(err));
   }, [backendUrl]);
+
+  // ← ใหม่: sync selectedProjectId จาก URL query (?projectId=...)
+  // เผื่อมีลิงก์จากหน้าอื่น เช่น Allocation ส่งมาตรงๆ หลัง approve ครบ
+  useEffect(() => {
+    const pid = searchParams.get("projectId");
+    if (pid) {
+      setSelectedProjectId(pid);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -225,8 +236,9 @@ export default function Mobilization() {
     {
       type: "pre_field_training",
       label: "อบรมก่อนปฏิบัติงานนอกพื้นที่",
-      items: TRAINING_TOPICS,
-      notesLabel: "ระบุหัวข้อ Other...",
+      // items: TRAINING_TOPICS,
+      // notesLabel: "ระบุหัวข้อ Other...",
+      freeTextItems: TRAINING_TOPICS, // ← ใหม่: แต่ละหัวข้อมีช่องพิมพ์ + เพิ่มของตัวเอง
     },
     {
       type: "baggage_inspection",
@@ -622,6 +634,9 @@ export default function Mobilization() {
               <option value="">-- Select Project --</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
+                  {p.masterProjectRecord?.projectCode
+                    ? `[${p.masterProjectRecord.projectCode}] `
+                    : ""}
                   {p.name}
                 </option>
               ))}
@@ -1443,6 +1458,207 @@ export default function Mobilization() {
                               }}
                             />
                           </div>
+                        </>
+                      ) : def.freeTextItems ? (
+                        <>
+                          {/* Pass/Fail/N/A — manual เท่านั้น เพราะแต่ละหัวข้อเป็น free text ไม่มี "ครบ = pass" อัตโนมัติ */}
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "6px",
+                              marginBottom: "10px",
+                            }}
+                          >
+                            {["pass", "fail", "not_applicable"].map((val) => {
+                              const isActive = task.resultStatus === val;
+                              const activeTone = TONE[RESULT_TONE[val]];
+                              return (
+                                <button
+                                  key={val}
+                                  disabled={saving || !canManageChecklist}
+                                  onClick={() =>
+                                    updateChecklistTask(task.id, {
+                                      resultStatus: val,
+                                    })
+                                  }
+                                  style={{
+                                    ...btnBase,
+                                    flex: 1,
+                                    border: `1px solid ${isActive ? activeTone.color : "#dee2e6"}`,
+                                    background: isActive
+                                      ? activeTone.bg
+                                      : "#fff",
+                                    color: isActive
+                                      ? activeTone.color
+                                      : "#495057",
+                                    cursor: canManageChecklist
+                                      ? "pointer"
+                                      : "not-allowed",
+                                  }}
+                                >
+                                  {RESULT_LABEL[val]}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* ── แต่ละหัวข้อ เรียงคอลัมน์เดียว ตามลำดับ (Other อยู่ท้ายสุด) ── */}
+                          {def.freeTextItems.map((topicName) => {
+                            const topicData =
+                              task.itemsChecked?.[topicName] ?? {};
+                            const entries = Array.isArray(topicData.entries)
+                              ? topicData.entries
+                              : [];
+                            const draftKey = `${task.id}:${topicName}`;
+                            const draftValue = otherDraft[draftKey] ?? "";
+
+                            const commitEntries = (nextEntries) => {
+                              updateChecklistTask(task.id, {
+                                itemsChecked: {
+                                  ...(task.itemsChecked ?? {}),
+                                  [topicName]: { entries: nextEntries },
+                                },
+                              });
+                            };
+
+                            const addItem = () => {
+                              const v = draftValue.trim();
+                              if (!v) return;
+                              commitEntries([...entries, v]);
+                              setOtherDraft((prev) => ({
+                                ...prev,
+                                [draftKey]: "",
+                              }));
+                            };
+
+                            const removeItem = (idx) => {
+                              commitEntries(
+                                entries.filter((_, i) => i !== idx),
+                              );
+                            };
+
+                            return (
+                              <div
+                                key={topicName}
+                                style={{
+                                  marginBottom: "12px",
+                                  paddingBottom: "12px",
+                                  borderBottom: "1px dashed #dee2e6",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontSize: "12px",
+                                    fontWeight: 600,
+                                    color: "#495057",
+                                    marginBottom: "8px",
+                                  }}
+                                >
+                                  {topicName}
+                                </div>
+
+                                {entries.length > 0 && (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      gap: "4px",
+                                      marginBottom: "8px",
+                                    }}
+                                  >
+                                    {entries.map((item, idx) => (
+                                      <div
+                                        key={idx}
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "6px",
+                                          background: "#f8f9fa",
+                                          borderRadius: "6px",
+                                          padding: "5px 8px",
+                                          fontSize: "12px",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            color: "#6c757d",
+                                            minWidth: "16px",
+                                            flexShrink: 0,
+                                          }}
+                                        >
+                                          {idx + 1}.
+                                        </span>
+                                        <span style={{ flex: 1 }}>{item}</span>
+                                        {canManageChecklist && (
+                                          <button
+                                            type="button"
+                                            onClick={() => removeItem(idx)}
+                                            disabled={saving}
+                                            title="ลบรายการนี้"
+                                            style={{
+                                              background: "none",
+                                              border: "none",
+                                              color: "#dc3545",
+                                              cursor: "pointer",
+                                              fontSize: "13px",
+                                              padding: 0,
+                                              lineHeight: 1,
+                                            }}
+                                          >
+                                            ✕
+                                          </button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {canManageChecklist && (
+                                  <div style={{ display: "flex", gap: "6px" }}>
+                                    <input
+                                      type="text"
+                                      placeholder={`ระบุหัวข้อย่อยของ ${topicName}...`}
+                                      value={draftValue}
+                                      disabled={saving}
+                                      onChange={(e) =>
+                                        setOtherDraft((prev) => ({
+                                          ...prev,
+                                          [draftKey]: e.target.value,
+                                        }))
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                          addItem();
+                                        }
+                                      }}
+                                      style={{
+                                        ...input,
+                                        maxWidth: "none",
+                                        flex: 1,
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={addItem}
+                                      disabled={saving || !draftValue.trim()}
+                                      style={{
+                                        ...btnBase,
+                                        border: "1px solid #0d6efd",
+                                        color: "#0d6efd",
+                                        cursor:
+                                          saving || !draftValue.trim()
+                                            ? "not-allowed"
+                                            : "pointer",
+                                      }}
+                                    >
+                                      + เพิ่ม
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </>
                       ) : (
                         <>

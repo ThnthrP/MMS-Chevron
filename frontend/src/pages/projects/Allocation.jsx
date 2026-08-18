@@ -187,6 +187,9 @@ export default function Allocation() {
 
   const permCount = workers.filter((w) => w.isPermanent).length;
 
+  // ← ใหม่: เลือกได้เฉพาะคนที่ % Match = 100 เท่านั้น
+  const isWorkerSelectable = (w) => w.matchPct === 100;
+
   const displayedWorkers = [...workers]
     .filter((w) => {
       if (empType === "permanent" && !w.isPermanent) return false;
@@ -208,17 +211,21 @@ export default function Allocation() {
       return (b.matchPct ?? -1) - (a.matchPct ?? -1);
     });
 
+  // ใหม่
+  const selectableDisplayedWorkers =
+    displayedWorkers.filter(isWorkerSelectable);
+
   const allDisplayedSelected =
-    displayedWorkers.length > 0 &&
-    displayedWorkers.every((w) => selectedWorkerIds.includes(w.id));
+    selectableDisplayedWorkers.length > 0 &&
+    selectableDisplayedWorkers.every((w) => selectedWorkerIds.includes(w.id));
 
   const toggleAll = () => {
     if (allDisplayedSelected) {
-      const ids = new Set(displayedWorkers.map((w) => w.id));
+      const ids = new Set(selectableDisplayedWorkers.map((w) => w.id));
       setSelectedWorkerIds((prev) => prev.filter((id) => !ids.has(id)));
     } else {
       setSelectedWorkerIds((prev) => [
-        ...new Set([...prev, ...displayedWorkers.map((w) => w.id)]),
+        ...new Set([...prev, ...selectableDisplayedWorkers.map((w) => w.id)]),
       ]);
     }
   };
@@ -670,6 +677,39 @@ export default function Allocation() {
       request: r,
     })) ?? [];
 
+  // ← ใหม่: format วันที่แบบสั้น สำหรับ disambiguate project ที่ชื่อซ้ำกัน
+  const fmtProjectDate = (d) =>
+    d
+      ? new Date(d).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+      : null;
+
+  // ← ใหม่: options สำหรับ Select Project (react-select แทน native <select>)
+  const projectOptions = projects.map((p) => {
+    const codePart = p.masterProjectRecord?.projectCode
+      ? `[${p.masterProjectRecord.projectCode}] `
+      : "";
+    const startPart = fmtProjectDate(p.startDate);
+    const locationPart = p.location || null;
+    const idTail = p.id.slice(-6); // ← fallback สุดท้าย กันซ้ำเป๊ะ
+
+    // ── รวม location + startDate เข้าด้วยกัน ไม่ใช่เลือกอันใดอันหนึ่ง ──
+    const parts = [];
+    if (locationPart) parts.push(locationPart);
+    if (startPart) parts.push(`Start ${startPart}`);
+
+    const disambiguator = parts.length > 0 ? parts.join(" · ") : `#${idTail}`;
+
+    return {
+      value: p.id,
+      label: `${codePart}${p.name} — ${p.contract?.client?.name} · ${disambiguator}`,
+      project: p,
+    };
+  });
+
   const customSelectStyles = {
     control: (provided) => ({
       ...provided,
@@ -687,6 +727,20 @@ export default function Allocation() {
       color: "#6c757d",
     }),
     menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+  };
+
+  // ← ใหม่: เหมือน customSelectStyles แต่ขยาย menu ให้กว้างกว่ากล่อง control
+  //    เพราะ label ยาว (มี code + name + client + start date)
+  const projectSelectStyles = {
+    ...customSelectStyles,
+    menu: (provided) => ({
+      ...provided,
+      minWidth: "560px", // ← กว้างกว่ากล่องด้านบน กันตัวหนังสือตัดคำ
+    }),
+    menuList: (provided) => ({
+      ...provided,
+      maxHeight: "360px", // ← เผื่อ project มีเยอะ scroll ได้
+    }),
   };
 
   // ── styles สำหรับ Resume (CV modal ใหม่) ──
@@ -935,35 +989,29 @@ export default function Allocation() {
                   >
                     Select Project
                   </label>
-                  <select
-                    value={selectedProjectId}
-                    onChange={(e) => {
-                      setSelectedProjectId(e.target.value);
+                  <Select
+                    options={projectOptions}
+                    styles={projectSelectStyles}
+                    menuPortalTarget={
+                      typeof document !== "undefined" ? document.body : null
+                    }
+                    menuPosition="fixed"
+                    value={
+                      projectOptions.find(
+                        (o) => o.value === selectedProjectId,
+                      ) || null
+                    }
+                    onChange={(o) => {
+                      setSelectedProjectId(o ? o.value : "");
                       setSelectedRequestId("");
                       setSelectedRequest(null);
                       setWorkers([]);
                       setSelectedWorkerIds([]);
                     }}
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      fontSize: "13px",
-                      border: "1px solid #dee2e6",
-                      borderRadius: "8px",
-                      outline: "none",
-                      background: "#fff",
-                    }}
-                  >
-                    <option value="">-- Select Project --</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.masterProjectRecord?.projectCode
-                          ? `[${p.masterProjectRecord.projectCode}] `
-                          : ""}
-                        {p.name} — {p.contract?.client?.name}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="-- Select Project --"
+                    isClearable
+                    noOptionsMessage={() => "No projects found"}
+                  />
                 </div>
                 <div>
                   <label
@@ -1817,10 +1865,16 @@ export default function Allocation() {
                                 type="checkbox"
                                 checked={allDisplayedSelected}
                                 onChange={toggleAll}
+                                disabled={
+                                  selectableDisplayedWorkers.length === 0
+                                }
                                 style={{
                                   width: "15px",
                                   height: "15px",
-                                  cursor: "pointer",
+                                  cursor:
+                                    selectableDisplayedWorkers.length === 0
+                                      ? "not-allowed"
+                                      : "pointer",
                                 }}
                               />
                             </th>
@@ -1875,6 +1929,7 @@ export default function Allocation() {
                         ) : (
                           displayedWorkers.map((w, idx) => {
                             const selected = selectedWorkerIds.includes(w.id);
+                            const selectable = isWorkerSelectable(w); // ← เพิ่มบรรทัดนี้ที่ขาดไป
                             const retire = getRetirementInfo(w.birthDate);
                             const age = w.birthDate
                               ? Math.floor(
@@ -1895,13 +1950,23 @@ export default function Allocation() {
                                       ? "1px solid #f1f3f5"
                                       : "none",
                                   background: selected ? "#f0f7ff" : "#fff",
-                                  cursor: canManageAllocation
-                                    ? "pointer"
-                                    : "default",
+                                  opacity:
+                                    canManageAllocation && !selectable
+                                      ? 0.55
+                                      : 1, // ← เพิ่ม
+                                  cursor:
+                                    canManageAllocation && selectable
+                                      ? "pointer"
+                                      : "default", // ← แก้
                                 }}
                                 onClick={
-                                  canManageAllocation
+                                  canManageAllocation && selectable
                                     ? () => toggleWorker(w.id)
+                                    : undefined
+                                }
+                                title={
+                                  canManageAllocation && !selectable
+                                    ? "เลือกได้เฉพาะ worker ที่ % Match = 100% เท่านั้น"
                                     : undefined
                                 }
                               >
@@ -1910,16 +1975,20 @@ export default function Allocation() {
                                     <input
                                       type="checkbox"
                                       checked={selected}
+                                      disabled={!selectable} // ← เพิ่ม
                                       onChange={() => toggleWorker(w.id)}
                                       onClick={(e) => e.stopPropagation()}
                                       style={{
                                         width: "15px",
                                         height: "15px",
-                                        cursor: "pointer",
+                                        cursor: selectable
+                                          ? "pointer"
+                                          : "not-allowed", // ← แก้
                                       }}
                                     />
                                   </td>
                                 )}
+
                                 <td style={{ padding: "12px 12px" }}>
                                   <div
                                     style={{
@@ -2528,7 +2597,9 @@ export default function Allocation() {
                   {/* ── โผล่เฉพาะตอน approve ครบทุก position แล้ว ── */}
                   {allApproved && (
                     <button
-                      onClick={() => navigate("/mobilization")}
+                      onClick={() =>
+                        navigate(`/mobilization?projectId=${selectedProjectId}`)
+                      }
                       style={{
                         width: "100%",
                         padding: "9px",

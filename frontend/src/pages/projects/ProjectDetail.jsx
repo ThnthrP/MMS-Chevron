@@ -1252,7 +1252,7 @@ export default function ProjectDetail() {
                   </span>
                 </div>
                 <button
-                  onClick={() => navigate("/mobilization")}
+                  onClick={() => navigate(`/mobilization?projectId=${project.id}`)}
                   style={{
                     width: "100%",
                     fontSize: "11px",

@@ -210,8 +210,10 @@ enum WorkerMobilizationStatus {
 
 enum HealthRisk {
   low
-  medium
+  moderate     // เดิมชื่อ medium — rename ให้ตรงกับ label จริงใน PE tracking Excel
   high
+  significant  // ใหม่ — "Significant health risk"
+  pending      // ใหม่ — ยังไม่มีผล comment
 }
 
 enum SSELevel {
@@ -415,6 +417,8 @@ model Employee {
   subcontractorHires SubcontractorHire[]
 
   trainingRequestItems TrainingRequestItem[]
+
+  medicalExamRecords MedicalExamRecord[]
 
   // Allocation
   isPermanent  Boolean     @default(false)  // 🟩 เขียว = permanent
@@ -638,6 +642,8 @@ model MedicalCheck {
   status     CheckStatus @default(pending)
   notes      String?     @db.Text
 
+  examRecord MedicalExamRecord?
+
   employee           Employee            @relation(fields: [employeeId], references: [id])
   medicalRequirement MedicalRequirement? @relation(fields: [medicalRequirementId], references: [id])
 
@@ -645,6 +651,73 @@ model MedicalCheck {
   updatedAt DateTime @updatedAt
 
   @@unique([employeeId, checkType, medicalRequirementId])
+}
+
+// ─────────────────────────────────────────────────────────
+// MEDICAL EXAM RECORD — ผลตรวจสุขภาพประจำปีแบบละเอียด (PE tracking)
+// 1 employee มีได้หลาย record (ตรวจทุกปี) — isLatest แบบเดียวกับ EmployeeTraining
+// เชื่อมกับ MedicalCheck (checkType="Medical Check up") แบบ optional
+// เพื่อให้ expiry logic เดิม (getMedicalExpiryBucket) ยังใช้ได้โดยไม่ต้องเขียนใหม่
+// ─────────────────────────────────────────────────────────
+
+model MedicalExamRecord {
+  id             String  @id @default(uuid())
+  employeeId     String
+  medicalCheckId String? @unique
+
+  examDate DateTime? // col K วันที่ตรวจร่างกาย
+
+  // ── Vitals ──
+  height        Float? // col L
+  weight        Float? // col M
+  bmi           Float? // col N
+  bpSystolic    Int? // col O
+  bpDiastolic   Int? // col P
+  hematocritPct Float? // col Q
+
+  // ── Urine ──
+  urineResult       String? // col R
+  urineAbnormalNote String? @db.Text // col S
+
+  // ── Blood chemistry ──
+  bloodSugar   Float? // col T
+  ldl          Float? // col U
+  triglyceride Float? // col V
+  sgot         Float? // col W
+  sgpt         Float? // col X
+  uricAcid     Float? // col Y
+
+  // ── EKG / Chest X-ray / Dental / EST ──
+  ekgResult             String? // col Z
+  ekgAbnormalNote       String? @db.Text // col AA
+  chestXrayResult       String? // col AB
+  chestXrayAbnormalNote String? @db.Text // col AC
+  dentalResult          String? // col AD
+  dentalAbnormalNote    String? @db.Text // col AE
+  estResult             String? // col AF
+  estAbnormalNote       String? @db.Text // col AG
+
+  note String? @db.Text // col AH
+
+  // ── สรุปผล ──
+  healthRisk     HealthRisk? // col AI
+  recommendation String?     @db.Text // col AJ
+  commentDate    DateTime? // col AK — base date สำหรับ getFollowUpStatus() runtime
+
+  // ── version history — เหมือน EmployeeTraining ──
+  version  Int     @default(1)
+  isLatest Boolean @default(true)
+
+  source     String? // "excel_import" / "manual"
+  sourceFile String?
+
+  employee     Employee      @relation(fields: [employeeId], references: [id])
+  medicalCheck MedicalCheck? @relation(fields: [medicalCheckId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, isLatest])
 }
 
 // ─────────────────────────────────────────────────────────
