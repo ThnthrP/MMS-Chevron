@@ -2,6 +2,7 @@ import { useState, useEffect, useContext } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
+import Select from "react-select";
 
 // ── tones ──
 const TONE = {
@@ -227,6 +228,62 @@ export default function PostProjectReview() {
     fontSize: "13px",
   };
 
+  // ← ใหม่: format วันที่แบบสั้น สำหรับ disambiguate project ที่ชื่อซ้ำกัน
+  const fmtProjectDate = (d) =>
+    d
+      ? new Date(d).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+      : null;
+
+  // ← ใหม่: options สำหรับ Select Project (react-select แทน native <select>)
+  const projectOptions = projects.map((p) => {
+    const codePart = p.masterProjectRecord?.projectCode
+      ? `[${p.masterProjectRecord.projectCode}] `
+      : "";
+    const startPart = fmtProjectDate(p.startDate);
+    const locationPart = p.location || null;
+    const idTail = p.id.slice(-6);
+
+    const parts = [];
+    if (locationPart) parts.push(locationPart);
+    if (startPart) parts.push(`Start ${startPart}`);
+
+    const disambiguator = parts.length > 0 ? parts.join(" · ") : `#${idTail}`;
+
+    const clientPart = p.client ? ` — ${p.client}` : "";
+    const statusPart = p.status === "completed" ? " (completed)" : "";
+
+    return {
+      value: p.id,
+      label: `${codePart}${p.name}${clientPart} · ${disambiguator}${statusPart}`,
+      project: p,
+    };
+  });
+
+  const projectSelectStyles = {
+    control: (provided) => ({
+      ...provided,
+      borderColor: "#ced4da",
+      borderRadius: "8px",
+      minHeight: "40px",
+      fontSize: "14px",
+      boxShadow: "none",
+      "&:hover": { borderColor: "#86b7fe" },
+    }),
+    option: (provided) => ({ ...provided, fontSize: "13px" }),
+    placeholder: (provided) => ({
+      ...provided,
+      fontSize: "14px",
+      color: "#6c757d",
+    }),
+    menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+    menu: (provided) => ({ ...provided, minWidth: "560px" }),
+    menuList: (provided) => ({ ...provided, maxHeight: "360px" }),
+  };
+
   return (
     <div className="container-fluid p-0">
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -266,27 +323,24 @@ export default function PostProjectReview() {
             flexWrap: "wrap",
           }}
         >
-          <select
-            value={selectedProjectId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
-            style={{
-              flex: "1 1 320px",
-              maxWidth: "420px",
-              border: "1px solid #ced4da",
-              borderRadius: "8px",
-              padding: "10px 12px",
-              fontSize: "14px",
-            }}
-          >
-            <option value="">-- Select Active / Completed Project --</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-                {p.client ? ` — ${p.client}` : ""}
-                {p.status === "completed" ? " (completed)" : ""}
-              </option>
-            ))}
-          </select>
+          <div style={{ flex: "1 1 320px", maxWidth: "420px" }}>
+            <Select
+              options={projectOptions}
+              styles={projectSelectStyles}
+              menuPortalTarget={
+                typeof document !== "undefined" ? document.body : null
+              }
+              menuPosition="fixed"
+              value={
+                projectOptions.find((o) => o.value === selectedProjectId) ||
+                null
+              }
+              onChange={(o) => setSelectedProjectId(o ? o.value : "")}
+              placeholder="-- Select Active / Completed Project --"
+              isClearable
+              noOptionsMessage={() => "No projects found"}
+            />
+          </div>
 
           {canManageReview && (
             <button

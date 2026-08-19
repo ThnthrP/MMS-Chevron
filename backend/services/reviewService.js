@@ -10,6 +10,7 @@ export async function getReviewProjects() {
     where: { assignments: { some: {} } }, // มี assignment = เคย deploy
     include: {
       contract: { include: { client: true } },
+      masterProjectRecord: { select: { projectCode: true } }, // ← เพิ่ม
       _count: { select: { assignments: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -21,6 +22,11 @@ export async function getReviewProjects() {
     status: p.status,
     client: p.contract?.client?.name ?? null,
     deployedCount: p._count.assignments,
+    location: p.location ?? null, // ← เพิ่ม
+    startDate: p.startDate ?? null, // ← เพิ่ม
+    masterProjectRecord: p.masterProjectRecord
+      ? { projectCode: p.masterProjectRecord.projectCode }
+      : null, // ← เพิ่ม
   }));
 }
 
