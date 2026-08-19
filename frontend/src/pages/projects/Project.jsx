@@ -988,45 +988,98 @@ export default function Project() {
                 {linkedProjectsModal.jobTitle}
               </div>
 
-              {linkedProjectsModal.linkedProjects.map((p) => (
-                <div
-                  key={p.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "10px 12px",
-                    background: "#f8f9fa",
-                    borderRadius: "6px",
-                    marginBottom: "6px",
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: "13px" }}>
-                      {p.name}
-                    </div>
-                    <div style={{ fontSize: "11px", color: "#6c757d" }}>
-                      สร้างเมื่อ{" "}
-                      {new Date(p.createdAt).toLocaleDateString("th-TH")}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => navigate(`/projects/${p.id}`)}
+              {linkedProjectsModal.linkedProjects.map((p) => {
+                const fmtShort = (d) =>
+                  d
+                    ? new Date(d).toLocaleDateString("en-GB", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : null;
+
+                // ← ใหม่: แสดงวัน-เวลาที่สร้าง แทนแค่วันที่เฉยๆ เพราะหลาย record
+                //    ถูกสร้างพร้อมกันเป็นชุด วันที่เดียวกันแยกไม่ออกว่าอันไหนคืออันไหน
+                const fmtCreatedAt = (d) =>
+                  new Date(d).toLocaleString("th-TH", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  });
+
+                const startPart = fmtShort(p.startDate);
+                const endPart = fmtShort(p.endDate);
+                const locationPart = p.location || null;
+
+                return (
+                  <div
+                    key={p.id}
                     style={{
-                      padding: "5px 12px",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      border: "none",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "10px 12px",
+                      background: "#f8f9fa",
                       borderRadius: "6px",
-                      background: "#0d6efd",
-                      color: "#fff",
-                      cursor: "pointer",
+                      marginBottom: "6px",
                     }}
                   >
-                    Manage →
-                  </button>
-                </div>
-              ))}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: "13px" }}>
+                        {p.name}
+                      </div>
+                      {(locationPart || startPart) && (
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: "#495057",
+                            marginTop: "2px",
+                            display: "flex",
+                            gap: "6px",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {locationPart && <span>📍 {locationPart}</span>}
+                          {startPart && (
+                            <span>
+                              🗓 {startPart}
+                              {endPart ? ` – ${endPart}` : ""}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <div
+                        style={{
+                          fontSize: "10px",
+                          color: "#adb5bd",
+                          marginTop: "2px",
+                        }}
+                      >
+                        สร้างเมื่อ {fmtCreatedAt(p.createdAt)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => navigate(`/projects/${p.id}`)}
+                      style={{
+                        padding: "5px 12px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        border: "none",
+                        borderRadius: "6px",
+                        background: "#0d6efd",
+                        color: "#fff",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      Manage →
+                    </button>
+                  </div>
+                );
+              })}
             </div>
 
             <div

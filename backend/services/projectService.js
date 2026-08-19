@@ -408,7 +408,14 @@ export async function browseMasterProjectRecords({
       where,
       include: {
         linkedProjects: {
-          select: { id: true, name: true, createdAt: true },
+          select: {
+            id: true,
+            name: true,
+            createdAt: true,
+            location: true, // ← เพิ่ม
+            startDate: true, // ← เพิ่ม
+            endDate: true, // ← เพิ่ม
+          },
           orderBy: { createdAt: "desc" },
         },
       },
