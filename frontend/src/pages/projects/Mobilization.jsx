@@ -1414,7 +1414,7 @@ export default function Mobilization() {
                             style={{
                               display: "flex",
                               gap: "6px",
-                              marginBottom: def.valueLabel ? "8px" : 0,
+                              marginBottom: "10px",
                             }}
                           >
                             {["pass", "fail", "not_applicable"].map((val) => {
@@ -1737,29 +1737,12 @@ export default function Mobilization() {
                             }}
                           >
                             {["pass", "fail", "not_applicable"].map((val) => {
-                              const itemsIncomplete =
-                                def.items &&
-                                val === "pass" &&
-                                !def.items
-                                  .filter((i) => i !== "Other")
-                                  .every((i) =>
-                                    (task.itemsChecked ?? []).includes(i),
-                                  );
                               const isActive = task.resultStatus === val;
                               const activeTone = TONE[RESULT_TONE[val]];
                               return (
                                 <button
                                   key={val}
-                                  disabled={
-                                    saving ||
-                                    !canManageChecklist ||
-                                    itemsIncomplete
-                                  }
-                                  title={
-                                    itemsIncomplete
-                                      ? "ติ๊กให้ครบทุกชิ้นก่อนถึงจะกด Pass ได้"
-                                      : undefined
-                                  }
+                                  disabled={saving || !canManageChecklist}
                                   onClick={() =>
                                     updateChecklistTask(task.id, {
                                       resultStatus: val,
@@ -1769,7 +1752,6 @@ export default function Mobilization() {
                                   style={{
                                     ...btnBase,
                                     flex: 1,
-                                    opacity: itemsIncomplete ? 0.5 : 1,
                                     border: `1px solid ${isActive ? activeTone.color : "#dee2e6"}`,
                                     background: isActive
                                       ? activeTone.bg
@@ -1777,10 +1759,9 @@ export default function Mobilization() {
                                     color: isActive
                                       ? activeTone.color
                                       : "#495057",
-                                    cursor:
-                                      canManageChecklist && !itemsIncomplete
-                                        ? "pointer"
-                                        : "not-allowed",
+                                    cursor: canManageChecklist
+                                      ? "pointer"
+                                      : "not-allowed",
                                   }}
                                 >
                                   {RESULT_LABEL[val]}
