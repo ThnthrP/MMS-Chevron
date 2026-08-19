@@ -84,16 +84,34 @@ export async function getAllBatches() {
     orderBy: { createdAt: "desc" },
     include: {
       requestedBy: { select: { name: true } },
-      items: { select: { employeeId: true, globalTrainingId: true } },
+      items: {
+        select: {
+          employeeId: true,
+          globalTrainingId: true,
+          clientName: true, // ← เพิ่ม
+          globalTraining: { select: { name: true } }, // ← เพิ่ม
+        },
+      },
     },
   });
 
-  return batches.map((b) => ({
-    id: b.id,
-    requestedByName: b.requestedBy?.name || null,
-    createdAt: b.createdAt,
-    employeeCount: new Set(b.items.map((i) => i.employeeId)).size,
-    trainingCount: new Set(b.items.map((i) => i.globalTrainingId)).size,
-    itemCount: b.items.length,
-  }));
+  return batches.map((b) => {
+    const trainingNames = [
+      ...new Set(b.items.map((i) => i.globalTraining?.name).filter(Boolean)),
+    ];
+    const clientNames = [
+      ...new Set(b.items.map((i) => i.clientName).filter(Boolean)),
+    ];
+
+    return {
+      id: b.id,
+      requestedByName: b.requestedBy?.name || null,
+      createdAt: b.createdAt,
+      employeeCount: new Set(b.items.map((i) => i.employeeId)).size,
+      trainingCount: new Set(b.items.map((i) => i.globalTrainingId)).size,
+      itemCount: b.items.length,
+      trainingNames, // ← เพิ่ม เช่น ["Basic First Aid", "H2S Awareness"]
+      clientNames, // ← เพิ่ม เช่น ["Chevron", "PTTEP"]
+    };
+  });
 }
