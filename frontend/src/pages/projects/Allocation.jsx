@@ -1950,14 +1950,11 @@ export default function Allocation() {
                                       ? "1px solid #f1f3f5"
                                       : "none",
                                   background: selected ? "#f0f7ff" : "#fff",
-                                  opacity:
-                                    canManageAllocation && !selectable
-                                      ? 0.55
-                                      : 1, // ← เพิ่ม
+                                  // ลบ opacity ออกจากตรงนี้
                                   cursor:
                                     canManageAllocation && selectable
                                       ? "pointer"
-                                      : "default", // ← แก้
+                                      : "default",
                                 }}
                                 onClick={
                                   canManageAllocation && selectable
@@ -1971,11 +1968,16 @@ export default function Allocation() {
                                 }
                               >
                                 {canManageAllocation && (
-                                  <td style={{ padding: "12px 12px" }}>
+                                  <td
+                                    style={{
+                                      padding: "12px 12px",
+                                      opacity: selectable ? 1 : 0.4,
+                                    }}
+                                  >
                                     <input
                                       type="checkbox"
                                       checked={selected}
-                                      disabled={!selectable} // ← เพิ่ม
+                                      disabled={!selectable}
                                       onChange={() => toggleWorker(w.id)}
                                       onClick={(e) => e.stopPropagation()}
                                       style={{
@@ -1983,13 +1985,17 @@ export default function Allocation() {
                                         height: "15px",
                                         cursor: selectable
                                           ? "pointer"
-                                          : "not-allowed", // ← แก้
+                                          : "not-allowed",
                                       }}
                                     />
                                   </td>
                                 )}
-
-                                <td style={{ padding: "12px 12px" }}>
+                                <td
+                                  style={{
+                                    padding: "12px 12px",
+                                    opacity: selectable ? 1 : 0.6,
+                                  }}
+                                >
                                   <div
                                     style={{
                                       display: "flex",
@@ -2252,6 +2258,17 @@ export default function Allocation() {
                                       >
                                         {w.matchPct}% Match
                                       </span>
+                                      {w.matchPct !== 100 && (
+                                        <span
+                                          style={{
+                                            fontSize: "10px",
+                                            color: "#dc3545",
+                                            fontWeight: 600,
+                                          }}
+                                        >
+                                          ต้องครบ 100%
+                                        </span>
+                                      )}
                                       <span
                                         onClick={(e) => {
                                           e.stopPropagation();
