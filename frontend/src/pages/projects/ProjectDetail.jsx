@@ -172,11 +172,18 @@ export default function ProjectDetail() {
     (project.requests || []).map((r) => r.position?.id).filter(Boolean),
   );
 
-  const selectablePositions = (
-    hasCounts
-      ? positions.filter((p) => (p._count?.employees ?? 0) > 0)
-      : positions
-  ).filter((p) => !existingPositionIds.has(p.id));
+  // ← แก้ไข: แสดงทุกตำแหน่งรวมถึงตำแหน่งที่ยังไม่มีพนักงาน (0 คน)
+  //   เพราะบางครั้งมีการ request ข้ามตำแหน่งที่ยังไม่มีคนในระบบเลย
+  //   ยังคงกรองเฉพาะตำแหน่งที่ยังไม่มี request ในโปรเจกต์นี้
+  const selectablePositions = positions.filter(
+    (p) => !existingPositionIds.has(p.id),
+  );
+
+  // const selectablePositions = (
+  //   hasCounts
+  //     ? positions.filter((p) => (p._count?.employees ?? 0) > 0)
+  //     : positions
+  // ).filter((p) => !existingPositionIds.has(p.id));
 
   const positionOptions = selectablePositions.map((p) => ({
     value: p.id,
@@ -1252,7 +1259,9 @@ export default function ProjectDetail() {
                   </span>
                 </div>
                 <button
-                  onClick={() => navigate(`/mobilization?projectId=${project.id}`)}
+                  onClick={() =>
+                    navigate(`/mobilization?projectId=${project.id}`)
+                  }
                   style={{
                     width: "100%",
                     fontSize: "11px",
@@ -1385,9 +1394,9 @@ export default function ProjectDetail() {
                       valueContainer: (b) => ({ ...b, flexWrap: "nowrap" }),
                     }}
                     noOptionsMessage={() =>
-                      hasCounts
-                        ? "ไม่มีตำแหน่งที่มีพนักงาน หรือทุกตำแหน่งถูกเพิ่มแล้ว"
-                        : "ไม่มีตำแหน่ง"
+                      positions.length === 0
+                        ? "ไม่มีตำแหน่ง"
+                        : "ทุกตำแหน่งถูกเพิ่มเข้า request ของโปรเจกต์นี้แล้ว"
                     }
                   />
 
