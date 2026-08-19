@@ -1414,7 +1414,7 @@ export default function Mobilization() {
                             style={{
                               display: "flex",
                               gap: "6px",
-                              marginBottom: "10px",
+                              marginBottom: def.valueLabel ? "8px" : 0,
                             }}
                           >
                             {["pass", "fail", "not_applicable"].map((val) => {
