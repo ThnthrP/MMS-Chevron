@@ -1,5 +1,6 @@
 import { useState, useEffect, useContext, useMemo } from "react";
 import axios from "axios";
+import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -101,6 +102,75 @@ export default function Mobilization() {
   const [clearing, setClearing] = useState(false);
 
   const [searchParams] = useSearchParams();
+
+  // ← ใหม่: sync selectedProjectId จาก URL query (?projectId=...)
+  // เผื่อมีลิงก์จากหน้าอื่น เช่น Allocation ส่งมาตรงๆ หลัง approve ครบ
+  useEffect(() => {
+    const pid = searchParams.get("projectId");
+    if (pid) {
+      setSelectedProjectId(pid);
+    }
+  }, [searchParams]);
+
+  // ← ใหม่: format วันที่แบบสั้น สำหรับ disambiguate project ที่ชื่อซ้ำกัน
+  const fmtProjectDate = (d) =>
+    d
+      ? new Date(d).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+      : null;
+
+  // ← ใหม่: options สำหรับ Select Project (react-select แทน native <select>)
+  const projectOptions = projects.map((p) => {
+    const codePart = p.masterProjectRecord?.projectCode
+      ? `[${p.masterProjectRecord.projectCode}] `
+      : "";
+    const startPart = fmtProjectDate(p.startDate);
+    const locationPart = p.location || null;
+    const idTail = p.id.slice(-6); // ← fallback สุดท้าย กันซ้ำเป๊ะ
+
+    // ── รวม location + startDate เข้าด้วยกัน ไม่ใช่เลือกอันใดอันหนึ่ง ──
+    const parts = [];
+    if (locationPart) parts.push(locationPart);
+    if (startPart) parts.push(`Start ${startPart}`);
+
+    const disambiguator = parts.length > 0 ? parts.join(" · ") : `#${idTail}`;
+
+    return {
+      value: p.id,
+      label: `${codePart}${p.name} · ${disambiguator}`,
+      project: p,
+    };
+  });
+
+  const projectSelectStyles = {
+    control: (provided) => ({
+      ...provided,
+      borderColor: "#ced4da",
+      borderRadius: "8px",
+      minHeight: "40px",
+      fontSize: "14px",
+      boxShadow: "none",
+      "&:hover": { borderColor: "#86b7fe" },
+    }),
+    option: (provided) => ({ ...provided, fontSize: "13px" }),
+    placeholder: (provided) => ({
+      ...provided,
+      fontSize: "14px",
+      color: "#6c757d",
+    }),
+    menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+    menu: (provided) => ({
+      ...provided,
+      minWidth: "560px", // ← กว้างกว่ากล่องด้านบน กันตัวหนังสือตัดคำ
+    }),
+    menuList: (provided) => ({
+      ...provided,
+      maxHeight: "360px", // ← เผื่อ project มีเยอะ scroll ได้
+    }),
+  };
 
   // dropdown — reuse allocation projects endpoint
   useEffect(() => {
@@ -619,28 +689,24 @@ export default function Mobilization() {
               flexWrap: "wrap",
             }}
           >
-            <select
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-              style={{
-                flex: "1 1 320px",
-                maxWidth: "420px",
-                border: "1px solid #ced4da",
-                borderRadius: "8px",
-                padding: "10px 12px",
-                fontSize: "14px",
-              }}
-            >
-              <option value="">-- Select Project --</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.masterProjectRecord?.projectCode
-                    ? `[${p.masterProjectRecord.projectCode}] `
-                    : ""}
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <div style={{ flex: "1 1 320px", maxWidth: "420px" }}>
+              <Select
+                options={projectOptions}
+                styles={projectSelectStyles}
+                menuPortalTarget={
+                  typeof document !== "undefined" ? document.body : null
+                }
+                menuPosition="fixed"
+                value={
+                  projectOptions.find((o) => o.value === selectedProjectId) ||
+                  null
+                }
+                onChange={(o) => setSelectedProjectId(o ? o.value : "")}
+                placeholder="-- Select Project --"
+                isClearable
+                noOptionsMessage={() => "No projects found"}
+              />
+            </div>
 
             {selectedProjectId && canManageMobilization && (
               <button
