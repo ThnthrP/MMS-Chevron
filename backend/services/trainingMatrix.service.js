@@ -118,3 +118,21 @@ export async function getGlobalTrainings() {
     },
   });
 }
+
+// ===================================
+// Position Requirement Counts — ใช้โชว์วงเล็บจำนวนใน dropdown position
+// ===================================
+
+export async function getPositionCounts(contractId) {
+  const rows = await prisma.positionRequirement.groupBy({
+    by: ["positionId"],
+    where: { contractId },
+    _count: { _all: true },
+  });
+
+  const map = {};
+  for (const row of rows) {
+    map[row.positionId] = row._count._all;
+  }
+  return map;
+}

@@ -1,19 +1,26 @@
 import { useState, useEffect, useContext, useRef } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
 
-// ── role badge tones (เอาสไตล์เดียวกับ AdminUsers.jsx) ──
-const ROLE_TONE = {
-  admin: { bg: "#ede7f6", color: "#5e35b1" },
-  manpower: { bg: "#e3f2fd", color: "#1565c0" },
-  pe: { bg: "#fff3e0", color: "#e65100" },
-  pe_head: { bg: "#fff3e0", color: "#e65100" },
-  hr: { bg: "#e0f2f1", color: "#00695c" },
+// ── role badge (สีเดียวกับ AdminUsers.jsx) ──
+const ROLE_CLASS = {
+  admin: "bg-[#ede7f6] text-[#5e35b1]",
+  manpower_supply: "bg-[#e3f2fd] text-[#1565c0]",
+  project_engineer: "bg-[#fff3e0] text-[#e65100]",
+  hr_officer: "bg-[#e0f2f1] text-[#00695c]",
 };
-const roleTone = (name) =>
-  ROLE_TONE[(name || "").toLowerCase()] || { bg: "#f1f3f5", color: "#6c757d" };
+const roleClass = (name) =>
+  ROLE_CLASS[(name || "").toLowerCase()] || "bg-gray-100 text-gray-500";
+
+// ── สถานะ position request ──
+const requestStatusClass = (status) =>
+  status === "deployed"
+    ? "bg-emerald-100 text-emerald-800"
+    : status === "approved" || status === "booked"
+      ? "bg-cyan-100 text-cyan-800"
+      : "bg-gray-200 text-gray-700";
 
 const FILE_ICON = {
   pdf: "📄",
@@ -26,6 +33,55 @@ const FILE_ICON = {
   jpeg: "🖼",
 };
 
+// ── Tailwind class ที่ใช้ซ้ำ ──
+const CARD = "overflow-hidden rounded-[10px] border border-gray-200 bg-white";
+const CARD_HEAD =
+  "border-b border-gray-200 px-4 py-3 text-[13px] font-bold sm:px-[18px]";
+const TH =
+  "whitespace-nowrap px-4 py-2 text-left text-[10px] font-semibold tracking-[0.4px] text-gray-500";
+const INPUT =
+  "w-full box-border rounded-lg border border-gray-300 bg-white px-3 py-2 text-[13px] outline-none focus:border-blue-400";
+const LABEL = "mb-1.5 block text-[13px] font-semibold";
+const MODAL_HEAD =
+  "flex shrink-0 items-center justify-between gap-3 bg-[#1e3a5f] px-4 py-4 text-white sm:px-6";
+const MODAL_FOOT =
+  "flex shrink-0 flex-wrap justify-end gap-2 border-t border-gray-200 px-4 py-3.5 sm:px-6";
+const BTN_CANCEL =
+  "cursor-pointer rounded-lg border border-gray-200 bg-white px-5 py-2 text-[13px] hover:bg-gray-50";
+const CLOSE_X =
+  "shrink-0 cursor-pointer border-none bg-transparent text-xl leading-none text-white";
+const EMPTY = "p-7 text-center text-xs text-gray-500";
+// ปุ่ม "Go to …" เป็น <Link> → คลิกขวาเปิดแท็บใหม่ได้
+const GO_BTN =
+  "block w-full rounded-md border border-gray-200 bg-gray-50 p-1.5 text-center text-[11px] font-semibold text-gray-900 no-underline hover:bg-gray-100";
+
+const fmtDateTime = (d) =>
+  new Date(d).toLocaleString("th-TH", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+const fmtDate = (d) => (d ? new Date(d).toISOString().split("T")[0] : "—");
+
+// ── กรอบ modal: onClose ไม่ส่ง = คลิกพื้นหลังแล้วไม่ปิด ──
+function ModalShell({ onClose, zClass = "z-[999999]", maxW, children }) {
+  return (
+    <div
+      className={`fixed inset-0 ${zClass} flex items-center justify-center bg-black/50 p-3 sm:p-5`}
+      onClick={onClose}
+    >
+      <div
+        className={`flex max-h-[90vh] w-full ${maxW} flex-col overflow-hidden rounded-[10px] bg-white`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -34,10 +90,8 @@ export default function ProjectDetail() {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const canManageProjects = ["admin", "pe"].includes(userData?.role?.name);
-  const canDiscuss = ["admin", "pe", "pe_head", "manpower"].includes(
-    userData?.role?.name,
-  );
+  const canManageProjects = true;
+  const canDiscuss = true;
 
   const [showAddPosition, setShowAddPosition] = useState(false);
   const [positions, setPositions] = useState([]);
@@ -60,8 +114,76 @@ export default function ProjectDetail() {
   const [savingPositions, setSavingPositions] = useState(false);
 
   // ── แก้ headcount แบบ inline ──
-  const [quantityDraft, setQuantityDraft] = useState({}); // { requestId: quantity }
+  const [quantityDraft, setQuantityDraft] = useState({});
   const [savingQuantityId, setSavingQuantityId] = useState(null);
+
+  const [editingOpen, setEditingOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    location: "",
+    startDate: "",
+    endDate: "",
+    isOffshore: false,
+    notes: "",
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const openEdit = () => {
+    setEditForm({
+      location: project.location || "",
+      startDate: project.startDate ? project.startDate.slice(0, 10) : "",
+      endDate: project.endDate ? project.endDate.slice(0, 10) : "",
+      isOffshore: project.isOffshore ?? false,
+      notes: project.notes || "",
+    });
+    setEditingOpen(true);
+  };
+
+  const handleEditSubmit = async () => {
+    try {
+      setSavingEdit(true);
+      await axios.put(
+        `${backendUrl}/api/projects/${id}`,
+        {
+          name: project.name,
+          contractId: project.contractId ?? project.contract?.id,
+          location: editForm.location || null,
+          startDate: editForm.startDate || null,
+          endDate: editForm.endDate || null,
+          isOffshore: editForm.isOffshore,
+          notes: editForm.notes || null,
+        },
+        { withCredentials: true },
+      );
+      setEditingOpen(false);
+      fetchProject();
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.message || "แก้ไข Project ไม่สำเร็จ");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (
+      !window.confirm(
+        `ลบ Project "${project.name}" ทิ้งถาวร?\n\n⚠ การลบจะลบข้อมูลที่เกี่ยวข้องทั้งหมด (position request, shortlist, booking, assignment, mobilization checklist) ไปด้วย กู้คืนไม่ได้`,
+      )
+    )
+      return;
+    try {
+      setDeleting(true);
+      await axios.delete(`${backendUrl}/api/projects/${id}`, {
+        withCredentials: true,
+      });
+      navigate("/projects");
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.message || "ลบ Project ไม่สำเร็จ");
+      setDeleting(false);
+    }
+  };
 
   const fetchProject = async () => {
     try {
@@ -135,9 +257,7 @@ export default function ProjectDetail() {
 
   // ── กัน browser เปิดไฟล์เป็นแท็บใหม่เวลาลากไฟล์พลาดไม่ตรงกล่อง ──
   useEffect(() => {
-    const preventDefaults = (e) => {
-      e.preventDefault();
-    };
+    const preventDefaults = (e) => e.preventDefault();
     window.addEventListener("dragover", preventDefaults);
     window.addEventListener("drop", preventDefaults);
     return () => {
@@ -154,8 +274,9 @@ export default function ProjectDetail() {
     }
   }, [project]);
 
-  if (loading) return <div className="p-4 text-muted">Loading...</div>;
-  if (!project) return <div className="p-4 text-muted">Project not found</div>;
+  if (loading) return <div className="p-4 text-gray-500">Loading...</div>;
+  if (!project)
+    return <div className="p-4 text-gray-500">Project not found</div>;
 
   const totalHeadcount =
     project.requests?.reduce((sum, r) => sum + (r.quantity || 0), 0) ?? 0;
@@ -165,30 +286,49 @@ export default function ProjectDetail() {
       (a) => a.status === "active" || a.status === "completed",
     ).length ?? 0;
 
-  const hasCounts = positions.some((p) => p._count);
-
   // ── กันเลือกตำแหน่งที่มี Position Request อยู่แล้วในโปรเจกต์นี้ซ้ำ ──
+  //   แสดงทุกตำแหน่งรวมถึงตำแหน่งที่ยังไม่มีพนักงาน (0 คน)
   const existingPositionIds = new Set(
     (project.requests || []).map((r) => r.position?.id).filter(Boolean),
   );
-
-  // ← แก้ไข: แสดงทุกตำแหน่งรวมถึงตำแหน่งที่ยังไม่มีพนักงาน (0 คน)
-  //   เพราะบางครั้งมีการ request ข้ามตำแหน่งที่ยังไม่มีคนในระบบเลย
-  //   ยังคงกรองเฉพาะตำแหน่งที่ยังไม่มี request ในโปรเจกต์นี้
   const selectablePositions = positions.filter(
     (p) => !existingPositionIds.has(p.id),
   );
-
-  // const selectablePositions = (
-  //   hasCounts
-  //     ? positions.filter((p) => (p._count?.employees ?? 0) > 0)
-  //     : positions
-  // ).filter((p) => !existingPositionIds.has(p.id));
-
   const positionOptions = selectablePositions.map((p) => ({
     value: p.id,
     label: `${p.name}${p._count ? ` (${p._count.employees})` : ""}`,
   }));
+
+  // ── Employee Timeline: จัดกลุ่ม assignments ตาม requested position ──
+  const requestedPositionByEmp = new Map();
+  (project.requests || []).forEach((r) => {
+    (r.bookings || []).forEach((b) => {
+      if (b.employeeId) {
+        requestedPositionByEmp.set(b.employeeId, r.position?.name || null);
+      }
+    });
+  });
+  const timelineGroups = new Map();
+  const ungrouped = [];
+  (project.assignments || []).forEach((a) => {
+    const pos = requestedPositionByEmp.get(a.employeeId);
+    if (pos) {
+      if (!timelineGroups.has(pos)) timelineGroups.set(pos, []);
+      timelineGroups.get(pos).push(a);
+    } else {
+      ungrouped.push(a);
+    }
+  });
+  // เรียงกลุ่มตามลำดับ position ใน requests ก่อน ตามด้วยกลุ่มที่หา request ไม่เจอ
+  const orderedPositionNames = (project.requests || [])
+    .map((r) => r.position?.name)
+    .filter((name) => name && timelineGroups.has(name));
+  const remainingNames = [...timelineGroups.keys()].filter(
+    (name) => !orderedPositionNames.includes(name),
+  );
+  const orderedGroups = [...orderedPositionNames, ...remainingNames].map(
+    (name) => [name, timelineGroups.get(name)],
+  );
 
   const handleAddPositions = async () => {
     if (selectedPositionIds.length === 0) return;
@@ -212,6 +352,11 @@ export default function ProjectDetail() {
     } finally {
       setSavingPositions(false);
     }
+  };
+
+  const closeAddPosition = () => {
+    setShowAddPosition(false);
+    setSelectedPositionIds([]);
   };
 
   const handleSaveQuantity = async (reqId) => {
@@ -262,9 +407,7 @@ export default function ProjectDetail() {
   const handleDragEnter = (e) => {
     e.preventDefault();
     dragCounter.current += 1;
-    if (e.dataTransfer.types.includes("Files")) {
-      setIsDragging(true);
-    }
+    if (e.dataTransfer.types.includes("Files")) setIsDragging(true);
   };
 
   const handleDragOver = (e) => {
@@ -315,1247 +458,738 @@ export default function ProjectDetail() {
     }
   };
 
-  const fmtDateTime = (d) =>
-    new Date(d).toLocaleString("th-TH", {
-      day: "2-digit",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  const sendDisabled = sending || (!newContent.trim() && newFiles.length === 0);
+  const addPosDisabled = selectedPositionIds.length === 0 || savingPositions;
 
-  const fmtDate = (d) => (d ? new Date(d).toISOString().split("T")[0] : "—");
-
-  // ── styles ที่ใช้ซ้ำ ──
-  const card = {
-    background: "#fff",
-    border: "1px solid #dee2e6",
-    borderRadius: "10px",
-    overflow: "hidden",
-  };
-  const cardHeader = {
-    padding: "12px 18px",
-    borderBottom: "1px solid #dee2e6",
-    fontWeight: 700,
-    fontSize: "13px",
-  };
+  const renderTimelineTable = (rows) => (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[480px] border-collapse text-xs">
+        <thead>
+          <tr className="bg-gray-50">
+            {["NAME", "MOB DATE", "D-MOB DATE", "PLATFORM"].map((h, hi) => (
+              <th
+                key={h}
+                className={`${TH} py-1.5 ${
+                  hi === 0
+                    ? "sticky left-0 z-[1] bg-gray-50 shadow-[1px_0_0_#f1f3f5]"
+                    : ""
+                }`}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((a) => {
+            const employeePosition = a.employee?.position?.name || "";
+            return (
+              <tr key={a.id} className="border-t border-gray-100">
+                <td className="sticky left-0 z-[1] bg-white px-4 py-1.5 shadow-[1px_0_0_#f1f3f5]">
+                  <div className="font-semibold">
+                    {a.employee?.fullName || "—"}
+                  </div>
+                  <div className="text-[10px] text-gray-500">
+                    {a.employee?.empCode || ""}
+                    {employeePosition ? ` · ${employeePosition}` : ""}
+                  </div>
+                </td>
+                <td className="whitespace-nowrap px-4 py-1.5">
+                  {fmtDate(a.mobDate)}
+                </td>
+                <td className="whitespace-nowrap px-4 py-1.5">
+                  {fmtDate(a.demobDate)}
+                </td>
+                <td className="px-4 py-1.5">{a.platform || "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
-    <div className="container-fluid p-0">
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* Back + Header */}
-        <div style={{ marginBottom: "1.25rem" }}>
-          <button
-            onClick={() => navigate("/projects")}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#6c757d",
-              cursor: "pointer",
-              fontSize: "13px",
-              padding: 0,
-              marginBottom: "8px",
-            }}
-          >
-            ← Back to Projects
-          </button>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div>
-              <h4 style={{ fontWeight: 700, marginBottom: "4px" }}>
-                {project.name}
-              </h4>
-              <span style={{ fontSize: "13px", color: "#6c757d" }}>
-                {project.contract?.client?.name} — {project.contract?.name}
-              </span>
+    <div className="mx-auto w-full min-w-0 max-w-[1800px]">
+      {/* Back + Header */}
+      <div className="mb-5">
+        <Link
+          to="/projects"
+          className="mb-2 inline-block text-[13px] text-gray-500 no-underline hover:text-gray-700"
+        >
+          ← Back to Projects
+        </Link>
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h4 className="mb-1 break-words text-xl font-bold">
+              {project.name}
+            </h4>
+            <span className="text-[13px] text-gray-500">
+              {project.contract?.client?.name} — {project.contract?.name}
+            </span>
+          </div>
+          {canManageProjects && (
+            <div className="flex shrink-0 gap-2">
+              <button
+                onClick={openEdit}
+                className="flex-1 cursor-pointer rounded-lg border border-gray-200 bg-white px-3.5 py-[7px] text-xs font-semibold hover:bg-gray-50 sm:flex-none"
+              >
+                ✏️ Edit
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 cursor-pointer rounded-lg border border-red-200 bg-white px-3.5 py-[7px] text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed sm:flex-none"
+              >
+                {deleting ? "กำลังลบ..." : "🗑 Delete"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ══════════════ Layout: 2 คอลัมน์ที่ xl, ต่ำกว่านั้นเรียงแนวตั้ง ══════════════ */}
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        {/* ═══════════ คอลัมน์ขวา (ข้อมูลสรุป) ═══════════
+            มือถือ/แท็บเล็ต: ขึ้นก่อน (order-first) ให้เห็นข้อมูลโปรเจกต์ก่อน
+            xl: กลับไปอยู่ขวา + sticky ใต้ navbar */}
+        <div className="order-first grid grid-cols-1 gap-5 md:grid-cols-2 xl:order-none xl:col-start-2 xl:row-start-1 xl:sticky xl:top-20 xl:grid-cols-1">
+          {/* General Information */}
+          <div className={CARD}>
+            <div className={CARD_HEAD}>General Information</div>
+            <div className="px-4 py-2.5 sm:px-[18px]">
+              {[
+                ["Client", project.contract?.client?.name],
+                ["Contract", project.contract?.name],
+                ["Location", project.location],
+                ["Start", fmtDate(project.startDate)],
+                ["End", fmtDate(project.endDate)],
+                ["Offshore", project.isOffshore ? "Yes" : "No"],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="flex justify-between gap-2 border-b border-gray-100 py-1.5 text-xs"
+                >
+                  <span className="shrink-0 text-gray-500">{label}</span>
+                  <span className="truncate text-right font-semibold">
+                    {value || "—"}
+                  </span>
+                </div>
+              ))}
+              {project.notes && (
+                <div className="mt-2">
+                  <div className="mb-1 text-[10px] font-semibold uppercase text-gray-500">
+                    Notes
+                  </div>
+                  <div className="whitespace-pre-wrap break-words text-xs text-gray-700">
+                    {project.notes}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Allocation + Mobilization */}
+          <div className={CARD}>
+            <div className="px-4 py-4 sm:px-[18px]">
+              <div className="mb-1 flex items-baseline justify-between">
+                <span className="text-xs text-gray-500">Allocation</span>
+                <span className="text-xl font-bold text-blue-600">
+                  {totalAssigned}/{totalHeadcount}
+                </span>
+              </div>
+              <Link
+                to={`/allocation?projectId=${project.id}`}
+                className={`${GO_BTN} mb-3.5`}
+              >
+                Go to Allocation →
+              </Link>
+
+              <div className="mb-1 flex items-baseline justify-between border-t border-gray-100 pt-3">
+                <span className="text-xs text-gray-500">Mobilization</span>
+                <span className="text-xl font-bold text-[#198754]">
+                  {totalMobilized}/{totalAssigned}
+                </span>
+              </div>
+              <Link
+                to={`/mobilization?projectId=${project.id}`}
+                className={GO_BTN}
+              >
+                Go to Mobilization →
+              </Link>
             </div>
           </div>
         </div>
 
-        {/* ══════════════ Layout 2 คอลัมน์ ══════════════ */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) 320px",
-            gap: "1.25rem",
-            alignItems: "start",
-          }}
-        >
-          {/* ═══════════ คอลัมน์ซ้าย (กว้าง) ═══════════ */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "1.25rem",
-              minWidth: 0,
-            }}
-          >
-            {/* Position Requests */}
-            <div style={card}>
-              <div
-                style={{
-                  ...cardHeader,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span>Position Requests</span>
-                {canManageProjects && (
-                  <button
-                    onClick={() => setShowAddPosition(true)}
-                    style={{
-                      background: "#0d6efd",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "6px",
-                      padding: "5px 12px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    + Add Position
-                  </button>
-                )}
+        {/* ═══════════ คอลัมน์ซ้าย (กว้าง) ═══════════ */}
+        <div className="flex min-w-0 flex-col gap-5 xl:col-start-1 xl:row-start-1">
+          {/* Position Requests */}
+          <div className={CARD}>
+            <div className={`${CARD_HEAD} flex items-center justify-between`}>
+              <span>Position Requests</span>
+              {canManageProjects && (
+                <button
+                  onClick={() => setShowAddPosition(true)}
+                  className="cursor-pointer rounded-md border-none bg-blue-600 px-3 py-[5px] text-[11px] font-semibold text-white hover:bg-blue-700"
+                >
+                  + Add Position
+                </button>
+              )}
+            </div>
+            {!project.requests || project.requests.length === 0 ? (
+              <div className={EMPTY}>
+                No position requests yet — click + Add Position to get started
               </div>
-              <div style={{ padding: "0" }}>
-                {!project.requests || project.requests.length === 0 ? (
-                  <div
-                    style={{
-                      padding: "28px",
-                      textAlign: "center",
-                      color: "#6c757d",
-                      fontSize: "12px",
-                    }}
-                  >
-                    No position requests yet — click + Add Position to get
-                    started
-                  </div>
-                ) : (
-                  <table
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                      fontSize: "12px",
-                    }}
-                  >
-                    <thead>
-                      <tr style={{ background: "#f8f9fa" }}>
-                        {[
-                          "POSITION",
-                          "HEADCOUNT",
-                          "ASSIGNED",
-                          "STATUS",
-                          ...(canManageProjects ? [""] : []),
-                        ].map((h, hi) => (
-                          <th
-                            key={hi}
-                            style={{
-                              padding: "8px 16px",
-                              fontSize: "10px",
-                              fontWeight: 600,
-                              color: "#6c757d",
-                              letterSpacing: "0.4px",
-                              textAlign: h === "" ? "center" : "left",
-                            }}
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {project.requests.map((r) => (
-                        <tr
-                          key={r.id}
-                          style={{ borderTop: "1px solid #f1f3f5" }}
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      {[
+                        "POSITION",
+                        "HEADCOUNT",
+                        "ASSIGNED",
+                        "STATUS",
+                        ...(canManageProjects ? [""] : []),
+                      ].map((h, hi) => (
+                        <th
+                          key={hi}
+                          className={`${TH} ${h === "" ? "text-center" : ""} ${
+                            hi === 0
+                              ? "sticky left-0 z-[1] bg-gray-50 shadow-[1px_0_0_#f1f3f5]"
+                              : ""
+                          }`}
                         >
-                          <td style={{ padding: "8px 16px", fontWeight: 600 }}>
-                            {r.position?.name || "—"}
-                          </td>
-                          <td style={{ padding: "8px 16px" }}>
-                            {canManageProjects ? (
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "6px",
-                                }}
-                              >
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={quantityDraft[r.id] ?? r.quantity}
-                                  onChange={(e) =>
-                                    setQuantityDraft((prev) => ({
-                                      ...prev,
-                                      [r.id]: e.target.value,
-                                    }))
-                                  }
-                                  style={{
-                                    width: "54px",
-                                    padding: "3px 6px",
-                                    fontSize: "12px",
-                                    border: "1px solid #dee2e6",
-                                    borderRadius: "6px",
-                                  }}
-                                />
-                                {Number(quantityDraft[r.id]) !== r.quantity && (
-                                  <button
-                                    onClick={() => handleSaveQuantity(r.id)}
-                                    disabled={savingQuantityId === r.id}
-                                    title="บันทึก headcount"
-                                    style={{
-                                      background: "#198754",
-                                      color: "#fff",
-                                      border: "none",
-                                      borderRadius: "6px",
-                                      padding: "3px 8px",
-                                      fontSize: "10px",
-                                      fontWeight: 600,
-                                      cursor: "pointer",
-                                    }}
-                                  >
-                                    {savingQuantityId === r.id ? "..." : "✓"}
-                                  </button>
-                                )}
-                              </div>
-                            ) : (
-                              r.quantity
-                            )}
-                          </td>
-                          <td style={{ padding: "8px 16px" }}>
-                            {r.bookings?.length ?? 0} / {r.quantity}
-                          </td>
-                          <td style={{ padding: "8px 16px" }}>
-                            <span
-                              style={{
-                                background:
-                                  r.status === "deployed"
-                                    ? "#d1e7dd"
-                                    : r.status === "approved" ||
-                                        r.status === "booked"
-                                      ? "#cff4fc"
-                                      : "#e9ecef",
-                                color:
-                                  r.status === "deployed"
-                                    ? "#0f5132"
-                                    : r.status === "approved" ||
-                                        r.status === "booked"
-                                      ? "#055160"
-                                      : "#495057",
-                                borderRadius: "6px",
-                                padding: "2px 8px",
-                                fontSize: "11px",
-                                fontWeight: 600,
-                              }}
-                            >
-                              {r.status || "draft"}
-                            </span>
-                          </td>
-                          {canManageProjects && (
-                            <td
-                              style={{
-                                padding: "8px 16px",
-                                textAlign: "center",
-                              }}
-                            >
-                              <button
-                                title="ลบ position request"
-                                onClick={() =>
-                                  handleDeleteRequest(
-                                    r.id,
-                                    r.position?.name || "",
-                                  )
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {project.requests.map((r) => (
+                      <tr key={r.id} className="border-t border-gray-100">
+                        <td className="sticky left-0 z-[1] bg-white px-4 py-2 font-semibold shadow-[1px_0_0_#f1f3f5]">
+                          {r.position?.name || "—"}
+                        </td>
+                        <td className="px-4 py-2">
+                          {canManageProjects ? (
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="number"
+                                min="1"
+                                value={quantityDraft[r.id] ?? r.quantity}
+                                onChange={(e) =>
+                                  setQuantityDraft((prev) => ({
+                                    ...prev,
+                                    [r.id]: e.target.value,
+                                  }))
                                 }
-                                style={{
-                                  background: "#fff",
-                                  border: "1px solid #f5c6cb",
-                                  borderRadius: "6px",
-                                  padding: "3px 7px",
-                                  cursor: "pointer",
-                                  fontSize: "12px",
-                                  lineHeight: 1,
-                                }}
-                              >
-                                🗑
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-
-            {/* ════════ Employee Timeline (จัดกลุ่มตาม Position Requested) ════════ */}
-            <div style={card}>
-              <div style={cardHeader}>
-                Employee Timeline ({project.assignments?.length ?? 0} คน)
-              </div>
-              <div style={{ padding: "0" }}>
-                {!project.assignments || project.assignments.length === 0 ? (
-                  <div
-                    style={{
-                      padding: "28px",
-                      textAlign: "center",
-                      color: "#6c757d",
-                      fontSize: "12px",
-                    }}
-                  >
-                    ยังไม่มีพนักงานถูก mobilize เข้าโปรเจกต์นี้
-                  </div>
-                ) : (
-                  (() => {
-                    // ── หา "requested position" ต่อ employeeId จาก requests[].bookings[] ──
-                    const requestedPositionByEmp = new Map();
-                    (project.requests || []).forEach((r) => {
-                      (r.bookings || []).forEach((b) => {
-                        if (b.employeeId) {
-                          requestedPositionByEmp.set(
-                            b.employeeId,
-                            r.position?.name || null,
-                          );
-                        }
-                      });
-                    });
-
-                    // ── จัดกลุ่ม assignments ตาม requested position ──
-                    //    ลำดับกลุ่ม = ลำดับเดียวกับ project.requests (ให้ตรงกับ card ด้านบน)
-                    const groups = new Map(); // positionName -> assignments[]
-                    const ungrouped = [];
-
-                    project.assignments.forEach((a) => {
-                      const pos = requestedPositionByEmp.get(a.employeeId);
-                      if (pos) {
-                        if (!groups.has(pos)) groups.set(pos, []);
-                        groups.get(pos).push(a);
-                      } else {
-                        ungrouped.push(a);
-                      }
-                    });
-
-                    // เรียงกลุ่มตามลำดับ position ใน requests ก่อน ตามด้วยกลุ่มที่หา request ไม่เจอ (ถ้ามี)
-                    const orderedPositionNames = (project.requests || [])
-                      .map((r) => r.position?.name)
-                      .filter((name) => name && groups.has(name));
-                    const remainingNames = [...groups.keys()].filter(
-                      (name) => !orderedPositionNames.includes(name),
-                    );
-                    const orderedGroups = [
-                      ...orderedPositionNames,
-                      ...remainingNames,
-                    ].map((name) => [name, groups.get(name)]);
-
-                    const renderTable = (rows) => (
-                      <table
-                        style={{
-                          width: "100%",
-                          borderCollapse: "collapse",
-                          fontSize: "12px",
-                        }}
-                      >
-                        <thead>
-                          <tr style={{ background: "#f8f9fa" }}>
-                            {["NAME", "MOB DATE", "D-MOB DATE", "PLATFORM"].map(
-                              (h) => (
-                                <th
-                                  key={h}
-                                  style={{
-                                    padding: "6px 16px",
-                                    textAlign: "left",
-                                    fontWeight: 600,
-                                    color: "#6c757d",
-                                    fontSize: "10px",
-                                    letterSpacing: "0.4px",
-                                  }}
+                                className="w-[54px] rounded-md border border-gray-300 px-1.5 py-[3px] text-xs"
+                              />
+                              {Number(quantityDraft[r.id]) !== r.quantity && (
+                                <button
+                                  onClick={() => handleSaveQuantity(r.id)}
+                                  disabled={savingQuantityId === r.id}
+                                  title="บันทึก headcount"
+                                  className="cursor-pointer rounded-md border-none bg-[#198754] px-2 py-[3px] text-[10px] font-semibold text-white"
                                 >
-                                  {h}
-                                </th>
-                              ),
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rows.map((a) => {
-                            const employeePosition =
-                              a.employee?.position?.name || "";
-                            return (
-                              <tr
-                                key={a.id}
-                                style={{ borderTop: "1px solid #f1f3f5" }}
-                              >
-                                <td style={{ padding: "6px 16px" }}>
-                                  <div style={{ fontWeight: 600 }}>
-                                    {a.employee?.fullName || "—"}
-                                  </div>
-                                  <div
-                                    style={{
-                                      fontSize: "10px",
-                                      color: "#6c757d",
-                                    }}
-                                  >
-                                    {a.employee?.empCode || ""}
-                                    {employeePosition
-                                      ? ` · ${employeePosition}`
-                                      : ""}
-                                  </div>
-                                </td>
-                                <td style={{ padding: "6px 16px" }}>
-                                  {fmtDate(a.mobDate)}
-                                </td>
-                                <td style={{ padding: "6px 16px" }}>
-                                  {fmtDate(a.demobDate)}
-                                </td>
-                                <td style={{ padding: "6px 16px" }}>
-                                  {a.platform || "—"}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    );
-
-                    return (
-                      <div>
-                        {orderedGroups.map(([posName, rows]) => (
-                          <div
-                            key={posName}
-                            style={{ borderTop: "1px solid #f1f3f5" }}
+                                  {savingQuantityId === r.id ? "..." : "✓"}
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            r.quantity
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2">
+                          {r.bookings?.length ?? 0} / {r.quantity}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${requestStatusClass(r.status)}`}
                           >
-                            <div
-                              style={{
-                                padding: "8px 16px",
-                                background: "#fafbfc",
-                                fontSize: "11px",
-                                fontWeight: 700,
-                                color: "#495057",
-                                display: "flex",
-                                justifyContent: "space-between",
-                              }}
+                            {r.status || "draft"}
+                          </span>
+                        </td>
+                        {canManageProjects && (
+                          <td className="px-4 py-2 text-center">
+                            <button
+                              title="ลบ position request"
+                              onClick={() =>
+                                handleDeleteRequest(
+                                  r.id,
+                                  r.position?.name || "",
+                                )
+                              }
+                              className="cursor-pointer rounded-md border border-red-200 bg-white px-[7px] py-[3px] text-xs leading-none hover:bg-red-50"
                             >
-                              <span>{posName}</span>
-                              <span
-                                style={{ color: "#6c757d", fontWeight: 500 }}
-                              >
-                                {rows.length} คน
-                              </span>
-                            </div>
-                            <div style={{ overflowX: "auto" }}>
-                              {renderTable(rows)}
-                            </div>
-                          </div>
-                        ))}
-
-                        {ungrouped.length > 0 && (
-                          <div style={{ borderTop: "1px solid #f1f3f5" }}>
-                            <div
-                              style={{
-                                padding: "8px 16px",
-                                background: "#fafbfc",
-                                fontSize: "11px",
-                                fontWeight: 700,
-                                color: "#adb5bd",
-                              }}
-                            >
-                              ไม่พบ Position Request ที่ตรงกัน (
-                              {ungrouped.length} คน)
-                            </div>
-                            <div style={{ overflowX: "auto" }}>
-                              {renderTable(ungrouped)}
-                            </div>
-                          </div>
+                              🗑
+                            </button>
+                          </td>
                         )}
-                      </div>
-                    );
-                  })()
-                )}
-              </div>
-            </div>
-
-            {/* ════════ Discussion — PE ↔ MP ════════ */}
-            {canDiscuss && (
-              <div
-                ref={discussionRef}
-                onDragEnter={handleDragEnter}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                style={{
-                  ...card,
-                  border: isDragging
-                    ? "2px dashed #0d6efd"
-                    : "1px solid #dee2e6",
-                  position: "relative",
-                  transition: "border 0.15s",
-                }}
-              >
-                {isDragging && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      background: "rgba(13,110,253,0.08)",
-                      color: "#0d6efd",
-                      fontSize: "15px",
-                      fontWeight: 700,
-                      pointerEvents: "none",
-                      zIndex: 10,
-                    }}
-                  >
-                    📎 วางไฟล์ตรงนี้เพื่อแนบ
-                  </div>
-                )}
-                <div
-                  style={{
-                    ...cardHeader,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span style={{ fontSize: "15px" }}>💬</span>
-                  <span>Discussion — PE ↔ Manpower</span>
-                  <span style={{ fontSize: "10px", color: "#adb5bd" }}>
-                    (ส่งไฟล์ CV/Roster/Skill Matrix และคุยผลจากลูกค้าที่นี่ —
-                    ลากไฟล์มาวางในกล่องนี้ หรือกด 📎 เพื่อแนบ)
-                  </span>
-                </div>
-
-                {/* Messages list */}
-                <div
-                  style={{
-                    padding: "14px 18px",
-                    maxHeight: "420px",
-                    overflowY: "auto",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "10px",
-                    background: "#fafbfc",
-                  }}
-                >
-                  {messagesLoading ? (
-                    <div
-                      style={{
-                        textAlign: "center",
-                        color: "#6c757d",
-                        padding: "18px",
-                        fontSize: "12px",
-                      }}
-                    >
-                      Loading...
-                    </div>
-                  ) : messages.length === 0 ? (
-                    <div
-                      style={{
-                        textAlign: "center",
-                        color: "#adb5bd",
-                        padding: "20px",
-                        fontSize: "12px",
-                      }}
-                    >
-                      ยังไม่มีข้อความ — เริ่มพิมพ์ด้านล่าง
-                      หรือลากไฟล์มาวางในกล่องนี้ได้เลย 📎
-                    </div>
-                  ) : (
-                    messages.map((m) => {
-                      const isMine = m.sender?.id === userData?.id;
-                      const tone = roleTone(m.sender?.role?.name);
-                      return (
-                        <div
-                          key={m.id}
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: isMine ? "flex-end" : "flex-start",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              marginBottom: "3px",
-                              flexDirection: isMine ? "row-reverse" : "row",
-                            }}
-                          >
-                            <span style={{ fontWeight: 700, fontSize: "11px" }}>
-                              {m.sender?.name || "—"}
-                            </span>
-                            <span
-                              style={{
-                                background: tone.bg,
-                                color: tone.color,
-                                borderRadius: "5px",
-                                padding: "1px 6px",
-                                fontSize: "9px",
-                                fontWeight: 700,
-                                textTransform: "capitalize",
-                              }}
-                            >
-                              {m.sender?.role?.name || "—"}
-                            </span>
-                            <span style={{ fontSize: "9px", color: "#adb5bd" }}>
-                              {fmtDateTime(m.createdAt)}
-                            </span>
-                          </div>
-
-                          <div
-                            style={{
-                              maxWidth: "75%",
-                              background: isMine ? "#0d6efd" : "#fff",
-                              color: isMine ? "#fff" : "#212529",
-                              border: isMine ? "none" : "1px solid #e9ecef",
-                              borderRadius: "10px",
-                              padding: "8px 12px",
-                            }}
-                          >
-                            {m.content && (
-                              <div
-                                style={{
-                                  fontSize: "12px",
-                                  whiteSpace: "pre-wrap",
-                                  marginBottom:
-                                    m.attachments?.length > 0 ? "6px" : 0,
-                                }}
-                              >
-                                {m.content}
-                              </div>
-                            )}
-                            {m.attachments?.length > 0 && (
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: "5px",
-                                }}
-                              >
-                                {m.attachments.map((att) => (
-                                  <a
-                                    key={att.id}
-                                    href={`${backendUrl}${att.filePath}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "5px",
-                                      padding: "5px 8px",
-                                      background: isMine
-                                        ? "rgba(255,255,255,0.15)"
-                                        : "#f1f3f5",
-                                      borderRadius: "6px",
-                                      fontSize: "11px",
-                                      color: isMine ? "#fff" : "#0d6efd",
-                                      textDecoration: "none",
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    <span>
-                                      {FILE_ICON[att.fileType] || "📎"}
-                                    </span>
-                                    <span
-                                      style={{
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      {att.fileName}
-                                    </span>
-                                  </a>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                {/* Input area */}
-                <div
-                  style={{
-                    padding: "12px 18px",
-                    borderTop: "1px solid #dee2e6",
-                  }}
-                >
-                  {newFiles.length > 0 && (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: "6px",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      {newFiles.map((f, i) => (
-                        <span
-                          key={i}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            background: "#e9ecef",
-                            borderRadius: "6px",
-                            padding: "4px 8px",
-                            fontSize: "11px",
-                          }}
-                        >
-                          📎 {f.name}
-                          <button
-                            onClick={() => removeSelectedFile(i)}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              color: "#dc3545",
-                              cursor: "pointer",
-                              fontSize: "11px",
-                              padding: 0,
-                            }}
-                          >
-                            ✕
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "8px",
-                      alignItems: "flex-end",
-                    }}
-                  >
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileSelect}
-                      multiple
-                      accept=".pdf,.xlsx,.xls,.doc,.docx,.png,.jpg,.jpeg"
-                      style={{ display: "none" }}
-                    />
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={newFiles.length >= 5}
-                      title="แนบไฟล์ (สูงสุด 5 ไฟล์)"
-                      style={{
-                        background: "#f8f9fa",
-                        border: "1px solid #dee2e6",
-                        borderRadius: "8px",
-                        padding: "8px 10px",
-                        fontSize: "15px",
-                        cursor:
-                          newFiles.length >= 5 ? "not-allowed" : "pointer",
-                        flexShrink: 0,
-                      }}
-                    >
-                      📎
-                    </button>
-                    <textarea
-                      value={newContent}
-                      onChange={(e) => setNewContent(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendMessage();
-                        }
-                      }}
-                      placeholder="พิมพ์ข้อความ... (Enter เพื่อส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"
-                      rows={1}
-                      style={{
-                        flex: 1,
-                        padding: "8px 12px",
-                        fontSize: "12px",
-                        border: "1px solid #dee2e6",
-                        borderRadius: "8px",
-                        outline: "none",
-                        resize: "none",
-                        fontFamily: "inherit",
-                      }}
-                    />
-                    <button
-                      onClick={handleSendMessage}
-                      disabled={
-                        sending || (!newContent.trim() && newFiles.length === 0)
-                      }
-                      style={{
-                        background:
-                          sending ||
-                          (!newContent.trim() && newFiles.length === 0)
-                            ? "#adb5bd"
-                            : "#0d6efd",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "8px",
-                        padding: "8px 16px",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        cursor:
-                          sending ||
-                          (!newContent.trim() && newFiles.length === 0)
-                            ? "not-allowed"
-                            : "pointer",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {sending ? "..." : "ส่ง"}
-                    </button>
-                  </div>
-                </div>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
 
-          {/* ═══════════ คอลัมน์ขวา (แคบ, sticky) ═══════════ */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "1.25rem",
-              position: "sticky",
-              top: "20px",
-            }}
-          >
-            {/* General Information — แบบย่อ */}
-            <div style={card}>
-              <div style={cardHeader}>General Information</div>
-              <div style={{ padding: "10px 18px" }}>
-                {[
-                  ["Client", project.contract?.client?.name],
-                  ["Contract", project.contract?.name],
-                  ["Location", project.location],
-                  ["Start", fmtDate(project.startDate)],
-                  ["End", fmtDate(project.endDate)],
-                  ["Offshore", project.isOffshore ? "Yes" : "No"],
-                ].map(([label, value]) => (
-                  <div
-                    key={label}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "8px",
-                      padding: "6px 0",
-                      borderBottom: "1px solid #f1f3f5",
-                      fontSize: "12px",
-                    }}
-                  >
-                    <span style={{ color: "#6c757d", flexShrink: 0 }}>
-                      {label}
-                    </span>
-                    <span
-                      style={{
-                        fontWeight: 600,
-                        textAlign: "right",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {value || "—"}
-                    </span>
+          {/* ════════ Employee Timeline ════════ */}
+          <div className={CARD}>
+            <div className={CARD_HEAD}>
+              Employee Timeline ({project.assignments?.length ?? 0} คน)
+            </div>
+            {!project.assignments || project.assignments.length === 0 ? (
+              <div className={EMPTY}>
+                ยังไม่มีพนักงานถูก mobilize เข้าโปรเจกต์นี้
+              </div>
+            ) : (
+              <div>
+                {orderedGroups.map(([posName, rows]) => (
+                  <div key={posName} className="border-t border-gray-100">
+                    <div className="flex justify-between gap-2 bg-[#fafbfc] px-4 py-2 text-[11px] font-bold text-gray-700">
+                      <span>{posName}</span>
+                      <span className="shrink-0 font-medium text-gray-500">
+                        {rows.length} คน
+                      </span>
+                    </div>
+                    {renderTimelineTable(rows)}
                   </div>
                 ))}
-                {project.notes && (
-                  <div style={{ marginTop: "8px" }}>
-                    <div
-                      style={{
-                        fontSize: "10px",
-                        fontWeight: 600,
-                        color: "#6c757d",
-                        textTransform: "uppercase",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Notes
+
+                {ungrouped.length > 0 && (
+                  <div className="border-t border-gray-100">
+                    <div className="bg-[#fafbfc] px-4 py-2 text-[11px] font-bold text-gray-400">
+                      ไม่พบ Position Request ที่ตรงกัน ({ungrouped.length} คน)
                     </div>
-                    <div style={{ fontSize: "12px", color: "#495057" }}>
-                      {project.notes}
-                    </div>
+                    {renderTimelineTable(ungrouped)}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ════════ Discussion — PE ↔ MP ════════ */}
+          {canDiscuss && (
+            <div
+              ref={discussionRef}
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`relative scroll-mt-20 overflow-hidden rounded-[10px] bg-white transition-[border] duration-150 ${
+                isDragging
+                  ? "border-2 border-dashed border-blue-600"
+                  : "border border-gray-200"
+              }`}
+            >
+              {isDragging && (
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-blue-600/[0.08] text-[15px] font-bold text-blue-600">
+                  📎 วางไฟล์ตรงนี้เพื่อแนบ
+                </div>
+              )}
+              <div
+                className={`${CARD_HEAD} flex flex-wrap items-center gap-x-2 gap-y-1`}
+              >
+                <span className="text-[15px]">💬</span>
+                <span>Discussion — PE ↔ Manpower</span>
+                <span className="basis-full text-[10px] font-normal text-gray-400 md:basis-auto">
+                  (ส่งไฟล์ CV/Roster/Skill Matrix และคุยผลจากลูกค้าที่นี่ —
+                  ลากไฟล์มาวางในกล่องนี้ หรือกด 📎 เพื่อแนบ)
+                </span>
+              </div>
+
+              {/* Messages list */}
+              <div className="flex max-h-[420px] flex-col gap-2.5 overflow-y-auto bg-[#fafbfc] px-3 py-3.5 sm:px-[18px]">
+                {messagesLoading ? (
+                  <div className="p-[18px] text-center text-xs text-gray-500">
+                    Loading...
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="p-5 text-center text-xs text-gray-400">
+                    ยังไม่มีข้อความ — เริ่มพิมพ์ด้านล่าง
+                    หรือลากไฟล์มาวางในกล่องนี้ได้เลย 📎
+                  </div>
+                ) : (
+                  messages.map((m) => {
+                    const isMine = m.sender?.id === userData?.id;
+                    return (
+                      <div
+                        key={m.id}
+                        className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}
+                      >
+                        <div
+                          className={`mb-[3px] flex flex-wrap items-center gap-1.5 ${
+                            isMine ? "flex-row-reverse" : "flex-row"
+                          }`}
+                        >
+                          <span className="text-[11px] font-bold">
+                            {m.sender?.name || "—"}
+                          </span>
+                          <span
+                            className={`rounded-[5px] px-1.5 py-px text-[9px] font-bold capitalize ${roleClass(m.sender?.role?.name)}`}
+                          >
+                            {m.sender?.role?.name || "—"}
+                          </span>
+                          <span className="text-[9px] text-gray-400">
+                            {fmtDateTime(m.createdAt)}
+                          </span>
+                        </div>
+
+                        <div
+                          className={`min-w-0 max-w-[88%] rounded-[10px] px-3 py-2 sm:max-w-[75%] ${
+                            isMine
+                              ? "bg-blue-600 text-white"
+                              : "border border-gray-200 bg-white text-gray-900"
+                          }`}
+                        >
+                          {m.content && (
+                            <div
+                              className={`whitespace-pre-wrap break-words text-xs ${
+                                m.attachments?.length > 0 ? "mb-1.5" : ""
+                              }`}
+                            >
+                              {m.content}
+                            </div>
+                          )}
+                          {m.attachments?.length > 0 && (
+                            <div className="flex flex-col gap-[5px]">
+                              {m.attachments.map((att) => (
+                                <a
+                                  key={att.id}
+                                  href={`${backendUrl}${att.filePath}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={`flex min-w-0 items-center gap-[5px] rounded-md px-2 py-[5px] text-[11px] font-semibold no-underline ${
+                                    isMine
+                                      ? "bg-white/15 text-white"
+                                      : "bg-gray-100 text-blue-600"
+                                  }`}
+                                >
+                                  <span className="shrink-0">
+                                    {FILE_ICON[att.fileType] || "📎"}
+                                  </span>
+                                  <span className="truncate">
+                                    {att.fileName}
+                                  </span>
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Input area */}
+              <div className="border-t border-gray-200 px-3 py-3 sm:px-[18px]">
+                {newFiles.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {newFiles.map((f, i) => (
+                      <span
+                        key={i}
+                        className="flex max-w-full items-center gap-1.5 rounded-md bg-gray-200 px-2 py-1 text-[11px]"
+                      >
+                        <span className="truncate">📎 {f.name}</span>
+                        <button
+                          onClick={() => removeSelectedFile(i)}
+                          className="shrink-0 cursor-pointer border-none bg-transparent p-0 text-[11px] text-red-600"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-end gap-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    multiple
+                    accept=".pdf,.xlsx,.xls,.doc,.docx,.png,.jpg,.jpeg"
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={newFiles.length >= 5}
+                    title="แนบไฟล์ (สูงสุด 5 ไฟล์)"
+                    className="shrink-0 cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-[15px] disabled:cursor-not-allowed"
+                  >
+                    📎
+                  </button>
+                  <textarea
+                    value={newContent}
+                    onChange={(e) => setNewContent(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    placeholder="พิมพ์ข้อความ... (Enter เพื่อส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"
+                    rows={1}
+                    className="min-w-0 flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 font-[inherit] text-xs outline-none focus:border-blue-400"
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={sendDisabled}
+                    className={`shrink-0 rounded-lg border-none px-4 py-2 text-xs font-semibold text-white ${
+                      sendDisabled
+                        ? "cursor-not-allowed bg-gray-400"
+                        : "cursor-pointer bg-blue-600 hover:bg-blue-700"
+                    }`}
+                  >
+                    {sending ? "..." : "ส่ง"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ════════ Add Position Modal (คลิกพื้นหลังไม่ปิด — เหมือนเดิม) ════════ */}
+      {showAddPosition && canManageProjects && (
+        <ModalShell maxW="max-w-[700px]">
+          <div className={MODAL_HEAD}>
+            <span className="text-[15px] font-semibold">
+              Add Position Request
+            </span>
+            <button onClick={closeAddPosition} className={CLOSE_X}>
+              ✕
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+            <label className={LABEL}>
+              Position * (เลือกได้หลายตำแหน่ง —{" "}
+              <span className="font-normal text-gray-500">
+                เฉพาะตำแหน่งที่ยังไม่มีใน request ของโปรเจกต์นี้
+              </span>
+              )
+            </label>
+
+            <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[1fr_220px] sm:gap-5">
+              {/* ── ช่องค้นหา/dropdown ── */}
+              <div className="min-w-0">
+                <Select
+                  isMulti
+                  options={positionOptions}
+                  value={positionOptions.filter((o) =>
+                    selectedPositionIds.includes(o.value),
+                  )}
+                  onChange={(selected) =>
+                    setSelectedPositionIds((selected || []).map((o) => o.value))
+                  }
+                  placeholder="ค้นหา / เลือกตำแหน่ง..."
+                  menuPortalTarget={
+                    typeof document !== "undefined" ? document.body : null
+                  }
+                  menuPosition="fixed"
+                  hideSelectedOptions={false}
+                  closeMenuOnSelect={false}
+                  components={{ MultiValue: () => null }}
+                  styles={{
+                    menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
+                    control: (b) => ({
+                      ...b,
+                      fontSize: "13px",
+                      minHeight: "38px",
+                    }),
+                    option: (b) => ({ ...b, fontSize: "13px" }),
+                    valueContainer: (b) => ({ ...b, flexWrap: "nowrap" }),
+                  }}
+                  noOptionsMessage={() =>
+                    positions.length === 0
+                      ? "ไม่มีตำแหน่ง"
+                      : "ทุกตำแหน่งถูกเพิ่มเข้า request ของโปรเจกต์นี้แล้ว"
+                  }
+                />
+                <div className="mt-2.5 text-[11px] text-gray-400">
+                  Headcount เริ่มต้น = 1 คนต่อตำแหน่ง
+                  ปรับได้ในตารางหลังเพิ่มแล้ว
+                </div>
+              </div>
+
+              {/* ── รายการที่เลือกแล้ว ── */}
+              <div className="max-h-[260px] overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2.5">
+                <div className="mb-2 text-[11px] font-bold uppercase text-gray-500">
+                  เลือกแล้ว ({selectedPositionIds.length})
+                </div>
+                {selectedPositionIds.length === 0 ? (
+                  <div className="text-xs text-gray-400">ยังไม่ได้เลือก</div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {selectedPositionIds.map((posId) => {
+                      const opt = positionOptions.find(
+                        (o) => o.value === posId,
+                      );
+                      if (!opt) return null;
+                      return (
+                        <div
+                          key={posId}
+                          className="flex items-center justify-between gap-1.5 rounded-md bg-blue-50 px-2 py-[5px] text-xs font-semibold text-blue-600"
+                        >
+                          <span className="truncate">{opt.label}</span>
+                          <button
+                            onClick={() =>
+                              setSelectedPositionIds((prev) =>
+                                prev.filter((pid) => pid !== posId),
+                              )
+                            }
+                            className="shrink-0 cursor-pointer border-none bg-transparent p-0 text-[13px] leading-none text-blue-600"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Allocation + Mobilization — รวมในการ์ดเดียว */}
-            <div style={card}>
-              <div style={{ padding: "16px 18px" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                    marginBottom: "4px",
-                  }}
-                >
-                  <span style={{ fontSize: "12px", color: "#6c757d" }}>
-                    Allocation
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "20px",
-                      fontWeight: 700,
-                      color: "#0d6efd",
-                    }}
-                  >
-                    {totalAssigned}/{totalHeadcount}
-                  </span>
-                </div>
-                <button
-                  onClick={() =>
-                    navigate(`/allocation?projectId=${project.id}`)
-                  }
-                  style={{
-                    width: "100%",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    padding: "6px",
-                    border: "1px solid #dee2e6",
-                    borderRadius: "6px",
-                    background: "#f8f9fa",
-                    cursor: "pointer",
-                    marginBottom: "14px",
-                  }}
-                >
-                  Go to Allocation →
-                </button>
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                    marginBottom: "4px",
-                    paddingTop: "12px",
-                    borderTop: "1px solid #f1f3f5",
-                  }}
-                >
-                  <span style={{ fontSize: "12px", color: "#6c757d" }}>
-                    Mobilization
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "20px",
-                      fontWeight: 700,
-                      color: "#198754",
-                    }}
-                  >
-                    {totalMobilized}/{totalAssigned}
-                  </span>
-                </div>
-                <button
-                  onClick={() =>
-                    navigate(`/mobilization?projectId=${project.id}`)
-                  }
-                  style={{
-                    width: "100%",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    padding: "6px",
-                    border: "1px solid #dee2e6",
-                    borderRadius: "6px",
-                    background: "#f8f9fa",
-                    cursor: "pointer",
-                  }}
-                >
-                  Go to Mobilization →
-                </button>
-              </div>
-            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Add Position Modal */}
-      {showAddPosition && canManageProjects && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 999999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-          }}
+          <div className={MODAL_FOOT}>
+            <button onClick={closeAddPosition} className={BTN_CANCEL}>
+              Cancel
+            </button>
+            <button
+              onClick={handleAddPositions}
+              disabled={addPosDisabled}
+              className={`rounded-lg border-none px-5 py-2 text-[13px] font-semibold text-white ${
+                addPosDisabled
+                  ? "cursor-not-allowed bg-gray-400"
+                  : "cursor-pointer bg-blue-600 hover:bg-blue-700"
+              }`}
+            >
+              {savingPositions
+                ? "Saving..."
+                : `Save (${selectedPositionIds.length})`}
+            </button>
+          </div>
+        </ModalShell>
+      )}
+
+      {/* ════════ Edit Project Modal ════════ */}
+      {editingOpen && canManageProjects && (
+        <ModalShell
+          onClose={() => setEditingOpen(false)}
+          zClass="z-[1000002]"
+          maxW="max-w-[560px]"
         >
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: "10px",
-              width: "100%",
-              maxWidth: "700px",
-              overflow: "visible",
-            }}
-          >
-            <div
-              style={{
-                background: "#1e3a5f",
-                color: "#fff",
-                padding: "16px 24px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                borderTopLeftRadius: "10px",
-                borderTopRightRadius: "10px",
-              }}
-            >
-              <span style={{ fontWeight: 600, fontSize: "15px" }}>
-                Add Position Request
-              </span>
-              <button
-                onClick={() => {
-                  setShowAddPosition(false);
-                  setSelectedPositionIds([]);
-                }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#fff",
-                  fontSize: "20px",
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ padding: "24px" }}>
-              <label
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  marginBottom: "6px",
-                  display: "block",
-                }}
-              >
-                Position * (เลือกได้หลายตำแหน่ง —{" "}
-                <span style={{ color: "#6c757d", fontWeight: 400 }}>
-                  เฉพาะตำแหน่งที่มีพนักงาน และยังไม่มีใน request ของโปรเจกต์นี้
-                </span>
-                )
-              </label>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 220px",
-                  gap: "20px",
-                  alignItems: "start",
-                }}
-              >
-                {/* ── ฝั่งซ้าย: ช่องค้นหา/dropdown ── */}
-                <div>
-                  <Select
-                    isMulti
-                    options={positionOptions}
-                    value={positionOptions.filter((o) =>
-                      selectedPositionIds.includes(o.value),
-                    )}
-                    onChange={(selected) =>
-                      setSelectedPositionIds(
-                        (selected || []).map((o) => o.value),
-                      )
-                    }
-                    placeholder="ค้นหา / เลือกตำแหน่ง..."
-                    menuPortalTarget={
-                      typeof document !== "undefined" ? document.body : null
-                    }
-                    menuPosition="fixed"
-                    hideSelectedOptions={false}
-                    closeMenuOnSelect={false}
-                    components={{
-                      MultiValue: () => null,
-                    }}
-                    styles={{
-                      menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
-                      control: (b) => ({
-                        ...b,
-                        fontSize: "13px",
-                        minHeight: "38px",
-                      }),
-                      option: (b) => ({ ...b, fontSize: "13px" }),
-                      valueContainer: (b) => ({ ...b, flexWrap: "nowrap" }),
-                    }}
-                    noOptionsMessage={() =>
-                      positions.length === 0
-                        ? "ไม่มีตำแหน่ง"
-                        : "ทุกตำแหน่งถูกเพิ่มเข้า request ของโปรเจกต์นี้แล้ว"
-                    }
-                  />
-
-                  <div
-                    style={{
-                      fontSize: "11px",
-                      color: "#adb5bd",
-                      marginTop: "10px",
-                    }}
-                  >
-                    Headcount เริ่มต้น = 1 คนต่อตำแหน่ง
-                    ปรับได้ในตารางหลังเพิ่มแล้ว
-                  </div>
-                </div>
-
-                {/* ── ฝั่งขวา: รายการที่เลือกแล้ว — อยู่คนละตำแหน่งกับ dropdown เลยไม่โดนทับ ── */}
-                <div
-                  style={{
-                    border: "1px solid #e9ecef",
-                    borderRadius: "8px",
-                    padding: "10px",
-                    maxHeight: "260px",
-                    overflowY: "auto",
-                    background: "#f8f9fa",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: "#6c757d",
-                      marginBottom: "8px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    เลือกแล้ว ({selectedPositionIds.length})
-                  </div>
-                  {selectedPositionIds.length === 0 ? (
-                    <div style={{ fontSize: "12px", color: "#adb5bd" }}>
-                      ยังไม่ได้เลือก
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "6px",
-                      }}
-                    >
-                      {selectedPositionIds.map((posId) => {
-                        const opt = positionOptions.find(
-                          (o) => o.value === posId,
-                        );
-                        if (!opt) return null;
-                        return (
-                          <div
-                            key={posId}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: "6px",
-                              background: "#e7f1ff",
-                              color: "#0d6efd",
-                              borderRadius: "6px",
-                              padding: "5px 8px",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                            }}
-                          >
-                            <span
-                              style={{
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {opt.label}
-                            </span>
-                            <button
-                              onClick={() =>
-                                setSelectedPositionIds((prev) =>
-                                  prev.filter((id) => id !== posId),
-                                )
-                              }
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color: "#0d6efd",
-                                cursor: "pointer",
-                                fontSize: "13px",
-                                padding: 0,
-                                lineHeight: 1,
-                                flexShrink: 0,
-                              }}
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+          <div className={MODAL_HEAD}>
+            <div className="min-w-0">
+              <div className="text-base font-semibold">✏️ Edit Project</div>
+              <div className="mt-0.5 break-words text-xs opacity-80">
+                {project.name}
               </div>
             </div>
+            <button onClick={() => setEditingOpen(false)} className={CLOSE_X}>
+              ✕
+            </button>
+          </div>
 
-            <div
-              style={{
-                padding: "16px 24px",
-                borderTop: "1px solid #dee2e6",
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "8px",
-              }}
-            >
-              <button
-                onClick={() => {
-                  setShowAddPosition(false);
-                  setSelectedPositionIds([]);
-                }}
-                style={{
-                  padding: "8px 20px",
-                  fontSize: "13px",
-                  border: "1px solid #dee2e6",
-                  borderRadius: "8px",
-                  background: "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddPositions}
-                disabled={selectedPositionIds.length === 0 || savingPositions}
-                style={{
-                  padding: "8px 20px",
-                  fontSize: "13px",
-                  border: "none",
-                  borderRadius: "8px",
-                  background:
-                    selectedPositionIds.length === 0 || savingPositions
-                      ? "#adb5bd"
-                      : "#0d6efd",
-                  color: "#fff",
-                  fontWeight: 600,
-                  cursor:
-                    selectedPositionIds.length === 0 || savingPositions
-                      ? "not-allowed"
-                      : "pointer",
-                }}
-              >
-                {savingPositions
-                  ? "Saving..."
-                  : `Save (${selectedPositionIds.length})`}
-              </button>
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className={LABEL}>Location / Site</label>
+                <input
+                  type="text"
+                  value={editForm.location}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      location: e.target.value,
+                    }))
+                  }
+                  className={INPUT}
+                />
+              </div>
+              <div>
+                <label className={LABEL}>Onshore / Offshore</label>
+                <select
+                  value={editForm.isOffshore ? "offshore" : "onshore"}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      isOffshore: e.target.value === "offshore",
+                    }))
+                  }
+                  className={INPUT}
+                >
+                  <option value="onshore">Onshore</option>
+                  <option value="offshore">Offshore (นอกชายฝั่ง)</option>
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Start Date</label>
+                <input
+                  type="date"
+                  value={editForm.startDate}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      startDate: e.target.value,
+                    }))
+                  }
+                  className={INPUT}
+                />
+              </div>
+              <div>
+                <label className={LABEL}>End Date</label>
+                <input
+                  type="date"
+                  value={editForm.endDate}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      endDate: e.target.value,
+                    }))
+                  }
+                  className={INPUT}
+                />
+              </div>
+            </div>
+            <div className="mt-4">
+              <label className={LABEL}>Notes</label>
+              <textarea
+                rows={3}
+                value={editForm.notes}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, notes: e.target.value }))
+                }
+                className={`${INPUT} resize-y`}
+              />
             </div>
           </div>
-        </div>
+
+          <div className={MODAL_FOOT}>
+            <button
+              onClick={() => setEditingOpen(false)}
+              className={BTN_CANCEL}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleEditSubmit}
+              disabled={savingEdit}
+              className={`rounded-lg border-none px-5 py-2 text-[13px] font-semibold text-white ${
+                savingEdit
+                  ? "cursor-not-allowed bg-gray-400"
+                  : "cursor-pointer bg-blue-600 hover:bg-blue-700"
+              }`}
+            >
+              {savingEdit ? "กำลังบันทึก..." : "บันทึก"}
+            </button>
+          </div>
+        </ModalShell>
       )}
     </div>
   );

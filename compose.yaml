@@ -53,3 +53,5 @@ services:
 
 volumes:
   chevron_pgdata:
+    name: mms-chevron_chevron_pgdata
+    external: true

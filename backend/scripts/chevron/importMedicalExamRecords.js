@@ -138,18 +138,12 @@ function normalizeName(s) {
   return (s || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-// Maps the free-text "Health Risk" column to the HealthRisk enum.
-// Order matters: check "significant" before "high" so "Significant
-// health risk (Par...)" doesn't get matched by a looser "high" rule.
-function mapHealthRisk(raw) {
-  const s = normalizeName(raw);
-  if (!s) return "pending";
-  if (s.includes("significant")) return "significant";
-  if (s.includes("moderate")) return "moderate";
-  if (s.includes("high")) return "high";
-  if (s.includes("low")) return "low";
-  if (s.includes("pending")) return "pending";
-  return null; // unrecognized text — caller should log + skip healthRisk
+// ผ่อนกฎเพิ่ม — ลบช่องว่างทั้งหมด (ไม่ใช่แค่ยุบซ้ำ) ใช้เป็น fallback
+// เผื่อกรณี copy-paste ชื่อไทยจาก Excel มีช่องว่างแทรกกลางพยางค์แบบสุ่ม
+// ยังเป็น exact-match string comparison เหมือนเดิม แค่ผ่อนกฎช่องว่าง
+// ไม่ใช่ fuzzy matching ที่เสี่ยงจับคู่ผิดคน
+function normalizeNameNoSpace(s) {
+  return (s || "").replace(/\s+/g, "").trim().toLowerCase();
 }
 
 function addDays(date, days) {
@@ -198,11 +192,19 @@ async function main() {
       fullNameEN: true,
     },
   });
+
   const byThaiName = new Map();
+  const byThaiNameNoSpace = new Map(); // ← เพิ่มใหม่
   const byEnglishName = new Map();
   for (const e of employees) {
-    if (e.fullNameTH) byThaiName.set(normalizeName(e.fullNameTH), e);
-    if (e.fullName) byThaiName.set(normalizeName(e.fullName), e); // fullName often holds Thai name too
+    if (e.fullNameTH) {
+      byThaiName.set(normalizeName(e.fullNameTH), e);
+      byThaiNameNoSpace.set(normalizeNameNoSpace(e.fullNameTH), e); // ← เพิ่ม
+    }
+    if (e.fullName) {
+      byThaiName.set(normalizeName(e.fullName), e);
+      byThaiNameNoSpace.set(normalizeNameNoSpace(e.fullName), e); // ← เพิ่ม
+    }
     if (e.fullNameEN) byEnglishName.set(normalizeName(e.fullNameEN), e);
   }
 
@@ -229,6 +231,10 @@ async function main() {
     // ── match employee ──
     let employee = null;
     if (thaiName) employee = byThaiName.get(normalizeName(thaiName)) || null;
+    if (!employee && thaiName) {
+      employee = byThaiNameNoSpace.get(normalizeNameNoSpace(thaiName)) || null; // ← เพิ่ม fallback
+    }
+
     if (!employee && engFirst) {
       const fullEN = normalizeName(`${engFirst} ${engLast || ""}`);
       employee = byEnglishName.get(fullEN) || null;
@@ -254,23 +260,10 @@ async function main() {
         }
       }
 
-      const preExisting = cellText(row.getCell("J")); // โรคประจำตัว — no dedicated field yet
-      let note = cellText(row.getCell("AH"));
-      if (
-        preExisting &&
-        preExisting !== "ไม่มี (No)" &&
-        !normalizeName(preExisting).includes("no")
-      ) {
-        note = `โรคประจำตัว: ${preExisting}${note ? " | " + note : ""}`;
-      }
+      const chronicDisease = cellText(row.getCell("J")); // โรคประจำตัว — เก็บ field แยกแล้ว เก็บดิบตามที่กรอกมา (รวม "ไม่มี (No)")
+      const note = cellText(row.getCell("AH"));
 
-      const healthRiskRaw = cellText(row.getCell("AI"));
-      const healthRisk = mapHealthRisk(healthRiskRaw);
-      if (healthRiskRaw && healthRisk === null) {
-        console.warn(
-          `Row ${rowNum} (${employee.fullName}): unrecognized Health Risk text "${healthRiskRaw}" — leaving healthRisk null`,
-        );
-      }
+      const healthRisk = cellText(row.getCell("AI")); // เก็บข้อความดิบตรงๆ — ไม่ map enum แล้ว
 
       const recommendation = cellText(row.getCell("AJ"));
       const commentDate = cellDate(row.getCell("AK"));
@@ -315,6 +308,7 @@ async function main() {
       const recordData = {
         ...fields,
         examDate,
+        chronicDisease, // ← เพิ่มบรรทัดนี้
         note,
         healthRisk,
         recommendation,

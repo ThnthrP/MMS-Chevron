@@ -1,20 +1,18 @@
 import Sidebar from "./Sidebar";
 import Navbar from "./Navbar";
-import { useContext } from "react";
-import { AppContent } from "../../context/AppContext";
+import { useState } from "react";
 
 const Layout = ({ children }) => {
-  const { userData } = useContext(AppContent);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    // 💡 เติม min-h-screen เพื่อให้ความสูงขั้นต่ำเต็มหน้าจอเสมอ
     <div className="flex bg-gray-100 min-h-screen">
-      <Sidebar role={userData?.role?.name} />
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      <div className="flex-1">
-        <Navbar />
-
-        <div className="p-6">{children}</div>
+      {/* min-w-0 = ตัวแก้หลัก: ให้ flex item หดได้ ไม่โดนตารางดันให้กว้าง */}
+      <div className="flex-1 min-w-0">
+        <Navbar onMenuClick={() => setSidebarOpen(true)} />
+        <div className="p-3 sm:p-6">{children}</div>
       </div>
     </div>
   );

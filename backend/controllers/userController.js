@@ -2,6 +2,16 @@ import prisma from "../config/prisma.js";
 // บนสุดของไฟล์ เพิ่ม:
 import bcrypt from "bcryptjs"; // ⚠ ใช้ตัวเดียวกับที่ authController ใช้ตอน login (ดูหมายเหตุ)
 
+// ประกอบชื่อแสดงผลจาก ชื่อ + นามสกุล (User.name)
+const composeName = (first, last) =>
+  [first, last]
+    .map((s) => s?.trim())
+    .filter(Boolean)
+    .join(" ");
+
+// ตัด field ลับออกก่อนส่งกลับ frontend
+const sanitizeUser = ({ password, resetOtp, resetOtpExpireAt, ...u }) => u;
+
 // =====================================================
 // GET CURRENT USER
 // =====================================================
@@ -42,9 +52,13 @@ export const getUserData = async (req, res) => {
 
       userData: {
         id: user.id,
-
+        titlePrefix: user.titlePrefix,
+        firstName: user.firstName,
+        lastName: user.lastName,
         name: user.name,
         email: user.email,
+        phone: user.phone,
+        department: user.department,
 
         role: {
           id: user.role?.id,
@@ -74,28 +88,76 @@ export const getUserData = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
+    const { firstName, lastName, name, phone, department, titlePrefix } =
+      req.body;
 
-    const { name } = req.body;
+    const data = { phone, department, titlePrefix };
+    if (firstName !== undefined) {
+      if (!firstName.trim()) {
+        return res.json({ success: false, message: "กรุณากรอกชื่อ" });
+      }
+      data.firstName = firstName.trim();
+      data.lastName = lastName?.trim() || null;
+      data.name = composeName(firstName, lastName);
+    } else if (name !== undefined) {
+      data.name = name; // หน้า Profile เดิมที่ยังส่ง name มา — ยังใช้ได้
+    }
 
     const updatedUser = await prisma.user.update({
-      where: {
-        id: userId,
-      },
-
-      data: {
-        name,
-      },
+      where: { id: userId },
+      data,
     });
 
-    return res.json({
-      success: true,
-      user: updatedUser,
-    });
+    return res.json({ success: true, user: sanitizeUser(updatedUser) });
   } catch (error) {
-    return res.json({
-      success: false,
-      message: error.message,
+    return res.json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// CHANGE PASSWORD (self-service — ต้องยืนยัน currentPassword ก่อนเสมอ)
+// =====================================================
+
+export const changePassword = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.json({
+        success: false,
+        message: "currentPassword และ newPassword จำเป็นต้องกรอก",
+      });
+    }
+    if (newPassword.length < 8) {
+      return res.json({
+        success: false,
+        message: "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร",
+      });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.json({ success: false, message: "User not found" });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.json({
+        success: false,
+        message: "รหัสผ่านปัจจุบันไม่ถูกต้อง",
+      });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: hashed },
     });
+
+    return res.json({ success: true });
+  } catch (error) {
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -126,7 +188,7 @@ export const updateUserRole = async (req, res) => {
 
     return res.json({
       success: true,
-      user: updatedUser,
+      user: sanitizeUser(updatedUser),
     });
   } catch (error) {
     return res.json({
@@ -179,7 +241,7 @@ export const getAllUsers = async (req, res) => {
 
     return res.json({
       success: true,
-      users,
+      users: users.map(sanitizeUser),
     });
   } catch (error) {
     return res.json({
@@ -194,11 +256,19 @@ export const getAllUsers = async (req, res) => {
 // =====================================================
 export const createUser = async (req, res) => {
   try {
-    const { name, email, password, roleId, employeeId } = req.body;
-    if (!name || !email || !password || !roleId) {
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      roleId,
+      employeeId,
+      titlePrefix,
+    } = req.body;
+    if (!firstName?.trim() || !email || !password || !roleId) {
       return res.json({
         success: false,
-        message: "name, email, password, roleId are required",
+        message: "ชื่อ, email, password, role จำเป็นต้องกรอก",
       });
     }
     const existing = await prisma.user.findUnique({ where: { email } });
@@ -208,15 +278,18 @@ export const createUser = async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
       data: {
-        name,
+        firstName: firstName.trim(),
+        lastName: lastName?.trim() || null,
+        name: composeName(firstName, lastName),
         email,
         password: hashed,
         roleId,
         employeeId: employeeId || null,
+        titlePrefix: titlePrefix || null,
       },
       include: { role: true, employee: true },
     });
-    return res.json({ success: true, user });
+    return res.json({ success: true, user: sanitizeUser(user) });
   } catch (error) {
     return res.json({ success: false, message: error.message });
   }
@@ -242,6 +315,58 @@ export const deleteUser = async (req, res) => {
 };
 
 // =====================================================
+// FORCE DELETE USER (DEV ONLY)
+// ตัด/ลบ record ที่เกี่ยวข้องออกก่อน แล้วค่อยลบ user จริง
+// หมายเหตุ: ถ้า user เคยสร้าง ManpowerRequest ไว้ จะยัง error อยู่
+// เพราะ ManpowerRequest.requestedById เป็น field บังคับ (ไม่ nullable)
+// — ตั้งใจปล่อยให้ error ตรงนี้ เพื่อกันไม่ให้ข้อมูล request ในระบบ
+// เสียหายโดยไม่ตั้งใจ ถ้าเจอกรณีนี้ต้องจัดการ request เหล่านั้นด้วยมือก่อน
+// =====================================================
+export const forceDeleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (req.user.id === id) {
+      return res.json({
+        success: false,
+        message: "Cannot delete your own account",
+      });
+    }
+
+    await prisma.$transaction([
+      prisma.notification.deleteMany({ where: { userId: id } }),
+      prisma.workflowLog.updateMany({
+        where: { userId: id },
+        data: { userId: null },
+      }),
+      prisma.clientApproval.updateMany({
+        where: { decidedById: id },
+        data: { decidedById: null },
+      }),
+      prisma.performanceReview.updateMany({
+        where: { reviewedById: id },
+        data: { reviewedById: null },
+      }),
+      prisma.trainingRequestBatch.updateMany({
+        where: { requestedById: id },
+        data: { requestedById: null },
+      }),
+      prisma.projectMessage.deleteMany({ where: { senderId: id } }),
+      prisma.user.delete({ where: { id } }),
+    ]);
+
+    return res.json({ success: true });
+  } catch (error) {
+    return res.json({
+      success: false,
+      message:
+        error.code === "P2003"
+          ? "ลบไม่สำเร็จ — user นี้เคยสร้าง ManpowerRequest ไว้ ต้องจัดการ request เหล่านั้นก่อน"
+          : error.message,
+    });
+  }
+};
+
+// =====================================================
 // LINK / UNLINK EMPLOYEE (employeeId = null เพื่อ unlink)
 // =====================================================
 export const updateUserEmployee = async (req, res) => {
@@ -253,7 +378,7 @@ export const updateUserEmployee = async (req, res) => {
       data: { employeeId: employeeId || null },
       include: { role: true, employee: true },
     });
-    return res.json({ success: true, user });
+    return res.json({ success: true, user: sanitizeUser(user) });
   } catch (error) {
     return res.json({ success: false, message: error.message });
   }
@@ -301,6 +426,35 @@ export const createRole = async (req, res) => {
 };
 
 // =====================================================
+// UPDATE ROLE (rename) — ไม่กระทบ user ที่ผูกอยู่ เพราะผูกด้วย roleId ไม่ใช่ name
+// =====================================================
+export const updateRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.json({ success: false, message: "Role name is required" });
+    }
+    const normalized = name.trim().toLowerCase();
+
+    const existing = await prisma.role.findUnique({
+      where: { name: normalized },
+    });
+    if (existing && existing.id !== id) {
+      return res.json({ success: false, message: "Role name already exists" });
+    }
+
+    const role = await prisma.role.update({
+      where: { id },
+      data: { name: normalized },
+    });
+    return res.json({ success: true, role });
+  } catch (error) {
+    return res.json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
 // DELETE ROLE
 // กันลบถ้ายังมี user ผูกกับ role นี้อยู่ (ป้องกัน user เหลือ roleId ชี้ไป role ที่ไม่มีอยู่จริง)
 // =====================================================
@@ -321,6 +475,44 @@ export const deleteRole = async (req, res) => {
     await prisma.role.delete({ where: { id } });
 
     return res.json({ success: true });
+  } catch (error) {
+    return res.json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// UPDATE USER (ADMIN) — แก้ name/email/titlePrefix ของ user คนอื่น
+// =====================================================
+export const updateUserByAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { firstName, lastName, email, titlePrefix } = req.body;
+
+    if (!firstName?.trim() || !email) {
+      return res.json({
+        success: false,
+        message: "ชื่อ และ email จำเป็นต้องกรอก",
+      });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing && existing.id !== id) {
+      return res.json({ success: false, message: "Email นี้มีคนใช้แล้ว" });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: {
+        firstName: firstName.trim(),
+        lastName: lastName?.trim() || null,
+        name: composeName(firstName, lastName),
+        email,
+        titlePrefix: titlePrefix || null,
+      },
+      include: { role: true, employee: true },
+    });
+
+    return res.json({ success: true, user: sanitizeUser(updatedUser) });
   } catch (error) {
     return res.json({ success: false, message: error.message });
   }

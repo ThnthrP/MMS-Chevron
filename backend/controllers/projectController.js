@@ -25,6 +25,22 @@ export async function getProjectById(req, res) {
 export async function createProject(req, res) {
   try {
     const project = await service.createProject(req.body);
+
+    // แจ้งเตือนทีม manpower_supply ว่ามี project ใหม่ให้เตรียมจัดหาคน
+    // await ให้รันเสร็จจริงก่อน response (กันหายตอน server restart กะทันหัน)
+    // แต่แยก try/catch ของตัวเอง — ถ้าแจ้งเตือนพัง ไม่ทำให้ request หลัก fail
+    // เพราะ project ถูกสร้างสำเร็จแล้วจริงๆ ไม่ควรให้ user เห็น error ที่ทำให้เข้าใจผิด
+    try {
+      await notifyRole("manpower_supply", {
+        type: "project_created",
+        title: "มี Project ใหม่",
+        message: `${project.name} ถูกเปิดใช้งานแล้ว — เตรียมจัดหาพนักงาน`,
+        link: `/projects/${project.id}`,
+      });
+    } catch (notifyError) {
+      console.error("Failed to notify manpower_supply:", notifyError);
+    }
+
     res.status(201).json(project);
   } catch (error) {
     if (

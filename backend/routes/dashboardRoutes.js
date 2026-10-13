@@ -6,5 +6,6 @@ const router = express.Router();
 router.use(userAuth);
 
 router.get("/", controller.getDashboard);
+router.get("/alerts/:trainingName", controller.getAlertsByTraining); // ← เพิ่มบรรทัดนี้
 
 export default router;

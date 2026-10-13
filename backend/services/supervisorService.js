@@ -25,6 +25,7 @@ export async function getProjectsOverview() {
             select: {
               fullName: true,
               empCode: true,
+              empId: true,
               position: { select: { name: true } }, // ← เพิ่ม: ตำแหน่งจริงของพนักงาน
             },
           },
@@ -71,6 +72,7 @@ export async function getProjectsOverview() {
       employeeId: a.employeeId,
       fullName: a.employee?.fullName,
       empCode: a.employee?.empCode,
+      empId: a.employee?.empId,
       employeePosition: a.employee?.position?.name ?? null, // ← ใหม่: ตำแหน่งจริงของพนักงาน
       requestedPosition:
         requestedPositionByEmp.get(a.employeeId) ??

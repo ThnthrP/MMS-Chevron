@@ -1,10 +1,10 @@
 import React, { useContext, useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
-import { Bell, Search } from "lucide-react";
+import { Bell, Search, ChevronDown, Menu } from "lucide-react";
 
-const Navbar = () => {
+const Navbar = ({ onMenuClick }) => {
   const navigate = useNavigate();
   const { userData, backendUrl, setIsLoggedin, setUserData } =
     useContext(AppContent);
@@ -55,23 +55,26 @@ const Navbar = () => {
     return () => clearInterval(interval);
   }, [userData, backendUrl]);
 
-  const handleNotifClick = async (n) => {
+  // กดแจ้งเตือน → mark read (ไม่ต้องรอ) — การเปลี่ยนหน้าทำโดย <Link> เอง
+  // จึงคลิกขวา / Ctrl+คลิก / คลิกล้อกลาง เปิดในแท็บใหม่ได้
+  const markNotifRead = async (n) => {
+    if (n.isRead) return;
     try {
-      if (!n.isRead) {
-        await axios.put(
-          `${backendUrl}/api/notifications/${n.id}/read`,
-          {},
-          {
-            withCredentials: true,
-          },
-        );
-      }
-      setOpenNotif(false);
-      if (n.link) navigate(n.link);
+      await axios.put(
+        `${backendUrl}/api/notifications/${n.id}/read`,
+        {},
+        { withCredentials: true },
+      );
       fetchNotifications();
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleNotifClick = (e, n) => {
+    markNotifRead(n);
+    // คลิกปกติ → ปิด dropdown / Ctrl+คลิก (เปิดแท็บใหม่) → เปิดค้างไว้
+    if (!(e.ctrlKey || e.metaKey || e.shiftKey)) setOpenNotif(false);
   };
 
   const handleMarkAllRead = async () => {
@@ -100,25 +103,24 @@ const Navbar = () => {
   };
 
   return (
-    <div className="w-full flex justify-between items-center px-6 py-3 bg-white shadow sticky top-0 z-40">
+    <div className="w-full flex justify-between items-center px-3 sm:px-6 py-3 bg-white shadow sticky top-0 z-40">
       {/* LEFT */}
-      <div className="flex items-center gap-6">
-        <div
-          className="font-bold text-lg cursor-pointer"
-          onClick={() => navigate("/")}
+      <div className="flex items-center gap-3 sm:gap-6 min-w-0">
+        <button
+          onClick={onMenuClick}
+          className="md:hidden p-2 -ml-1 hover:bg-gray-100 rounded-lg"
+          aria-label="เปิดเมนู"
+        >
+          <Menu size={20} />
+        </button>
+        <Link
+          to="/"
+          className="font-bold text-lg text-inherit no-underline"
         >
           MMS
-        </div>
-        <div className="text-sm bg-gray-100 px-3 py-1 rounded-full">
+        </Link>
+        <div className="text-sm bg-gray-100 px-3 py-1 rounded-full truncate">
           Experteam
-        </div>
-        <div className="hidden md:flex items-center bg-gray-100 px-3 py-1 rounded-lg">
-          <Search size={16} className="text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search..."
-            className="bg-transparent outline-none px-2 text-sm"
-          />
         </div>
       </div>
 
@@ -139,7 +141,7 @@ const Navbar = () => {
           </button>
 
           {openNotif && (
-            <div className="absolute right-0 mt-2 w-80 bg-white shadow-lg rounded-lg p-3 z-50 max-h-96 overflow-y-auto">
+            <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-1.5rem)] bg-white shadow-lg rounded-lg p-3 z-50 max-h-96 overflow-y-auto">
               <div className="flex items-center justify-between mb-2">
                 <p className="font-semibold">Notifications</p>
                 {unreadCount > 0 && (
@@ -154,23 +156,42 @@ const Navbar = () => {
               {notifications.length === 0 ? (
                 <p className="text-sm text-gray-500">No notifications</p>
               ) : (
-                notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    onClick={() => handleNotifClick(n)}
-                    className={`text-sm p-2 hover:bg-gray-100 rounded cursor-pointer ${
-                      !n.isRead ? "bg-blue-50" : ""
-                    }`}
-                  >
-                    <p className="font-medium">{n.title}</p>
-                    {n.message && (
-                      <p className="text-xs text-gray-600">{n.message}</p>
-                    )}
-                    <p className="text-xs text-gray-400">
-                      {timeAgo(n.createdAt)}
-                    </p>
-                  </div>
-                ))
+                notifications.map((n) => {
+                  const cls = `block text-sm text-inherit no-underline p-2 hover:bg-gray-100 rounded cursor-pointer ${
+                    !n.isRead ? "bg-blue-50" : ""
+                  }`;
+                  const body = (
+                    <>
+                      <p className="font-medium">{n.title}</p>
+                      {n.message && (
+                        <p className="text-xs text-gray-600">{n.message}</p>
+                      )}
+                      <p className="text-xs text-gray-400">
+                        {timeAgo(n.createdAt)}
+                      </p>
+                    </>
+                  );
+                  // มีลิงก์ → <Link> (เปิดแท็บใหม่ได้) / ไม่มีลิงก์ → แค่ mark read
+                  return n.link ? (
+                    <Link
+                      key={n.id}
+                      to={n.link}
+                      onClick={(e) => handleNotifClick(e, n)}
+                      onAuxClick={() => markNotifRead(n)}
+                      className={cls}
+                    >
+                      {body}
+                    </Link>
+                  ) : (
+                    <div
+                      key={n.id}
+                      onClick={(e) => handleNotifClick(e, n)}
+                      className={cls}
+                    >
+                      {body}
+                    </div>
+                  );
+                })
               )}
             </div>
           )}
@@ -182,8 +203,36 @@ const Navbar = () => {
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
         >
-          <div className="w-9 h-9 flex items-center justify-center rounded-full bg-blue-600 text-white cursor-pointer">
-            {userData?.name?.[0]?.toUpperCase()}
+          <div className="flex items-center gap-2 cursor-pointer">
+            <div className="relative w-9 h-9">
+              <div className="w-9 h-9 flex items-center justify-center rounded-full bg-blue-600 text-white overflow-hidden">
+                {userData?.employee?.photoUrl ? (
+                  <img
+                    src={`${backendUrl}${userData.employee.photoUrl}`}
+                    alt={userData.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  userData?.name?.[0]?.toUpperCase()
+                )}
+              </div>
+
+              {/* ลูกศรลง — บอกว่ามี dropdown แบบ Facebook */}
+              <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm">
+                <ChevronDown size={10} className="text-gray-600" />
+              </div>
+            </div>
+
+            <div className="hidden md:flex flex-col leading-tight">
+              <span className="text-sm font-medium text-gray-800">
+                {userData?.titlePrefix
+                  ? `${userData.titlePrefix}${userData.name}`
+                  : userData?.name}
+              </span>
+              <span className="text-xs text-gray-500">
+                {userData?.role?.name}
+              </span>
+            </div>
           </div>
 
           {openUser && (
@@ -192,7 +241,11 @@ const Navbar = () => {
               onMouseEnter={handleEnter}
               onMouseLeave={handleLeave}
             >
-              <p className="px-3 py-2 text-sm font-medium">{userData.name}</p>
+              <p className="px-3 py-2 text-sm font-medium">
+                {userData.titlePrefix
+                  ? `${userData.titlePrefix}${userData.name}`
+                  : userData.name}
+              </p>
               <p className="px-3 py-1 text-xs text-gray-500">
                 {userData.role?.name}
               </p>

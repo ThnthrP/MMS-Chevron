@@ -3,117 +3,235 @@ import axios from "axios";
 import { toast } from "react-toastify";
 import { AppContent } from "../../context/AppContext";
 
-// ── role badge tones (fallback = เทา) ──
-const ROLE_TONE = {
-  admin: { bg: "#ede7f6", color: "#5e35b1" },
-  manpower: { bg: "#e3f2fd", color: "#1565c0" },
-  hr: { bg: "#e0f2f1", color: "#00695c" },
-  pe: { bg: "#fff3e0", color: "#e65100" },
-  safety: { bg: "#fce4ec", color: "#ad1457" },
-  expert: { bg: "#f1f8e9", color: "#558b2f" },
-  nurse: { bg: "#e8eaf6", color: "#3949ab" },
+// ══════════════════════════════════════════════════════════
+// constants
+// ══════════════════════════════════════════════════════════
+// สี badge ตาม role — จับจาก "คำ" ในชื่อ (role จริงคือ hr_officer, manpower_supply,
+// project_engineer ฯลฯ — เดิม map แบบตรงตัว "hr"/"manpower" เลยได้สีเทาหมด)
+const ROLE_TONES = [
+  ["admin", "bg-[#ede7f6] text-[#5e35b1]"],
+  ["manpower", "bg-[#e3f2fd] text-[#1565c0]"],
+  ["hr", "bg-[#e0f2f1] text-[#00695c]"],
+  ["project", "bg-[#fff3e0] text-[#e65100]"],
+  ["pe", "bg-[#fff3e0] text-[#e65100]"],
+  ["safety", "bg-[#fce4ec] text-[#ad1457]"],
+  ["expert", "bg-[#f1f8e9] text-[#558b2f]"],
+  ["nurse", "bg-[#e8eaf6] text-[#3949ab]"],
+];
+const roleTone = (name) => {
+  const n = (name || "").toLowerCase();
+  const hit = ROLE_TONES.find(([key]) => n === key || n.startsWith(`${key}_`));
+  return hit ? hit[1] : "bg-gray-100 text-gray-500";
 };
-const roleTone = (name) =>
-  ROLE_TONE[(name || "").toLowerCase()] || { bg: "#f1f3f5", color: "#6c757d" };
 
+// คำนำหน้าชื่อ — เก็บแยกจาก name เสมอ (field titlePrefix ใน schema)
+const TITLE_PREFIX_OPTIONS = ["", "นาย", "นาง", "นางสาว", "Mr.", "Mrs.", "Ms."];
+
+// Force Delete — แสดงเฉพาะตอนรัน dev server (Vite) ไม่หลุดไป production
+// const SHOW_FORCE_DELETE = import.meta.env.DEV;
+
+// Force Delete — แสดงตอน dev หรือเมื่อ build ด้วย VITE_SHOW_FORCE_DELETE=true
+const SHOW_FORCE_DELETE =
+  import.meta.env.DEV || import.meta.env.VITE_SHOW_FORCE_DELETE === "true";
+
+const emptyAddForm = {
+  titlePrefix: "",
+  firstName: "",
+  lastName: "",
+  email: "",
+  password: "",
+  roleId: "",
+  employeeId: "",
+};
+
+const CARD = "overflow-hidden rounded-[10px] border border-gray-200 bg-white";
+const FIELD_LABEL =
+  "mb-[5px] block text-[11px] font-bold uppercase tracking-[0.4px] text-gray-500";
+const INPUT =
+  "box-border w-full rounded-lg border border-gray-300 bg-white px-3 py-[9px] text-[13px] outline-none focus:border-blue-400";
+const SELECT_SM =
+  "rounded-md border border-gray-300 bg-white px-2 py-[5px] text-xs outline-none focus:border-blue-400 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400";
+const BTN_SM =
+  "cursor-pointer whitespace-nowrap rounded-md border px-3 py-[5px] text-xs font-semibold disabled:cursor-not-allowed";
+const BTN_PRIMARY =
+  "cursor-pointer rounded-lg border-none bg-blue-600 px-4 py-2 text-[13px] font-bold text-white hover:bg-blue-700 disabled:cursor-default disabled:bg-gray-400";
+const BTN_GHOST =
+  "cursor-pointer rounded-lg border border-gray-200 bg-white px-4 py-2 text-[13px] font-semibold text-gray-500 hover:bg-gray-50";
+const TH =
+  "whitespace-nowrap border-b border-gray-200 px-3.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.3px] text-gray-500";
+const TD = "border-b border-gray-100 px-3.5 py-3 align-middle text-[13px]";
+const ACT_BTN =
+  "inline-flex h-7 cursor-pointer items-center justify-center whitespace-nowrap rounded-md border-none px-3 text-xs font-semibold transition-all disabled:cursor-not-allowed";
+const LIFT_WHITE =
+  "bg-white text-gray-700 shadow-[0_1px_3px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.08)] hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(0,0,0,0.18),0_2px_3px_rgba(0,0,0,0.1)]";
+const LIFT_RED =
+  "bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.15),0_1px_2px_rgba(0,0,0,0.06)] hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(220,53,69,0.25),0_2px_3px_rgba(0,0,0,0.08)]";
+const LIFT_DANGER =
+  "bg-[#f8d7da] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.25),0_1px_2px_rgba(0,0,0,0.06)] hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(220,53,69,0.35),0_2px_3px_rgba(0,0,0,0.08)]";
+const BTN_DISABLED = "bg-gray-100 text-gray-400 shadow-none";
+
+// ══════════════════════════════════════════════════════════
+// small components
+// ══════════════════════════════════════════════════════════
 function RoleBadge({ name }) {
-  const t = roleTone(name);
   return (
     <span
-      style={{
-        background: t.bg,
-        color: t.color,
-        borderRadius: "6px",
-        padding: "2px 10px",
-        fontSize: "11px",
-        fontWeight: 700,
-        textTransform: "capitalize",
-        whiteSpace: "nowrap",
-      }}
+      className={`whitespace-nowrap rounded-md px-2.5 py-0.5 text-[11px] font-bold capitalize ${roleTone(name)}`}
     >
       {name || "—"}
     </span>
   );
 }
 
+// ไอคอนตา (เปิด/ปิดการแสดง password) — inline SVG
+function EyeIcon({ open }) {
+  return open ? (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ) : (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.6 18.6 0 0 1 4.22-5.44M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a18.6 18.6 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  );
+}
+
+// กรอบ modal ที่ใช้ร่วมกันทั้ง 3 ตัว
+function Modal({ title, maxW = "max-w-[440px]", onClose, footer, children }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 p-3 sm:p-5"
+      onClick={onClose}
+    >
+      <div
+        className={`${CARD} flex max-h-[90vh] w-full ${maxW} flex-col`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center justify-between bg-[#1e3a5f] px-5 py-3.5 text-white">
+          <span className="text-[15px] font-bold">{title}</span>
+          <button
+            onClick={onClose}
+            className="cursor-pointer border-none bg-transparent text-xl leading-none text-white"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">{children}</div>
+        {footer && (
+          <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3.5">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NameFields({ value, onChange }) {
+  return (
+    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[110px_1fr_1fr]">
+      <div>
+        <label className={FIELD_LABEL}>คำนำหน้า</label>
+        <select
+          className={INPUT}
+          value={value.titlePrefix}
+          onChange={(e) => onChange({ ...value, titlePrefix: e.target.value })}
+        >
+          {TITLE_PREFIX_OPTIONS.map((t) => (
+            <option key={t} value={t}>
+              {t || "— ไม่ระบุ —"}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className={FIELD_LABEL}>ชื่อ *</label>
+        <input
+          className={INPUT}
+          placeholder="เช่น สมชาย"
+          value={value.firstName}
+          onChange={(e) => onChange({ ...value, firstName: e.target.value })}
+        />
+      </div>
+      <div>
+        <label className={FIELD_LABEL}>นามสกุล</label>
+        <input
+          className={INPUT}
+          placeholder="เช่น ใจดี"
+          value={value.lastName}
+          onChange={(e) => onChange({ ...value, lastName: e.target.value })}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// main
+// ══════════════════════════════════════════════════════════
 export default function AdminUsers() {
-  const { backendUrl, userData } = useContext(AppContent);
+  const { backendUrl, userData, getUserData } = useContext(AppContent);
 
   const [users, setUsers] = useState([]);
   const [roleList, setRoleList] = useState([]);
   const [availableEmps, setAvailableEmps] = useState([]);
-  const [roleDraft, setRoleDraft] = useState({}); // { userId: roleId } (แก้ค้างก่อน Save)
+  const [roleDraft, setRoleDraft] = useState({}); // { userId: roleId } — แก้ค้างก่อน Save
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [savingRoleUserId, setSavingRoleUserId] = useState(null);
+  const [linkingUserId, setLinkingUserId] = useState(null);
 
+  // ── roles modal ──
   const [showRoles, setShowRoles] = useState(false);
   const [newRoleName, setNewRoleName] = useState("");
   const [creatingRole, setCreatingRole] = useState(false);
   const [deletingRoleId, setDeletingRoleId] = useState(null);
+  const [editingRoleId, setEditingRoleId] = useState(null);
+  const [editRoleName, setEditRoleName] = useState("");
+  const [savingRoleId, setSavingRoleId] = useState(null);
 
-  const handleCreateRole = async () => {
-    if (!newRoleName.trim()) {
-      toast.error("กรอกชื่อ role");
-      return;
-    }
-    try {
-      setCreatingRole(true);
-      const res = await axios.post(
-        `${backendUrl}/api/user/roles`,
-        { name: newRoleName },
-        { withCredentials: true },
-      );
-      if (res.data.success) {
-        toast.success("เพิ่ม role แล้ว");
-        setNewRoleName("");
-        fetchAll();
-      } else {
-        toast.error(res.data.message || "เพิ่มไม่สำเร็จ");
-      }
-    } catch (error) {
-      console.error(error);
-      toast.error("เกิดข้อผิดพลาด");
-    } finally {
-      setCreatingRole(false);
-    }
-  };
-
-  const handleDeleteRole = async (role) => {
-    if (!window.confirm(`ลบ role "${role.name}"?`)) return;
-    try {
-      setDeletingRoleId(role.id);
-      const res = await axios.delete(
-        `${backendUrl}/api/user/roles/${role.id}`,
-        { withCredentials: true },
-      );
-      if (res.data.success) {
-        toast.success("ลบ role แล้ว");
-        fetchAll();
-      } else {
-        toast.error(res.data.message || "ลบไม่สำเร็จ");
-      }
-    } catch (error) {
-      console.error(error);
-      toast.error("เกิดข้อผิดพลาด");
-    } finally {
-      setDeletingRoleId(null);
-    }
-  };
-
-  // add-user modal
+  // ── add user modal ──
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    password: "",
-    roleId: "",
-    employeeId: "",
-  });
+  const [showAddPassword, setShowAddPassword] = useState(false);
+  const [form, setForm] = useState(emptyAddForm);
   const [saving, setSaving] = useState(false);
 
-  const fetchAll = async () => {
+  // ── edit user modal (ไม่มี password) ──
+  const [editingUser, setEditingUser] = useState(null);
+  const [editForm, setEditForm] = useState({
+    titlePrefix: "",
+    firstName: "",
+    lastName: "",
+    email: "",
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // keepDrafts: เก็บ role ที่แก้ค้างของแถวอื่นไว้ (เดิม Save แถวหนึ่ง → แถวอื่นที่แก้ค้างหายหมด)
+  const fetchAll = async ({ keepDrafts = false } = {}) => {
     try {
-      setLoading(true);
+      if (!keepDrafts) setLoading(true);
       const [userRes, roleRes, empRes] = await Promise.all([
         axios.get(`${backendUrl}/api/user/all`, { withCredentials: true }),
         axios.get(`${backendUrl}/api/user/roles`, { withCredentials: true }),
@@ -122,10 +240,16 @@ export default function AdminUsers() {
         }),
       ]);
       if (userRes.data.success) {
-        setUsers(userRes.data.users);
-        const draft = {};
-        userRes.data.users.forEach((u) => (draft[u.id] = u.role?.id));
-        setRoleDraft(draft);
+        const list = userRes.data.users;
+        setUsers(list);
+        setRoleDraft((prev) => {
+          const next = {};
+          list.forEach((u) => {
+            next[u.id] =
+              keepDrafts && prev[u.id] !== undefined ? prev[u.id] : u.role?.id;
+          });
+          return next;
+        });
       }
       if (roleRes.data.success) setRoleList(roleRes.data.roles);
       if (empRes.data.success) setAvailableEmps(empRes.data.employees);
@@ -139,13 +263,111 @@ export default function AdminUsers() {
 
   useEffect(() => {
     fetchAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendUrl]);
 
   const isSelf = (id) => id === userData?.id;
+  const errMsg = (error, fallback) => error.response?.data?.message || fallback;
 
-  // ── save role ──
+  // ══════════ Roles ══════════
+  const handleCreateRole = async () => {
+    if (!newRoleName.trim()) {
+      toast.error("กรอกชื่อ role");
+      return;
+    }
+    if (creatingRole) return;
+    try {
+      setCreatingRole(true);
+      const res = await axios.post(
+        `${backendUrl}/api/user/roles`,
+        { name: newRoleName.trim() },
+        { withCredentials: true },
+      );
+      if (res.data.success) {
+        toast.success("เพิ่ม role แล้ว");
+        setNewRoleName("");
+        fetchAll({ keepDrafts: true });
+      } else {
+        toast.error(res.data.message || "เพิ่มไม่สำเร็จ");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(errMsg(error, "เกิดข้อผิดพลาด"));
+    } finally {
+      setCreatingRole(false);
+    }
+  };
+
+  const handleDeleteRole = async (role) => {
+    if (!window.confirm(`ลบ role "${role.name}"?`)) return;
+    try {
+      setDeletingRoleId(role.id);
+      const res = await axios.delete(
+        `${backendUrl}/api/user/roles/${role.id}`,
+        {
+          withCredentials: true,
+        },
+      );
+      if (res.data.success) {
+        toast.success("ลบ role แล้ว");
+        fetchAll({ keepDrafts: true });
+      } else {
+        toast.error(res.data.message || "ลบไม่สำเร็จ");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(errMsg(error, "เกิดข้อผิดพลาด"));
+    } finally {
+      setDeletingRoleId(null);
+    }
+  };
+
+  const startEditRole = (role) => {
+    setEditingRoleId(role.id);
+    setEditRoleName(role.name);
+  };
+  const cancelEditRole = () => {
+    setEditingRoleId(null);
+    setEditRoleName("");
+  };
+
+  const handleSaveRoleName = async (role) => {
+    const trimmed = editRoleName.trim();
+    if (!trimmed) {
+      toast.error("กรอกชื่อ role");
+      return;
+    }
+    if (trimmed === role.name) {
+      cancelEditRole();
+      return;
+    }
+    if (savingRoleId) return;
+    try {
+      setSavingRoleId(role.id);
+      const res = await axios.put(
+        `${backendUrl}/api/user/roles/${role.id}`,
+        { name: trimmed },
+        { withCredentials: true },
+      );
+      if (res.data.success) {
+        toast.success("แก้ไขชื่อ role แล้ว");
+        cancelEditRole();
+        fetchAll({ keepDrafts: true });
+      } else {
+        toast.error(res.data.message || "แก้ไขไม่สำเร็จ");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(errMsg(error, "เกิดข้อผิดพลาด"));
+    } finally {
+      setSavingRoleId(null);
+    }
+  };
+
+  // ══════════ Users ══════════
   const handleSaveRole = async (userId) => {
     try {
+      setSavingRoleUserId(userId);
       const res = await axios.put(
         `${backendUrl}/api/user/role`,
         { userId, roleId: roleDraft[userId] },
@@ -153,19 +375,36 @@ export default function AdminUsers() {
       );
       if (res.data.success) {
         toast.success("อัปเดต role แล้ว");
-        fetchAll();
+        // อัปเดตเฉพาะแถวนี้ — draft ของแถวอื่นยังอยู่
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === userId
+              ? {
+                  ...u,
+                  role:
+                    roleList.find((r) => r.id === roleDraft[userId]) || u.role,
+                }
+              : u,
+          ),
+        );
+        fetchAll({ keepDrafts: true });
       } else {
         toast.error(res.data.message || "อัปเดตไม่สำเร็จ");
       }
     } catch (error) {
       console.error(error);
-      toast.error("เกิดข้อผิดพลาด");
+      toast.error(errMsg(error, "เกิดข้อผิดพลาด"));
+    } finally {
+      setSavingRoleUserId(null);
     }
   };
 
-  // ── link / unlink employee ──
+  const resetRoleDraft = (u) =>
+    setRoleDraft((p) => ({ ...p, [u.id]: u.role?.id }));
+
   const handleLinkEmployee = async (userId, employeeId) => {
     try {
+      setLinkingUserId(userId);
       const res = await axios.put(
         `${backendUrl}/api/user/${userId}/employee`,
         { employeeId: employeeId || null },
@@ -173,17 +412,18 @@ export default function AdminUsers() {
       );
       if (res.data.success) {
         toast.success(employeeId ? "ผูก worker แล้ว" : "ยกเลิกการผูกแล้ว");
-        fetchAll();
+        fetchAll({ keepDrafts: true });
       } else {
         toast.error(res.data.message || "ไม่สำเร็จ");
       }
     } catch (error) {
       console.error(error);
-      toast.error("เกิดข้อผิดพลาด");
+      toast.error(errMsg(error, "เกิดข้อผิดพลาด"));
+    } finally {
+      setLinkingUserId(null);
     }
   };
 
-  // ── delete ──
   const handleDelete = async (u) => {
     if (!window.confirm(`ลบผู้ใช้ "${u.name}"?`)) return;
     try {
@@ -192,46 +432,138 @@ export default function AdminUsers() {
       });
       if (res.data.success) {
         toast.success("ลบผู้ใช้แล้ว");
-        fetchAll();
+        fetchAll({ keepDrafts: true });
       } else {
         toast.error(res.data.message || "ลบไม่สำเร็จ");
       }
     } catch (error) {
       console.error(error);
-      toast.error("เกิดข้อผิดพลาด");
+      toast.error(errMsg(error, "เกิดข้อผิดพลาด"));
     }
   };
 
-  // ── create ──
+  // Force delete (DEV ONLY) — ลบ Notification/WorkflowLog ถาวร และตัดการอ้างอิงใน
+  // ClientApproval/PerformanceReview/ProjectMessage; ถ้าเคยสร้าง ManpowerRequest
+  // backend จะ error (field required) เพื่อกันข้อมูลสำคัญหาย
+  const handleForceDelete = async (u) => {
+    if (
+      !window.confirm(
+        `⚠️ FORCE DELETE (DEV ONLY)\n\nลบ "${u.name}" แบบถาวรพร้อมข้อมูลที่เกี่ยวข้องทั้งหมด (แจ้งเตือน, log)\n\nใช้เฉพาะช่วงพัฒนา/ทดสอบเท่านั้น — ยืนยันหรือไม่?`,
+      )
+    )
+      return;
+    try {
+      const res = await axios.delete(`${backendUrl}/api/user/${u.id}/force`, {
+        withCredentials: true,
+      });
+      if (res.data.success) {
+        toast.success("Force delete สำเร็จ");
+        fetchAll({ keepDrafts: true });
+      } else {
+        toast.error(res.data.message || "Force delete ไม่สำเร็จ");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        errMsg(
+          error,
+          "Force delete ไม่สำเร็จ — user นี้อาจเคยสร้าง request ไว้",
+        ),
+      );
+    }
+  };
+
+  const closeAdd = () => {
+    setShowAdd(false);
+    setShowAddPassword(false);
+    setForm(emptyAddForm);
+  };
+
   const handleCreate = async () => {
-    if (!form.name || !form.email || !form.password || !form.roleId) {
-      toast.error("กรอก name, email, password, role ให้ครบ");
+    if (
+      !form.firstName.trim() ||
+      !form.email.trim() ||
+      !form.password ||
+      !form.roleId
+    ) {
+      toast.error("กรอกชื่อ, email, password, role ให้ครบ");
       return;
     }
     try {
       setSaving(true);
-      const res = await axios.post(`${backendUrl}/api/user`, form, {
-        withCredentials: true,
-      });
+      const res = await axios.post(
+        `${backendUrl}/api/user`,
+        {
+          ...form,
+          firstName: form.firstName.trim(),
+          lastName: form.lastName.trim() || null,
+          email: form.email.trim(),
+          titlePrefix: form.titlePrefix || null,
+        },
+        { withCredentials: true },
+      );
       if (res.data.success) {
         toast.success("สร้างผู้ใช้แล้ว");
-        setShowAdd(false);
-        setForm({
-          name: "",
-          email: "",
-          password: "",
-          roleId: "",
-          employeeId: "",
-        });
-        fetchAll();
+        closeAdd();
+        fetchAll({ keepDrafts: true });
       } else {
         toast.error(res.data.message || "สร้างไม่สำเร็จ");
       }
     } catch (error) {
       console.error(error);
-      toast.error("เกิดข้อผิดพลาด");
+      // เดิมขึ้นแค่ "เกิดข้อผิดพลาด" — เช่น email ซ้ำ ผู้ใช้ไม่รู้ว่าเพราะอะไร
+      toast.error(errMsg(error, "เกิดข้อผิดพลาด"));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openEditUser = (u) => {
+    setEditingUser(u);
+    setEditForm({
+      titlePrefix: u.titlePrefix || "",
+      firstName: u.firstName ?? u.name ?? "",
+      lastName: u.lastName ?? "",
+      email: u.email || "",
+    });
+  };
+  const closeEditUser = () => {
+    setEditingUser(null);
+    setEditForm({ titlePrefix: "", firstName: "", lastName: "", email: "" });
+  };
+
+  const handleSaveEditUser = async () => {
+    if (!editForm.firstName.trim() || !editForm.email.trim()) {
+      toast.error("กรอกชื่อและ email ให้ครบ");
+      return;
+    }
+    try {
+      setSavingEdit(true);
+      const editingSelf = editingUser.id === userData?.id;
+      const res = await axios.put(
+        `${backendUrl}/api/user/${editingUser.id}`,
+        {
+          titlePrefix: editForm.titlePrefix || null,
+          firstName: editForm.firstName.trim(),
+          lastName: editForm.lastName.trim() || null,
+          email: editForm.email.trim(),
+        },
+        { withCredentials: true },
+      );
+      if (res.data.success) {
+        toast.success("แก้ไขข้อมูลผู้ใช้แล้ว");
+        closeEditUser();
+        fetchAll({ keepDrafts: true });
+        // แก้ข้อมูลตัวเอง → sync AppContext ให้ Navbar/Profile เปลี่ยนทันที
+        if (editingSelf && getUserData) getUserData();
+      } else {
+        toast.error(res.data.message || "แก้ไขไม่สำเร็จ");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(errMsg(error, "เกิดข้อผิดพลาด"));
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -241,607 +573,530 @@ export default function AdminUsers() {
     return users.filter(
       (u) =>
         (u.name || "").toLowerCase().includes(q) ||
-        (u.email || "").toLowerCase().includes(q),
+        (u.email || "").toLowerCase().includes(q) ||
+        (u.role?.name || "").toLowerCase().includes(q),
     );
   }, [users, search]);
 
-  // ── styles ──
-  const card = {
-    background: "#fff",
-    border: "1px solid #e9ecef",
-    borderRadius: "10px",
-    overflow: "hidden",
+  // ── ส่วนที่ใช้ทั้งตารางและการ์ด ──
+  const displayName = (u) =>
+    u.titlePrefix ? `${u.titlePrefix}${u.name}` : u.name;
+
+  const renderName = (u) => (
+    <>
+      <span className="font-bold">{displayName(u)}</span>
+      {isSelf(u.id) && (
+        <span className="ml-1.5 text-[10px] text-gray-400">(you)</span>
+      )}
+    </>
+  );
+
+  // Role: ตัวเอง = badge อย่างเดียว (เปลี่ยนไม่ได้) / คนอื่น = dropdown + ปุ่ม Save
+  // ที่โผล่เฉพาะตอนเปลี่ยน (เดิมโชว์ badge + dropdown ซ้ำกัน และปุ่ม Save อยู่ไกลในคอลัมน์ Actions)
+  const renderRole = (u) => {
+    if (isSelf(u.id)) {
+      return (
+        <span title="เปลี่ยน role ตัวเองไม่ได้">
+          <RoleBadge name={u.role?.name} />
+        </span>
+      );
+    }
+    const dirty = roleDraft[u.id] !== u.role?.id;
+    const saving = savingRoleUserId === u.id;
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        <select
+          value={roleDraft[u.id] || ""}
+          onChange={(e) =>
+            setRoleDraft((p) => ({ ...p, [u.id]: e.target.value }))
+          }
+          className={`${SELECT_SM} max-w-[180px] cursor-pointer ${
+            dirty ? "border-blue-500 bg-blue-50" : ""
+          }`}
+        >
+          {roleList.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+        {dirty && (
+          <>
+            <button
+              onClick={() => handleSaveRole(u.id)}
+              disabled={saving}
+              className={`${BTN_SM} border-blue-600 bg-blue-600 text-white hover:bg-blue-700`}
+            >
+              {saving ? "…" : "Save"}
+            </button>
+            <button
+              onClick={() => resetRoleDraft(u)}
+              disabled={saving}
+              title="ยกเลิกการเปลี่ยน"
+              className={`${BTN_SM} border-gray-200 bg-white px-2 text-gray-500 hover:bg-gray-50`}
+            >
+              ↺
+            </button>
+          </>
+        )}
+      </div>
+    );
   };
-  const th = {
-    textAlign: "left",
-    padding: "10px 14px",
-    fontSize: "11px",
-    fontWeight: 700,
-    color: "#6c757d",
-    textTransform: "uppercase",
-    letterSpacing: "0.3px",
-    borderBottom: "1px solid #e9ecef",
-    whiteSpace: "nowrap",
+
+  const renderLinkedWorker = (u) => {
+    // ตัวเลือก = available + คนที่ผูกอยู่ตอนนี้
+    const empOptions = [...availableEmps];
+    if (u.employee && !empOptions.find((e) => e.id === u.employee.id)) {
+      empOptions.unshift(u.employee);
+    }
+    return (
+      <select
+        value={u.employee?.id || ""}
+        onChange={(e) => handleLinkEmployee(u.id, e.target.value)}
+        disabled={linkingUserId === u.id}
+        className={`${SELECT_SM} w-full max-w-[280px] cursor-pointer`}
+      >
+        <option value="">— None —</option>
+        {empOptions.map((e) => (
+          <option key={e.id} value={e.id}>
+            {e.fullName} ({e.empCode})
+          </option>
+        ))}
+      </select>
+    );
   };
-  const td = {
-    padding: "12px 14px",
-    fontSize: "13px",
-    borderBottom: "1px solid #f1f3f5",
-    verticalAlign: "middle",
-  };
-  const select = {
-    border: "1px solid #ced4da",
-    borderRadius: "6px",
-    padding: "5px 8px",
-    fontSize: "12px",
-    background: "#fff",
-  };
-  const input = {
-    border: "1px solid #ced4da",
-    borderRadius: "8px",
-    padding: "9px 12px",
-    fontSize: "13px",
-    width: "100%",
-    boxSizing: "border-box",
+
+  const renderActions = (u) => {
+    const self = isSelf(u.id);
+    return (
+      <div className="flex flex-nowrap gap-1.5">
+        <button
+          title="แก้ไขข้อมูลผู้ใช้"
+          onClick={() => openEditUser(u)}
+          className={`${ACT_BTN} ${LIFT_WHITE} w-7 px-0 text-[13px]`}
+        >
+          ✏️
+        </button>
+        <button
+          onClick={() => handleDelete(u)}
+          disabled={self}
+          title={self ? "ลบบัญชีตัวเองไม่ได้" : "ลบผู้ใช้"}
+          className={`${ACT_BTN} ${self ? BTN_DISABLED : LIFT_RED}`}
+        >
+          Delete
+        </button>
+        {SHOW_FORCE_DELETE && (
+          <button
+            onClick={() => handleForceDelete(u)}
+            disabled={self}
+            title={
+              self
+                ? "ลบบัญชีตัวเองไม่ได้"
+                : "DEV ONLY — ลบพร้อมข้อมูลที่เกี่ยวข้องแบบถาวร"
+            }
+            className={`${ACT_BTN} text-[11px] font-bold ${
+              self ? BTN_DISABLED : LIFT_DANGER
+            }`}
+          >
+            ⚠ Force Delete
+          </button>
+        )}
+      </div>
+    );
   };
 
   return (
-    <div className="container-fluid p-0">
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* header */}
-        <div
-          style={{
-            ...card,
-            padding: "18px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "12px",
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: "20px", fontWeight: 800 }}>
-              👤 User Management
-            </div>
-            <div
-              style={{ marginTop: "4px", fontSize: "12px", color: "#6c757d" }}
-            >
-              จัดการบัญชีผู้ใช้ · role · การผูกกับ worker
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: "10px" }}>
-            <button
-              onClick={() => setShowRoles(true)}
-              style={{
-                background: "#fff",
-                color: "#0d6efd",
-                border: "1px solid #0d6efd",
-                borderRadius: "8px",
-                padding: "9px 16px",
-                fontSize: "13px",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              ⚙ Manage Roles
-            </button>
-            <button
-              onClick={() => setShowAdd(true)}
-              style={{
-                background: "#0d6efd",
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                padding: "9px 16px",
-                fontSize: "13px",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              ＋ Add User
-            </button>
+    <div className="mx-auto w-full min-w-0 max-w-[1800px]">
+      {/* ════════ Header ════════ */}
+      <div
+        className={`${CARD} mb-4 flex flex-col gap-3 p-4 sm:p-[18px] md:flex-row md:items-center md:justify-between`}
+      >
+        <div>
+          <div className="text-xl font-extrabold">👤 User Management</div>
+          <div className="mt-1 text-xs text-gray-500">
+            จัดการบัญชีผู้ใช้ · role · การผูกกับ worker
           </div>
         </div>
-
-        {/* search */}
-        <div style={{ ...card, padding: "12px 14px" }}>
-          <input
-            type="text"
-            placeholder="🔍 ค้นหาชื่อ หรือ email…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ ...input, maxWidth: "360px" }}
-          />
+        <div className="flex gap-2.5">
+          <button
+            onClick={() => setShowRoles(true)}
+            className="flex-1 cursor-pointer whitespace-nowrap rounded-lg border border-blue-600 bg-white px-4 py-[9px] text-[13px] font-bold text-blue-600 hover:bg-blue-50 md:flex-none"
+          >
+            ⚙ Manage Roles
+          </button>
+          <button
+            onClick={() => setShowAdd(true)}
+            className={`${BTN_PRIMARY} flex-1 whitespace-nowrap py-[9px] md:flex-none`}
+          >
+            ＋ Add User
+          </button>
         </div>
+      </div>
 
-        {/* table */}
-        <div style={card}>
-          {loading ? (
-            <div
-              style={{ padding: "28px", textAlign: "center", color: "#6c757d" }}
-            >
-              Loading…
+      {/* ════════ Search ════════ */}
+      <div
+        className={`${CARD} mb-4 flex flex-wrap items-center gap-3 px-3.5 py-3`}
+      >
+        <input
+          type="text"
+          placeholder="🔍 ค้นหาชื่อ, email หรือ role…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className={`${INPUT} sm:max-w-[360px]`}
+        />
+        {!loading && (
+          <span className="text-xs text-gray-500">
+            {search
+              ? `พบ ${filtered.length} จาก ${users.length} คน`
+              : `ทั้งหมด ${users.length} คน`}
+          </span>
+        )}
+      </div>
+
+      {/* ════════ List ════════ */}
+      <div className={CARD}>
+        {loading ? (
+          <div className="p-7 text-center text-gray-500">Loading…</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-7 text-center text-gray-500">ไม่พบผู้ใช้</div>
+        ) : (
+          <>
+            {/* ── ต่ำกว่า lg: การ์ด ── */}
+            <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2 lg:hidden">
+              {filtered.map((u) => (
+                <div
+                  key={u.id}
+                  className="rounded-lg border border-gray-200 p-3 text-[13px]"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div>{renderName(u)}</div>
+                      <div className="break-all text-xs text-gray-500">
+                        {u.email}
+                      </div>
+                    </div>
+                    {renderActions(u)}
+                  </div>
+                  <div className="mt-2.5 space-y-2 border-t border-gray-100 pt-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="w-[52px] shrink-0 text-[10px] font-semibold uppercase text-gray-400">
+                        Role
+                      </span>
+                      {renderRole(u)}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[52px] shrink-0 text-[10px] font-semibold uppercase text-gray-400">
+                        Worker
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        {renderLinkedWorker(u)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-          ) : filtered.length === 0 ? (
-            <div
-              style={{ padding: "28px", textAlign: "center", color: "#6c757d" }}
-            >
-              ไม่พบผู้ใช้
-            </div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+
+            {/* ── lg+: ตาราง ── */}
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="w-full border-collapse">
                 <thead>
                   <tr>
-                    <th style={th}>Name</th>
-                    <th style={th}>Email</th>
-                    <th style={th}>Role</th>
-                    <th style={th}>Linked Worker</th>
-                    <th style={th}>Actions</th>
+                    <th className={TH}>Name</th>
+                    <th className={TH}>Email</th>
+                    <th className={TH}>Role</th>
+                    <th className={TH}>Linked Worker</th>
+                    <th className={TH}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((u) => {
-                    const self = isSelf(u.id);
-                    const dirty = roleDraft[u.id] !== u.role?.id;
-                    // ตัวเลือก employee = available + คนที่ผูกอยู่ตอนนี้
-                    const empOptions = [...availableEmps];
-                    if (
-                      u.employee &&
-                      !empOptions.find((e) => e.id === u.employee.id)
-                    ) {
-                      empOptions.unshift(u.employee);
-                    }
-                    return (
-                      <tr key={u.id}>
-                        <td style={td}>
-                          <span style={{ fontWeight: 700 }}>{u.name}</span>
-                          {self && (
-                            <span
-                              style={{
-                                marginLeft: "6px",
-                                fontSize: "10px",
-                                color: "#adb5bd",
-                              }}
-                            >
-                              (you)
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ ...td, color: "#6c757d" }}>{u.email}</td>
-
-                        {/* role: badge + dropdown */}
-                        <td style={td}>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "8px",
-                            }}
-                          >
-                            <RoleBadge
-                              name={
-                                roleList.find((r) => r.id === roleDraft[u.id])
-                                  ?.name || u.role?.name
-                              }
-                            />
-                            <select
-                              value={roleDraft[u.id] || ""}
-                              disabled={self}
-                              onChange={(e) =>
-                                setRoleDraft((p) => ({
-                                  ...p,
-                                  [u.id]: e.target.value,
-                                }))
-                              }
-                              style={{
-                                ...select,
-                                cursor: self ? "not-allowed" : "pointer",
-                              }}
-                              title={self ? "เปลี่ยน role ตัวเองไม่ได้" : ""}
-                            >
-                              {roleList.map((r) => (
-                                <option key={r.id} value={r.id}>
-                                  {r.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </td>
-
-                        {/* linked worker */}
-                        <td style={td}>
-                          <select
-                            value={u.employee?.id || ""}
-                            onChange={(e) =>
-                              handleLinkEmployee(u.id, e.target.value)
-                            }
-                            style={select}
-                          >
-                            <option value="">— None —</option>
-                            {empOptions.map((e) => (
-                              <option key={e.id} value={e.id}>
-                                {e.fullName} ({e.empCode})
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-
-                        {/* actions */}
-                        <td style={td}>
-                          <div style={{ display: "flex", gap: "6px" }}>
-                            <button
-                              onClick={() => handleSaveRole(u.id)}
-                              disabled={self || !dirty}
-                              style={{
-                                border: `1px solid ${self || !dirty ? "#dee2e6" : "#0d6efd"}`,
-                                background: "#fff",
-                                color: self || !dirty ? "#adb5bd" : "#0d6efd",
-                                borderRadius: "6px",
-                                padding: "5px 12px",
-                                fontSize: "12px",
-                                fontWeight: 600,
-                                cursor: self || !dirty ? "default" : "pointer",
-                              }}
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={() => handleDelete(u)}
-                              disabled={self}
-                              title={self ? "ลบบัญชีตัวเองไม่ได้" : "ลบผู้ใช้"}
-                              style={{
-                                border: `1px solid ${self ? "#dee2e6" : "#f5c2c7"}`,
-                                background: "#fff",
-                                color: self ? "#adb5bd" : "#842029",
-                                borderRadius: "6px",
-                                padding: "5px 12px",
-                                fontSize: "12px",
-                                fontWeight: 600,
-                                cursor: self ? "default" : "pointer",
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filtered.map((u) => (
+                    <tr key={u.id} className="hover:bg-gray-50">
+                      <td className={TD}>{renderName(u)}</td>
+                      <td className={`${TD} text-gray-500`}>{u.email}</td>
+                      <td className={TD}>{renderRole(u)}</td>
+                      <td className={TD}>{renderLinkedWorker(u)}</td>
+                      <td className={TD}>{renderActions(u)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
+          </>
+        )}
+      </div>
 
-        {/* Add User modal */}
-        {showAdd && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.5)",
-              zIndex: 999999,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "20px",
-            }}
-            onClick={() => setShowAdd(false)}
-          >
-            <div
-              style={{ ...card, width: "100%", maxWidth: "440px" }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div
-                style={{
-                  background: "#1e3a5f",
-                  color: "#fff",
-                  padding: "14px 20px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
+      {/* ════════ Add User modal ════════ */}
+      {showAdd && (
+        <Modal
+          title="＋ Add User"
+          onClose={closeAdd}
+          footer={
+            <>
+              <button onClick={closeAdd} className={BTN_GHOST}>
+                Cancel
+              </button>
+              <button
+                onClick={handleCreate}
+                disabled={saving}
+                className={BTN_PRIMARY}
               >
-                <span style={{ fontWeight: 700, fontSize: "15px" }}>
-                  ＋ Add User
-                </span>
-                <button
-                  onClick={() => setShowAdd(false)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#fff",
-                    fontSize: "20px",
-                    cursor: "pointer",
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-              <div
-                style={{
-                  padding: "20px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
-                }}
-              >
+                {saving ? "Creating…" : "Create User"}
+              </button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3.5 p-5">
+            <NameFields
+              value={form}
+              onChange={(v) => setForm((f) => ({ ...f, ...v }))}
+            />
+
+            <div>
+              <label className={FIELD_LABEL}>Email</label>
+              <input
+                className={INPUT}
+                placeholder="เช่น somchai@experteam.co.th"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className={FIELD_LABEL}>Password</label>
+              <div className="relative">
                 <input
-                  style={input}
-                  placeholder="Name"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                />
-                <input
-                  style={input}
-                  placeholder="Email"
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                />
-                <input
-                  style={input}
-                  placeholder="Password"
-                  type="password"
+                  className={`${INPUT} pr-10`}
+                  placeholder="ตั้งรหัสผ่านให้ผู้ใช้"
+                  type={showAddPassword ? "text" : "password"}
                   value={form.password}
                   onChange={(e) =>
                     setForm({ ...form, password: e.target.value })
                   }
+                  autoComplete="new-password"
                 />
-                <select
-                  style={input}
-                  value={form.roleId}
-                  onChange={(e) => setForm({ ...form, roleId: e.target.value })}
-                >
-                  <option value="">-- Select Role --</option>
-                  {roleList.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  style={input}
-                  value={form.employeeId}
-                  onChange={(e) =>
-                    setForm({ ...form, employeeId: e.target.value })
-                  }
-                >
-                  <option value="">Link worker (optional)…</option>
-                  {availableEmps.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.fullName} ({e.empCode})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div
-                style={{
-                  padding: "14px 20px",
-                  borderTop: "1px solid #e9ecef",
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: "8px",
-                }}
-              >
                 <button
-                  onClick={() => setShowAdd(false)}
-                  style={{
-                    border: "1px solid #dee2e6",
-                    background: "#fff",
-                    color: "#6c757d",
-                    borderRadius: "8px",
-                    padding: "8px 16px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
+                  type="button"
+                  onClick={() => setShowAddPassword((p) => !p)}
+                  title={showAddPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+                  className="absolute right-2.5 top-1/2 flex -translate-y-1/2 cursor-pointer items-center border-none bg-transparent p-0 text-gray-500"
                 >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreate}
-                  disabled={saving}
-                  style={{
-                    border: "none",
-                    background: saving ? "#adb5bd" : "#0d6efd",
-                    color: "#fff",
-                    borderRadius: "8px",
-                    padding: "8px 16px",
-                    fontSize: "13px",
-                    fontWeight: 700,
-                    cursor: saving ? "default" : "pointer",
-                  }}
-                >
-                  {saving ? "Creating…" : "Create User"}
+                  <EyeIcon open={showAddPassword} />
                 </button>
               </div>
             </div>
+
+            <div>
+              <label className={FIELD_LABEL}>Role</label>
+              <select
+                className={INPUT}
+                value={form.roleId}
+                onChange={(e) => setForm({ ...form, roleId: e.target.value })}
+              >
+                <option value="">-- Select Role --</option>
+                {roleList.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className={FIELD_LABEL}>
+                Linked Worker{" "}
+                <span className="font-normal normal-case">(ไม่บังคับ)</span>
+              </label>
+              <select
+                className={INPUT}
+                value={form.employeeId}
+                onChange={(e) =>
+                  setForm({ ...form, employeeId: e.target.value })
+                }
+              >
+                <option value="">— None —</option>
+                {availableEmps.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.fullName} ({e.empCode})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-        )}
+        </Modal>
+      )}
 
-        {showRoles && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.5)",
-              zIndex: 999999,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "20px",
-            }}
-            onClick={() => setShowRoles(false)}
-          >
-            <div
-              style={{ ...card, width: "100%", maxWidth: "460px" }}
-              onClick={(e) => e.stopPropagation()}
+      {/* ════════ Edit User modal ════════ */}
+      {editingUser && (
+        <Modal
+          title="✏️ Edit User"
+          onClose={closeEditUser}
+          footer={
+            <>
+              <button onClick={closeEditUser} className={BTN_GHOST}>
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEditUser}
+                disabled={savingEdit}
+                className={BTN_PRIMARY}
+              >
+                {savingEdit ? "Saving…" : "Save Changes"}
+              </button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3.5 p-5">
+            <NameFields
+              value={editForm}
+              onChange={(v) => setEditForm((f) => ({ ...f, ...v }))}
+            />
+            <div>
+              <label className={FIELD_LABEL}>Email</label>
+              <input
+                className={INPUT}
+                type="email"
+                value={editForm.email}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, email: e.target.value })
+                }
+              />
+            </div>
+            <div className="text-[11px] leading-normal text-gray-400">
+              เปลี่ยน Role หรือ Linked Worker ได้จากตารางหลักโดยตรง —
+              ไม่ต้องเปิด modal นี้
+              ส่วนรหัสผ่านผู้ใช้ต้องเปลี่ยนด้วยตัวเองผ่านหน้า Profile
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ════════ Manage Roles modal ════════ */}
+      {showRoles && (
+        <Modal
+          title="⚙ Manage Roles"
+          maxW="max-w-[460px]"
+          onClose={() => {
+            cancelEditRole();
+            setShowRoles(false);
+          }}
+          footer={
+            <button
+              onClick={() => {
+                cancelEditRole();
+                setShowRoles(false);
+              }}
+              className={BTN_GHOST}
             >
-              <div
-                style={{
-                  background: "#1e3a5f",
-                  color: "#fff",
-                  padding: "14px 20px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <span style={{ fontWeight: 700, fontSize: "15px" }}>
-                  ⚙ Manage Roles
-                </span>
-                <button
-                  onClick={() => setShowRoles(false)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#fff",
-                    fontSize: "20px",
-                    cursor: "pointer",
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
+              Close
+            </button>
+          }
+        >
+          {/* Add new role */}
+          <div className="flex gap-2 border-b border-gray-200 px-5 py-4">
+            <input
+              className={INPUT}
+              placeholder="ชื่อ role ใหม่ เช่น supervisor"
+              value={newRoleName}
+              onChange={(e) => setNewRoleName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreateRole()}
+            />
+            <button
+              onClick={handleCreateRole}
+              disabled={creatingRole}
+              className="shrink-0 cursor-pointer whitespace-nowrap rounded-lg border-none bg-[#198754] px-4 py-[9px] text-[13px] font-bold text-white hover:bg-[#157347] disabled:cursor-default disabled:bg-gray-400"
+            >
+              {creatingRole ? "..." : "+ Add"}
+            </button>
+          </div>
 
-              {/* Add new role */}
-              <div
-                style={{
-                  padding: "16px 20px",
-                  borderBottom: "1px solid #e9ecef",
-                  display: "flex",
-                  gap: "8px",
-                }}
-              >
-                <input
-                  style={input}
-                  placeholder="ชื่อ role ใหม่ เช่น supervisor"
-                  value={newRoleName}
-                  onChange={(e) => setNewRoleName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleCreateRole()}
-                />
-                <button
-                  onClick={handleCreateRole}
-                  disabled={creatingRole}
-                  style={{
-                    border: "none",
-                    background: creatingRole ? "#adb5bd" : "#198754",
-                    color: "#fff",
-                    borderRadius: "8px",
-                    padding: "9px 16px",
-                    fontSize: "13px",
-                    fontWeight: 700,
-                    cursor: creatingRole ? "default" : "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {creatingRole ? "..." : "+ Add"}
-                </button>
-              </div>
-
-              {/* Role list */}
-              <div
-                style={{
-                  padding: "12px 20px",
-                  maxHeight: "360px",
-                  overflowY: "auto",
-                }}
-              >
-                {roleList.length === 0 ? (
+          {/* Role list */}
+          <div className="px-5 py-3">
+            {roleList.length === 0 ? (
+              <div className="p-5 text-center text-gray-500">ยังไม่มี role</div>
+            ) : (
+              roleList.map((r) => {
+                const inUse = (r.userCount ?? 0) > 0;
+                const editing = editingRoleId === r.id;
+                return (
                   <div
-                    style={{
-                      textAlign: "center",
-                      color: "#6c757d",
-                      padding: "20px",
-                    }}
+                    key={r.id}
+                    className="flex items-center justify-between gap-2 border-b border-gray-100 py-2"
                   >
-                    ยังไม่มี role
-                  </div>
-                ) : (
-                  roleList.map((r) => {
-                    const inUse = (r.userCount ?? 0) > 0;
-                    return (
-                      <div
-                        key={r.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          padding: "8px 0",
-                          borderBottom: "1px solid #f1f3f5",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
+                    {editing ? (
+                      <div className="flex flex-1 items-center gap-2">
+                        <input
+                          value={editRoleName}
+                          onChange={(e) => setEditRoleName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSaveRoleName(r);
+                            if (e.key === "Escape") {
+                              e.stopPropagation(); // ไม่ปิด modal ทั้งอัน
+                              cancelEditRole();
+                            }
                           }}
+                          autoFocus
+                          className={`${SELECT_SM} min-w-0 flex-1 px-2.5 py-1.5`}
+                        />
+                        <button
+                          onClick={() => handleSaveRoleName(r)}
+                          disabled={savingRoleId === r.id}
+                          className="cursor-pointer whitespace-nowrap rounded-md border-none bg-blue-600 px-2.5 py-1 text-[11px] font-bold text-white disabled:bg-gray-400"
                         >
+                          {savingRoleId === r.id ? "..." : "บันทึก"}
+                        </button>
+                        <button
+                          onClick={cancelEditRole}
+                          className="cursor-pointer whitespace-nowrap rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-500"
+                        >
+                          ยกเลิก
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
                           <RoleBadge name={r.name} />
-                          <span style={{ fontSize: "11px", color: "#adb5bd" }}>
+                          <span className="text-[11px] text-gray-400">
                             {inUse
                               ? `${r.userCount} user ใช้อยู่`
                               : "ไม่มีคนใช้"}
                           </span>
                         </div>
-                        <button
-                          onClick={() => handleDeleteRole(r)}
-                          disabled={inUse || deletingRoleId === r.id}
-                          title={
-                            inUse
-                              ? "มี user ใช้ role นี้อยู่ ลบไม่ได้"
-                              : "ลบ role"
-                          }
-                          style={{
-                            border: `1px solid ${inUse ? "#dee2e6" : "#f5c2c7"}`,
-                            background: "#fff",
-                            color: inUse ? "#adb5bd" : "#842029",
-                            borderRadius: "6px",
-                            padding: "4px 10px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            cursor: inUse ? "not-allowed" : "pointer",
-                          }}
-                        >
-                          {deletingRoleId === r.id ? "..." : "Delete"}
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              <div
-                style={{
-                  padding: "14px 20px",
-                  borderTop: "1px solid #e9ecef",
-                  textAlign: "right",
-                }}
-              >
-                <button
-                  onClick={() => setShowRoles(false)}
-                  style={{
-                    border: "1px solid #dee2e6",
-                    background: "#fff",
-                    color: "#6c757d",
-                    borderRadius: "8px",
-                    padding: "8px 16px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
+                        <div className="flex shrink-0 gap-1.5">
+                          <button
+                            onClick={() => startEditRole(r)}
+                            title="แก้ไขชื่อ role"
+                            className="cursor-pointer rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteRole(r)}
+                            disabled={inUse || deletingRoleId === r.id}
+                            title={
+                              inUse
+                                ? "มี user ใช้ role นี้อยู่ ลบไม่ได้"
+                                : "ลบ role"
+                            }
+                            className={`rounded-md border bg-white px-2.5 py-1 text-[11px] font-semibold ${
+                              inUse
+                                ? "cursor-not-allowed border-gray-200 text-gray-400"
+                                : "cursor-pointer border-[#f5c2c7] text-[#842029] hover:bg-red-50"
+                            }`}
+                          >
+                            {deletingRoleId === r.id ? "..." : "Delete"}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
-        )}
-      </div>
+        </Modal>
+      )}
     </div>
   );
 }

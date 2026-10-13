@@ -137,7 +137,7 @@ MMS-Chevron/
 │   │   ├── hooks/                 # useStickyState
 │   │   ├── pages/
 │   │   │   ├── auth/              # Login, Profile, ResetPassword
-│   │   │   ├── dashboard/         # AdminDashboard
+│   │   │   ├── dashboard/         # Dashboard (ทุก role)
 │   │   │   ├── workers/           # Workers, AddWorker, EditWorker, WorkerDetail
 │   │   │   ├── compliance/        # ComplianceDashboard, Certifications
 │   │   │   ├── training/          # TrainingMatrix, ManageTrainings

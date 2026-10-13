@@ -1,4 +1,5 @@
 import * as service from "../services/mobilizationService.js";
+import * as banService from "../services/employeeBanService.js";
 
 // GET /api/mobilization/:projectId
 export async function getList(req, res) {
@@ -134,6 +135,53 @@ export async function removeTaskPhoto(req, res) {
     if (error.code === "P2025") {
       return res.status(404).json({ message: "ไม่พบ task นี้" });
     }
+    res.status(500).json({ message: error.message });
+  }
+}
+
+// POST /api/mobilization/task/:taskId/ban
+// body: { employeeId, durationMonths, customUntil, reasonNote }
+export async function banFromChecklist(req, res) {
+  try {
+    const { taskId } = req.params;
+    const { employeeId, durationMonths, customUntil, reasonNote } = req.body;
+    if (!employeeId) {
+      return res.status(400).json({ message: "employeeId is required" });
+    }
+    const ban = await banService.banEmployee({
+      employeeId,
+      durationMonths,
+      customUntil,
+      reason: "drug_test_fail", // ← endpoint นี้ใช้เฉพาะ drug test เท่านั้น ไม่ต้องรับจาก body
+      reasonNote,
+      bannedById: req.userId,
+      sourceTaskId: taskId,
+    });
+    res.status(201).json(ban);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+// controllers/mobilizationController.js — เพิ่มใหม่
+export async function banNoShow(req, res) {
+  try {
+    const { employeeId, durationMonths, customUntil, reasonNote } = req.body;
+    if (!employeeId) {
+      return res.status(400).json({ message: "employeeId is required" });
+    }
+    const ban = await banService.banEmployee({
+      employeeId,
+      durationMonths,
+      customUntil,
+      reason: "no_show",
+      reasonNote,
+      bannedById: req.userId,
+    });
+    res.status(201).json(ban);
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: error.message });
   }
 }

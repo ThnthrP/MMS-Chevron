@@ -1,3 +1,10 @@
+// แก้ไขจาก v5.7→v5.8:
+//   Add: EmployeePin — auth แยกสำหรับพนักงาน offshore (MP Code + PIN, ไม่ใช่ User)
+//   Add: LeaveRequest — ใบลา
+//   Add: Candidate.workerConfirmStatus + JobConfirmationEvent — พนักงานยืนยัน/ปฏิเสธรับงาน
+//        (แยกจาก MatchStatus เดิมที่เป็นสถานะ client อนุมัติ candidate)
+//   Add: PPERequest, SafetyExam/SafetyExamAttempt — ผูกกับ Booking
+//   Add: MedicalExamRecord.hdl/totalCholesterol/flaggedAbnormal
 // ============================================================
 // schema.prisma — MMS v5.7
 // แก้ไขจาก v5.4→v5.5:
@@ -89,20 +96,6 @@ enum TrainingStatus {
   pending // Pending — ยังไม่มี cert
   if_required // If required — ทำเมื่อจำเป็น
   not_applicable // N/A
-}
-
-// TrainingSource — ประเภท standard owner (ไม่ hardcode client names)
-// xxxCLIENT_INTERNAL: internal standard ของ client → ดูจาก clientId ใน TrainingStandard
-// TPTI:           Thai Petroleum Training Institute
-// CONTRACTOR:     external vendor/contractor ทั่วไป
-// PUBLIC:         สถาบันภายนอกอื่น (API, AWS, NACE, Swagelok ฯลฯ)
-// → เพิ่ม client ใหม่ได้โดยไม่ต้อง migrate enum เพียงแค่ insert Client row ใหม่
-enum TrainingSource {
-  COMPANY
-  COMPANY_ELEARNING
-  TPTI // Thai Petroleum Training Institute
-  CONTRACTOR // external vendor/contractor
-  PUBLIC // external authority อื่น (API, AWS, NACE ฯลฯ)
 }
 
 enum CandidateSource {
@@ -208,14 +201,6 @@ enum WorkerMobilizationStatus {
 //Ready = พร้อมส่งขึ้นงานแล้ว
 //On-Site = อยู่หน้างานแล้ว
 
-enum HealthRisk {
-  low
-  moderate     // เดิมชื่อ medium — rename ให้ตรงกับ label จริงใน PE tracking Excel
-  high
-  significant  // ใหม่ — "Significant health risk"
-  pending      // ใหม่ — ยังไม่มีผล comment
-}
-
 enum SSELevel {
   new_sse   // "NEW SSE"
   sse1      // "SSE1"
@@ -240,9 +225,17 @@ enum RehireRecommendation {
 
 model User {
   id       String @id @default(uuid())
-  name     String
+  titlePrefix String? // คำนำหน้าชื่อ เช่น "นาย" / "นาง" / "นางสาว" — เก็บแยกจาก name เพื่อไม่ให้กระทบ avatar initial / sort / search
+  firstName   String?  // ชื่อ — แยกเก็บเพื่อเชื่อมระบบบัญชีกลาง
+  lastName    String?  // นามสกุล
+  name        String   // ชื่อแสดงผล = firstName + " " + lastName (backend ประกอบให้)
   email    String @unique
+  
+  externalAccountId String? @unique // id บัญชีในระบบกลาง (ใส่ตอนเชื่อมต่อ)
+
   password String
+  phone       String?
+  department  String?
 
   roleId String
   role   Role   @relation(fields: [roleId], references: [id])
@@ -263,9 +256,21 @@ model User {
 
   projectMessages ProjectMessage[]
 
+  medicalRequestBatches MedicalRequestBatch[]
+
+  auditLogs AuditLog[]
+
   createdAt        DateTime  @default(now())
   resetOtp         String?
   resetOtpExpireAt DateTime?
+
+  bansIssued EmployeeBan[] @relation("BansIssued")
+  bansLifted EmployeeBan[] @relation("BansLifted")
+
+  leaveApprovals LeaveRequest[] @relation("LeaveApprover")
+
+  matchExceptionsRequested MatchExceptionRequest[] @relation("MatchExceptionRequester")
+  matchExceptionsDecided   MatchExceptionRequest[] @relation("MatchExceptionDecider")
 }
 
 model Role {
@@ -379,6 +384,13 @@ model Employee {
   fullNameTH String?
   fullNameEN String?
 
+  // รหัสพนักงานฝั่ง client ปัจจุบัน — เก็บแยกจาก empCode (รหัสภายใน EXPERTEAM)
+  // ตั้งชื่อกลางๆ ไว้ก่อนเพราะตอนนี้มีแค่ Chevron client เดียว
+  // ⚠️ ข้อจำกัด: field เดียวเก็บได้แค่ 1 client ต่อพนักงาน 1 คน — ถ้าอนาคตพนักงาน
+  // คนเดียวต้องมีรหัสจากหลาย client พร้อมกัน (เช่น Chevron + PTT พร้อมกัน)
+  // ต้องย้ายไปใช้ตารางแยก (เช่น ExternalEmployeeCode) แทน
+  empId String? @unique // "ID Employee" จาก Excel ของ client ปัจจุบัน เช่น "38561733"
+
   // Contact Information
   nationality String?
   phone       String?
@@ -393,8 +405,10 @@ model Employee {
   status             EmployeeStatus     @default(active)
   availabilityStatus AvailabilityStatus @default(available)
   mobilizationStatus WorkerMobilizationStatus @default(pending)
+  onSiteAt           DateTime? // ← เพิ่มตรงนี้ — timestamp ครั้งล่าสุดที่ mobilizationStatus เปลี่ยนเป็น on_site (ใช้แสดงใน Worker App timeline "มาถึง")
 
   division    String?
+  workplace   String?  // ← ADD THIS LINE. col E "Chevron Workplace" from PE tracking Excel, e.g. "Benchamas"
   isOffshore  Boolean @default(false)
 
   positionId String?
@@ -420,9 +434,13 @@ model Employee {
 
   medicalExamRecords MedicalExamRecord[]
 
+  medicalRequestItems MedicalRequestItem[]
+
+  bans EmployeeBan[]
+
   // Allocation
   isPermanent  Boolean     @default(false)  // 🟩 เขียว = permanent
-  healthRisk   HealthRisk?                  // ความเสี่ยงสุขภาพ
+  healthRisk   String?                  // ความเสี่ยงสุขภาพ
   healthNote   String?     @db.Text   // หมายเหตุสุขภาพ (แยกจาก notes ทั่วไป)
   sseLevel     SSELevel?                    // NAME SSE
   sseCompleted Boolean?                     // NAME SSE Pass = Completed
@@ -437,9 +455,33 @@ model Employee {
   education String?
   photoUrl  String?   // เก็บ path ก่อน — ระบบ upload ไฟล์จริงทำแยกทีหลัง
 
+  pin EmployeePin?
+
   reviews PerformanceReview[]
 
   createdAt DateTime @default(now())
+
+  leaveRequests       LeaveRequest[]
+  ppeRequests         PPERequest[]
+  safetyExamAttempts  SafetyExamAttempt[]
+
+  matchExceptions MatchExceptionRequest[]
+}
+
+model EmployeePin {
+  id             String    @id @default(uuid())
+  employeeId     String    @unique
+  employee       Employee  @relation(fields: [employeeId], references: [id])
+
+  pinHash        String
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+
+  // true = ยังใช้ PIN ที่ HR ตั้งให้ → ต้องตั้ง PIN ใหม่ก่อนใช้งาน Worker App
+  mustChange     Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ─────────────────────────────────────────────────────────
@@ -473,20 +515,28 @@ model GlobalTraining {
 // เช่น Chevron เรียก "Basic Rigging (DNV GL)" แต่ global คือ "Basic Rigging"
 // ─────────────────────────────────────────────────────────
 
+model TrainingSourceOption {
+  id             String   @id @default(uuid())
+  name           String   @unique // เช่น "Company", "TPTI", "Safety" — เพิ่ม/ลบเองได้จากหน้า Manage Trainings
+  requiresClient Boolean  @default(false) // true = ต้องเลือก client ตอนสร้าง standard (เดิมคือ source = COMPANY)
+  createdAt      DateTime @default(now())
+
+  trainingStandards TrainingStandard[]
+}
+
 model TrainingStandard {
   id String @id @default(uuid())
 
   globalTrainingId String
-  source           TrainingSource // CLIENT_INTERNAL / TPTI / CONTRACTOR / PUBLIC
 
-  // clientId — ใช้เมื่อ source = CLIENT_INTERNAL เท่านั้น
-  // ระบุว่าเป็น internal standard ของ client ไหน (PTT, Valeura, Chevron ฯลฯ)
-  // null = standard ไม่ผูกกับ client ใดโดยเฉพาะ (เช่น TPTI, CONTRACTOR)
+  sourceId String
+  source   TrainingSourceOption @relation(fields: [sourceId], references: [id])
+
   clientId String?
   client   Client? @relation(fields: [clientId], references: [id])
 
-  trainingHours Int? // ชั่วโมงอบรม
-  validityDays  Int? // อายุ cert เป็นวัน
+  trainingHours Int?
+  validityDays  Int?
   isNoExpiry    Boolean @default(false)
 
   globalTraining GlobalTraining @relation(fields: [globalTrainingId], references: [id])
@@ -495,10 +545,7 @@ model TrainingStandard {
 
   createdAt DateTime @default(now())
 
-  // unique ต่อ training + source + client
-  // รองรับ: training เดียวกัน มี standard ต่างกันตาม client
-  // เช่น PTW ของ PTT กับ PTW ของ Erawan คือคนละ standard
-  @@unique([globalTrainingId, source, clientId])
+  @@unique([globalTrainingId, sourceId, clientId])
 }
 
 model ClientTraining {
@@ -602,6 +649,10 @@ model EmployeeTraining {
 
   institute String?
 
+  // ── เพิ่มใหม่: ไฟล์แนบ cert (รูป/PDF) — อัปโหลดโดย user ──
+  certFileUrl  String?  // path ไปยังไฟล์ เช่น "/uploads/certs/xxx.jpg"
+  certFileName String?  // ชื่อไฟล์เดิม สำหรับแสดงผล/download
+
   // FIX C: version history — ไม่ลบ record เก่า แต่ mark isLatest = false
   // เมื่อ update cert ใหม่ → สร้าง record ใหม่ version+1, isLatest=true
   //                        → record เก่า isLatest=false (ยังอยู่ใน DB)
@@ -697,10 +748,11 @@ model MedicalExamRecord {
   estResult             String? // col AF
   estAbnormalNote       String? @db.Text // col AG
 
-  note String? @db.Text // col AH
+  chronicDisease String? // col J โรคประจำตัว (เช่น "ไม่มี (No)", "เบาหวาน", "ความดัน")
+  note           String? @db.Text // col AH
 
   // ── สรุปผล ──
-  healthRisk     HealthRisk? // col AI
+  healthRisk     String? // col AI
   recommendation String?     @db.Text // col AJ
   commentDate    DateTime? // col AK — base date สำหรับ getFollowUpStatus() runtime
 
@@ -716,6 +768,10 @@ model MedicalExamRecord {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  hdl              Float?  // ยังไม่มีใน schema เดิม (มีแค่ ldl, triglyceride)
+  totalCholesterol Float?  // ยังไม่มีใน schema เดิม
+  flaggedAbnormal  Boolean @default(false) // ใช้แสดงใน "รายการที่ควรติดตาม" ฝั่งพนักงาน
 
   @@index([employeeId, isLatest])
 }
@@ -773,6 +829,10 @@ model Project {
   location   String?
   notes      String?  @db.Text
   isOffshore Boolean  @default(false)
+
+
+  travelMode   String? // ขาไป — "boat" / "helicopter" / "vehicle" / "other" หรือข้อความที่พิมพ์เอง
+  responseDays Int     @default(10) // พนักงานต้องตอบรับภายในกี่วัน นับจากวันที่ approve ที่หน้า Allocation
 
   startDate  DateTime?
   endDate    DateTime?
@@ -851,6 +911,8 @@ model ManpowerRequest {
   sseRecords            SSERecord[] // ADD 1
   subcontractorRequests SubcontractorRequest[] // ADD 2
 
+  matchExceptions MatchExceptionRequest[]
+
   createdAt   DateTime      @default(now())
   WorkflowLog WorkflowLog[]
 }
@@ -892,6 +954,9 @@ model Candidate {
   decision ClientApproval?
   gaps     CandidateGap[]
   score    CandidateScore? // FIX B: score breakdown
+
+  workerConfirmStatus WorkerConfirmStatus     @default(pending)
+  confirmationEvents  JobConfirmationEvent[]
 }
 
 // FIX B: Score breakdown — แยกคะแนนแต่ละด้านออกมา
@@ -967,6 +1032,9 @@ model Booking {
   mobilizationTasks MobilizationTask[] // ADD 3
 
   createdAt DateTime @default(now())
+
+  ppeRequests        PPERequest[]
+  safetyExamAttempts SafetyExamAttempt[]
 }
 
 model Assignment {
@@ -980,6 +1048,7 @@ model Assignment {
   mobDate    DateTime?  // MOB — วันลงแท่น
   demobDate  DateTime?  // D-MOB — วันกำหนดกลับ
   platform   String?    // แท่น เช่น BELQ, C5 (≠ Project.location)
+  fromLocation String?    // ← ใหม่ จุดเริ่มต้นก่อน mob ครั้งนี้ (From)
   remark     String?   // ← เพิ่มบรรทัดนี้ — "ขึ้นด่วน" / "ติดงาน Project" ฯลฯ
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt
@@ -1234,6 +1303,7 @@ model Notification {
 model TrainingRequestBatch {
   id            String   @id @default(uuid())
   requestedById String?
+  status        String   @default("pending")
   requestedBy   User?    @relation(fields: [requestedById], references: [id])
   items         TrainingRequestItem[]
   createdAt     DateTime @default(now())
@@ -1279,4 +1349,241 @@ model ProjectMessageAttachment {
   fileType  String?
 
   createdAt DateTime @default(now())
+}
+
+model MedicalRequestBatch {
+  id            String   @id @default(uuid())
+  requestedById String?
+  status        String   @default("pending")
+  requestedBy   User?    @relation(fields: [requestedById], references: [id])
+  items         MedicalRequestItem[]
+  createdAt     DateTime @default(now())
+}
+
+model MedicalRequestItem {
+  id         String   @id @default(uuid())
+  batchId    String
+  batch      MedicalRequestBatch @relation(fields: [batchId], references: [id])
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  checkType  String?  // "Medical Check up" (default) — เผื่ออนาคตแยก Confined Space ได้
+  clientName String?  // snapshot ชื่อ client ตอนขอ
+  reason     String?  // snapshot สถานะตอนขอ: "overdue" / "no_record" / "due_soon"
+
+  @@index([batchId])
+}
+
+model EmployeeBan {
+  id             String   @id @default(uuid())
+  employeeId     String
+  employee       Employee @relation(fields: [employeeId], references: [id])
+
+  reason         String
+  reasonNote     String?  @db.Text
+
+  bannedFrom     DateTime @default(now())
+  bannedUntil    DateTime
+  durationMonths Int?     // ← แก้เป็น Int? (nullable)
+
+  bannedById     String?
+  bannedBy       User?    @relation("BansIssued", fields: [bannedById], references: [id])
+
+  isActive       Boolean  @default(true)
+  liftedAt       DateTime?
+  liftedById     String?
+  liftedBy       User?    @relation("BansLifted", fields: [liftedById], references: [id])
+  liftReason     String?
+
+  sourceTaskId   String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([employeeId, isActive])
+}
+
+// ─────────────────────────────────────────────────────────
+// v5.8 (draft) — Worker App: Leave, Job Confirmation, PPE, Safety Exam
+// ─────────────────────────────────────────────────────────
+
+enum LeaveType {
+  sick
+  personal
+  vacation
+  other
+}
+
+// แยกจาก MatchStatus โดยเจตนา — MatchStatus คือ client อนุมัติ candidate,
+// WorkerConfirmStatus คือพนักงานเจ้าของตัวเองยืนยันรับงาน คนละ actor คนละความหมาย
+enum WorkerConfirmStatus {
+  pending
+  confirmed
+  rejected
+}
+
+// จำกัดเฉพาะช่วง pre-mobilization — mobilized/on_site ใช้ Assignment /
+// Employee.mobilizationStatus ที่มีอยู่แล้ว ไม่ต้อง duplicate สถานะ
+enum JobConfirmationEventType {
+  received
+  confirmed
+  rejected
+  briefed
+  traveling
+}
+
+enum PPERequestStatus {
+  requested
+  approved
+  issued
+}
+
+model LeaveRequest {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  leaveType LeaveType
+  startDate DateTime
+  endDate   DateTime
+  reason    String?   @db.Text
+
+  attachmentUrl      String?
+  attachmentFileName String?
+
+  status       String  @default("pending") // เปลี่ยนจาก ApprovalStatus → String (ดู TrainingRequestBatch/MedicalRequestBatch pattern)
+  approverId   String?
+  approver     User?          @relation("LeaveApprover", fields: [approverId], references: [id])
+  approverNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, status])
+}
+
+model JobConfirmationEvent {
+  id          String    @id @default(uuid())
+  candidateId String
+  eventType    String
+  note      String?  @db.Text // เหตุผลถ้า rejected, วันที่ขอเลื่อนถ้าเปลี่ยน
+  timestamp DateTime @default(now())
+
+  candidate   Candidate @relation(fields: [candidateId], references: [id])
+
+  @@index([candidateId])
+}
+
+model PPERequest {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  bookingId String?
+  booking   Booking? @relation(fields: [bookingId], references: [id])
+
+  items  Json // [{ item: "รองเท้าเซฟตี้", size: "42" }, ...]
+  status PPERequestStatus @default(requested)
+
+  requestedAt DateTime  @default(now())
+  issuedAt    DateTime?
+
+  @@index([employeeId, status])
+}
+
+model SafetyExam {
+  id        String @id @default(uuid())
+  title     String
+  questions Json
+
+  attempts  SafetyExamAttempt[]
+  createdAt DateTime @default(now())
+}
+
+model SafetyExamAttempt {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  examId String
+  exam   SafetyExam @relation(fields: [examId], references: [id])
+
+  bookingId String?
+  booking   Booking? @relation(fields: [bookingId], references: [id])
+
+  score       Int?
+  passed      Boolean?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([employeeId, examId])
+}
+
+// ─────────────────────────────────────────────────────────
+// PE APPROVAL — ขอใช้พนักงานที่ % Match ไม่ครบ 100%
+// ─────────────────────────────────────────────────────────
+model MatchExceptionRequest {
+  id String @id @default(uuid())
+
+  manpowerRequestId String
+  manpowerRequest   ManpowerRequest @relation(fields: [manpowerRequestId], references: [id])
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  matchPct         Float  // % ณ ตอนขอ
+  missingTrainings Json   // ["BOSIET", ...] ณ ตอนขอ
+  reason           String @db.Text
+
+  status String @default("pending") // pending / approved / rejected
+
+  requestedById String
+  requestedBy   User   @relation("MatchExceptionRequester", fields: [requestedById], references: [id])
+
+  decidedById  String?
+  decidedBy    User?     @relation("MatchExceptionDecider", fields: [decidedById], references: [id])
+  decidedAt    DateTime?
+  decisionNote String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([manpowerRequestId, employeeId]) // 1 คำขอต่อคนต่อ position request (ไม่อนุมัติ → ขอใหม่ = ทับเดิม)
+  @@index([status])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  createdAt  DateTime @default(now())
+
+  // ใครทำ
+  actorType  String   // "user" (ระบบหลังบ้าน) | "worker" (Worker App) | "anonymous" (เช่น login ไม่ผ่าน)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  employeeId String?  // กรณี actorType = "worker"
+  actorName  String?  // snapshot ชื่อ ณ เวลาที่ทำ (ถ้า user ถูกลบ/เปลี่ยนชื่อ log ยังอ่านออก)
+  actorRole  String?  // snapshot role ณ เวลาที่ทำ
+
+  // ทำอะไร
+  action     String   // CREATE | UPDATE | DELETE | LOGIN | LOGOUT | LOGIN_FAILED | APPROVE | REJECT | UPLOAD | IMPORT | ...
+  module     String   // workers | projects | allocation | pe_approvals | users | ...
+  resourceId String?  // id ของสิ่งที่ถูกกระทำ (ถ้ามี)
+  summary    String?  // ข้อความอ่านง่าย เช่น "แก้ไขข้อมูลพนักงาน 17561466 Somsak Phanteh"
+
+  // ผลลัพธ์ + ที่มา
+  success    Boolean  @default(true)
+  statusCode Int?
+  method     String?
+  path       String?
+  ip         String?
+  userAgent  String?
+
+  // รายละเอียด (ตัด password/PIN/token ออกแล้ว) + before/after ถ้า controller ส่งมา
+  details    Json?
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([employeeId, createdAt])
+  @@index([module, createdAt])
+  @@index([action, createdAt])
 }

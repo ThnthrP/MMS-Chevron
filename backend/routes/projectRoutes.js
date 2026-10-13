@@ -1,7 +1,6 @@
 import express from "express";
 import * as controller from "../controllers/projectController.js";
 import userAuth from "../middleware/userAuth.js";
-import requireRole from "../middleware/requireRole.js";
 
 const router = express.Router();
 
@@ -10,32 +9,17 @@ router.use(userAuth);
 
 router.get("/master-records/years", controller.getMasterProjectYears);
 router.get("/master-records/browse", controller.browseMasterProjectRecords);
-// ── Read — ทุก role ที่ login แล้วดูได้ (คุม role ระดับหน้าใน AppRouter อยู่แล้ว) ──
 router.get("/master-records", controller.searchMasterProjectRecords); // ← ต้องอยู่ก่อน "/:id"
 router.get("/", controller.getProjects);
 router.get("/:id", controller.getProjectById);
 
-// ── Write — เฉพาะ admin/pe ──
-router.post("/", requireRole("admin", "pe"), controller.createProject);
-router.put("/:id", requireRole("admin", "pe"), controller.updateProject);
-router.delete("/:id", requireRole("admin", "pe"), controller.deleteProject);
+// ── Write — ยกเลิกจำกัด role ──
+router.post("/", controller.createProject);
+router.put("/:id", controller.updateProject);
+router.delete("/:id", controller.deleteProject);
 
-router.post(
-  "/:id/requests",
-  requireRole("admin", "pe"),
-  controller.addProjectRequest,
-);
-
-router.put(
-  "/:id/requests/:requestId",
-  requireRole("admin", "pe"),
-  controller.updateProjectRequest,
-);
-
-router.delete(
-  "/:id/requests/:requestId",
-  requireRole("admin", "pe"),
-  controller.deleteProjectRequest,
-);
+router.post("/:id/requests", controller.addProjectRequest);
+router.put("/:id/requests/:requestId", controller.updateProjectRequest);
+router.delete("/:id/requests/:requestId", controller.deleteProjectRequest);
 
 export default router;

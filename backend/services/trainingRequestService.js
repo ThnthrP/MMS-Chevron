@@ -88,8 +88,8 @@ export async function getAllBatches() {
         select: {
           employeeId: true,
           globalTrainingId: true,
-          clientName: true, // ← เพิ่ม
-          globalTraining: { select: { name: true } }, // ← เพิ่ม
+          clientName: true,
+          globalTraining: { select: { name: true } },
         },
       },
     },
@@ -107,11 +107,25 @@ export async function getAllBatches() {
       id: b.id,
       requestedByName: b.requestedBy?.name || null,
       createdAt: b.createdAt,
+      status: b.status, // ← เพิ่มบรรทัดนี้
       employeeCount: new Set(b.items.map((i) => i.employeeId)).size,
       trainingCount: new Set(b.items.map((i) => i.globalTrainingId)).size,
       itemCount: b.items.length,
-      trainingNames, // ← เพิ่ม เช่น ["Basic First Aid", "H2S Awareness"]
-      clientNames, // ← เพิ่ม เช่น ["Chevron", "PTTEP"]
+      trainingNames,
+      clientNames,
     };
   });
+}
+
+export async function updateStatus(id, status) {
+  if (!["pending", "completed"].includes(status)) {
+    const err = new Error("Invalid status value");
+    err.status = 400;
+    throw err;
+  }
+  const batch = await prisma.trainingRequestBatch.update({
+    where: { id },
+    data: { status },
+  });
+  return batch;
 }

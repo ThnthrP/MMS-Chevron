@@ -35,3 +35,14 @@ export async function getGlobalTrainings(req, res) {
     });
   }
 }
+
+export async function getPositionCounts(req, res) {
+  try {
+    const { contractId } = req.params;
+    const data = await service.getPositionCounts(contractId);
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to load position counts" });
+  }
+}

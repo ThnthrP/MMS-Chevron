@@ -186,7 +186,8 @@ export default function EditProject() {
 
   return (
     <div className="container-fluid p-0">
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+      {/* <div style={{ maxWidth: "1400px", margin: "0 auto" }}> */}
+      <div style={{ maxWidth: "min(1800px, 95vw)", margin: "0 auto" }}>
         {/* Back */}
         <button
           onClick={() => navigate(`/projects`)}

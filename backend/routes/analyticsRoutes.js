@@ -6,5 +6,7 @@ const router = express.Router();
 router.use(userAuth);
 
 router.get("/", controller.getAnalytics);
+router.get("/deployment", controller.getDeploymentReport); // ← เพิ่ม
+router.get("/export-pe-tracking", controller.exportPeTracking);
 
 export default router;

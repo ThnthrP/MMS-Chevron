@@ -1,33 +1,344 @@
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useContext, useCallback } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 
+// ══════════════════════════════════════════════════════════
+// constants
+// ══════════════════════════════════════════════════════════
 // ระดับ requirement ที่ Chevron ใช้จริง (ยืนยัน valid จาก import)
-// ถ้า enum มี required/relevant ด้วยและอยากใช้ เพิ่มที่นี่ได้เลย
 const REQ_LEVELS = [
-  { value: "", label: "— not required", color: "#adb5bd" },
-  { value: "mandatory", label: "Mandatory (X)", color: "#dc3545" },
-  { value: "assigned", label: "Assigned (O)", color: "#fd7e14" },
+  { value: "", label: "— not required", cls: "bg-gray-50 text-gray-400" },
+  {
+    value: "mandatory",
+    label: "Mandatory (X)",
+    cls: "bg-[#fff5f5] text-[#dc3545]",
+  },
+  {
+    value: "assigned",
+    label: "Assigned (O)",
+    cls: "bg-[#fff8f0] text-[#fd7e14]",
+  },
 ];
 
+// รวม "required" เข้ากับ "mandatory" เฉพาะตอนแสดงผล —
+// ค่าจริงยังเป็น "required" จนกว่าผู้ใช้จะแก้ dropdown เอง
+const displayValue = (v) => (v === "required" ? "mandatory" : v || "");
+
+const LS_CONTRACT = "matrixEditor.contractId";
+const LS_POSITION = "matrixEditor.positionId";
+
+const CARD = "rounded-[10px] border border-gray-200 bg-white";
+const LABEL = "mb-1.5 block text-xs font-semibold text-gray-500";
+const INPUT =
+  "box-border w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-blue-400 disabled:cursor-not-allowed disabled:bg-gray-50";
+const BTN_PRIMARY =
+  "cursor-pointer rounded-lg border-none bg-blue-600 px-[18px] py-[9px] text-[13px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60";
+const BTN_GHOST =
+  "cursor-pointer rounded-lg border border-gray-200 bg-white px-[18px] py-[9px] text-[13px] font-semibold text-gray-700 hover:bg-gray-50";
+
+const readLS = (key) => {
+  try {
+    return localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+};
+const writeLS = (key, value) => {
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch {
+    // localStorage อาจไม่พร้อมใช้งาน — ไม่ critical
+  }
+};
+
+// ══════════════════════════════════════════════════════════
+// small components
+// ══════════════════════════════════════════════════════════
+function MessageBanner({ msg }) {
+  if (!msg) return null;
+  const ok = msg.type === "ok";
+  return (
+    <div
+      className={`mb-4 rounded-lg border px-3.5 py-2.5 text-[13px] ${
+        ok
+          ? "border-[#badbcc] bg-[#d1e7dd] text-[#0f5132]"
+          : "border-[#f5c6cb] bg-[#f8d7da] text-[#842029]"
+      }`}
+    >
+      {ok ? "✅ " : "⚠ "}
+      {msg.text}
+    </div>
+  );
+}
+
+function Placeholder({ children, dashed }) {
+  return (
+    <div
+      className={`rounded-[10px] border bg-white p-8 text-center text-sm text-gray-500 sm:p-12 ${
+        dashed ? "border-dashed border-gray-200" : "border-gray-200"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function RequirementSelect({ value, onChange }) {
+  const shown = displayValue(value);
+  const level = REQ_LEVELS.find((l) => l.value === shown) || REQ_LEVELS[0];
+  return (
+    <select
+      value={shown}
+      onChange={(e) => onChange(e.target.value)}
+      className={`cursor-pointer rounded-md border-none px-2.5 py-[5px] text-xs font-semibold shadow-[0_1px_2px_rgba(0,0,0,0.06)] outline-none ${level.cls}`}
+    >
+      {REQ_LEVELS.map((l) => (
+        <option key={l.value} value={l.value}>
+          {l.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// Link Training Modal — ค้นหา global training ที่ยังไม่ผูกกับ contract
+// แล้วเลือก standard เพื่อสร้าง ClientTraining
+// ══════════════════════════════════════════════════════════
+function LinkTrainingModal({ backendUrl, contractId, onClose, onLinked }) {
+  const [search, setSearch] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [standardId, setStandardId] = useState("");
+  const [linking, setLinking] = useState(false);
+  const [error, setError] = useState(null);
+
+  // ค้นหาแบบ debounce — ครั้งแรกก็ผ่านทางนี้ (เดิมมี useEffect โหลดครั้งแรกแยกอีกตัว → ยิงซ้ำ 2 ครั้ง)
+  useEffect(() => {
+    let ignore = false;
+    const t = setTimeout(async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await axios.get(
+          `${backendUrl}/api/contracts/${contractId}/available-trainings`,
+          {
+            params: { search: search.trim() || undefined },
+            withCredentials: true,
+          },
+        );
+        if (!ignore) setResults(res.data || []);
+      } catch (err) {
+        console.error(err);
+        if (!ignore) setError("โหลดรายการ training ไม่สำเร็จ");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }, 300);
+    return () => {
+      ignore = true;
+      clearTimeout(t);
+    };
+  }, [backendUrl, contractId, search]);
+
+  // Esc ปิด
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && !linking && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [linking, onClose]);
+
+  const selectTraining = (training) => {
+    setSelected(training);
+    setError(null);
+    // มี standard เดียว เลือกให้อัตโนมัติ
+    setStandardId(
+      training.trainingStandards.length === 1
+        ? training.trainingStandards[0].id
+        : "",
+    );
+  };
+
+  const handleLink = async () => {
+    if (!selected || !standardId) {
+      setError("กรุณาเลือก training และ standard ให้ครบ");
+      return;
+    }
+    try {
+      setLinking(true);
+      setError(null);
+      await axios.post(
+        `${backendUrl}/api/contracts/${contractId}/client-trainings`,
+        { globalTrainingId: selected.id, trainingStandardId: standardId },
+        { withCredentials: true },
+      );
+      onLinked(selected.name);
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.message || "Link ไม่สำเร็จ");
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={() => !linking && onClose()}
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/35 p-3 sm:p-5"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[85vh] w-full max-w-[560px] flex-col overflow-hidden rounded-xl bg-white"
+      >
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-5 py-4">
+          <span className="text-[15px] font-bold">
+            Link Training เข้า Contract
+          </span>
+          <button
+            onClick={onClose}
+            className="cursor-pointer border-none bg-transparent text-base text-gray-500"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {error && (
+            <div className="mb-3 rounded-lg border border-[#f5c6cb] bg-[#f8d7da] px-3 py-2 text-xs text-[#842029]">
+              ⚠ {error}
+            </div>
+          )}
+
+          <input
+            type="text"
+            autoFocus
+            placeholder="ค้นหา global training ที่ยังไม่ผูกกับ contract นี้..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className={`${INPUT} mb-3`}
+          />
+
+          <div className="mb-4 max-h-[240px] overflow-y-auto rounded-lg border border-gray-100">
+            {loading ? (
+              <div className="p-5 text-center text-[13px] text-gray-500">
+                Loading...
+              </div>
+            ) : results.length === 0 ? (
+              <div className="p-5 text-center text-[13px] text-gray-500">
+                ไม่พบ training ที่ยังไม่ผูก (หรือ training นี้ยังไม่มี standard
+                — ไปสร้างที่ Manage Trainings ก่อน)
+              </div>
+            ) : (
+              results.map((t) => (
+                <div
+                  key={t.id}
+                  onClick={() => selectTraining(t)}
+                  className={`cursor-pointer border-b border-gray-50 px-3.5 py-2.5 ${
+                    selected?.id === t.id
+                      ? "bg-[#e7f1ff]"
+                      : "bg-white hover:bg-gray-50"
+                  }`}
+                >
+                  <div className="text-[13px] font-semibold">{t.name}</div>
+                  {t.fullName && t.fullName !== t.name && (
+                    <div className="text-[11px] text-gray-400">
+                      {t.fullName}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {selected && (
+            <div>
+              <label className={LABEL}>STANDARD (SOURCE)</label>
+              {selected.trainingStandards.length === 0 ? (
+                <div className="py-2 text-xs text-[#dc3545]">
+                  training นี้ยังไม่มี standard — ไปสร้างที่ Manage Trainings
+                  ก่อน
+                </div>
+              ) : (
+                <select
+                  value={standardId}
+                  onChange={(e) => setStandardId(e.target.value)}
+                  className={INPUT}
+                >
+                  <option value="">— เลือก standard —</option>
+                  {selected.trainingStandards.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.source?.name}
+                      {s.client?.name ? ` · ${s.client.name}` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex shrink-0 flex-col-reverse gap-2.5 border-t border-gray-100 px-5 py-3.5 sm:flex-row sm:justify-end">
+          <button onClick={onClose} className={BTN_GHOST}>
+            ยกเลิก
+          </button>
+          <button
+            onClick={handleLink}
+            disabled={!selected || !standardId || linking}
+            className={BTN_PRIMARY}
+          >
+            {linking ? "Linking..." : "Link Training"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// main
+// ══════════════════════════════════════════════════════════
 export default function MatrixEditor() {
   const { backendUrl } = useContext(AppContent);
 
   const [contracts, setContracts] = useState([]);
   const [positions, setPositions] = useState([]);
-  const [contractId, setContractId] = useState("");
-  const [positionId, setPositionId] = useState("");
+  const [contractId, setContractId] = useState(() => readLS(LS_CONTRACT));
+  const [positionId, setPositionId] = useState(() => readLS(LS_POSITION));
 
   const [items, setItems] = useState([]); // [{ clientTrainingId, name, alias, requirementType }]
   const [meta, setMeta] = useState(null); // { contract, position }
   const [search, setSearch] = useState("");
+  const [onlyRequired, setOnlyRequired] = useState(false);
+  const [dirty, setDirty] = useState(false); // มีการแก้ที่ยังไม่ได้ Save
 
   const [loadingLists, setLoadingLists] = useState(true);
   const [loadingMatrix, setLoadingMatrix] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null); // { type: "ok"|"err", text }
 
-  // โหลด contracts + positions (reuse endpoint เดิม)
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [positionCounts, setPositionCounts] = useState({}); // { [positionId]: count }
+
+  useEffect(() => writeLS(LS_CONTRACT, contractId), [contractId]);
+  useEffect(() => writeLS(LS_POSITION, positionId), [positionId]);
+
+  // เตือนก่อนปิดแท็บ/รีเฟรช ถ้ายังไม่ได้ Save
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
+
+  // โหลด contracts + positions
   useEffect(() => {
     (async () => {
       try {
@@ -38,8 +349,22 @@ export default function MatrixEditor() {
           }),
           axios.get(`${backendUrl}/api/positions`, { withCredentials: true }),
         ]);
-        setContracts(cRes.data || []);
-        setPositions(pRes.data || []);
+        const contractList = cRes.data || [];
+        const positionList = pRes.data || [];
+        setContracts(contractList);
+        setPositions(positionList);
+
+        // contract เดียว → เลือกให้เลย (ไม่ทับค่าที่ restore มา)
+        if (!contractId && contractList.length === 1) {
+          setContractId(contractList[0].id);
+        }
+        // ค่าที่ restore มาแต่ไม่มีใน list แล้ว (ถูกลบ) → เคลียร์
+        if (contractId && !contractList.some((c) => c.id === contractId)) {
+          setContractId("");
+        }
+        if (positionId && !positionList.some((p) => p.id === positionId)) {
+          setPositionId("");
+        }
       } catch (err) {
         console.error(err);
         setMsg({ type: "err", text: "โหลด contract/position ไม่สำเร็จ" });
@@ -47,34 +372,77 @@ export default function MatrixEditor() {
         setLoadingLists(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendUrl]);
 
-  // โหลด matrix เมื่อเลือกครบทั้ง contract + position
+  const loadPositionCounts = useCallback(async () => {
+    if (!contractId) {
+      setPositionCounts({});
+      return;
+    }
+    try {
+      const res = await axios.get(
+        `${backendUrl}/api/training-matrix/contracts/${contractId}/position-counts`,
+        { withCredentials: true },
+      );
+      setPositionCounts(res.data || {});
+    } catch (err) {
+      console.error(err);
+      setPositionCounts({});
+    }
+  }, [backendUrl, contractId]);
+
   useEffect(() => {
+    loadPositionCounts();
+  }, [loadPositionCounts]);
+
+  const loadMatrix = useCallback(async () => {
     if (!contractId || !positionId) {
       setItems([]);
       setMeta(null);
       return;
     }
-    (async () => {
-      try {
-        setLoadingMatrix(true);
-        setMsg(null);
-        const res = await axios.get(
-          `${backendUrl}/api/positions/${positionId}/matrix`,
-          { params: { contractId }, withCredentials: true },
-        );
-        setItems(res.data.items || []);
-        setMeta({ contract: res.data.contract, position: res.data.position });
-      } catch (err) {
-        console.error(err);
-        setMsg({ type: "err", text: "โหลด matrix ไม่สำเร็จ" });
-        setItems([]);
-      } finally {
-        setLoadingMatrix(false);
-      }
-    })();
+    try {
+      setLoadingMatrix(true);
+      setMsg(null);
+      const res = await axios.get(
+        `${backendUrl}/api/positions/${positionId}/matrix`,
+        {
+          params: { contractId },
+          withCredentials: true,
+        },
+      );
+      setItems(res.data.items || []);
+      setMeta({ contract: res.data.contract, position: res.data.position });
+      setDirty(false);
+    } catch (err) {
+      console.error(err);
+      setMsg({ type: "err", text: "โหลด matrix ไม่สำเร็จ" });
+      setItems([]);
+    } finally {
+      setLoadingMatrix(false);
+    }
   }, [backendUrl, contractId, positionId]);
+
+  useEffect(() => {
+    loadMatrix();
+  }, [loadMatrix]);
+
+  // เปลี่ยน contract/position ตอนยังไม่ Save → ถามก่อน
+  const confirmDiscard = () =>
+    !dirty ||
+    window.confirm(
+      "มีการแก้ไข matrix ที่ยังไม่ได้ Save — ทิ้งการแก้ไขและเปลี่ยนหน้า?",
+    );
+
+  const changeContract = (id) => {
+    if (!confirmDiscard()) return;
+    setContractId(id);
+  };
+  const changePosition = (id) => {
+    if (!confirmDiscard()) return;
+    setPositionId(id);
+  };
 
   const setLevel = (clientTrainingId, value) => {
     setItems((prev) =>
@@ -84,6 +452,7 @@ export default function MatrixEditor() {
           : it,
       ),
     );
+    setDirty(true);
     setMsg(null);
   };
 
@@ -93,24 +462,25 @@ export default function MatrixEditor() {
     try {
       setSaving(true);
       setMsg(null);
-      const payload = {
-        contractId,
-        items: items
-          .filter((it) => it.requirementType)
-          .map((it) => ({
-            clientTrainingId: it.clientTrainingId,
-            requirementType: it.requirementType,
-          })),
-      };
       const res = await axios.put(
         `${backendUrl}/api/positions/${positionId}/matrix`,
-        payload,
+        {
+          contractId,
+          items: items
+            .filter((it) => it.requirementType)
+            .map((it) => ({
+              clientTrainingId: it.clientTrainingId,
+              requirementType: it.requirementType,
+            })),
+        },
         { withCredentials: true },
       );
+      setDirty(false);
       setMsg({
         type: "ok",
         text: `บันทึกแล้ว — ${res.data.count} training สำหรับตำแหน่งนี้`,
       });
+      loadPositionCounts(); // อัปเดตตัวเลข (N) ใน dropdown Position
     } catch (err) {
       setMsg({
         type: "err",
@@ -121,368 +491,271 @@ export default function MatrixEditor() {
     }
   };
 
-  const filtered = items.filter((it) =>
-    it.name.toLowerCase().includes(search.trim().toLowerCase()),
+  // หลัง link สำเร็จ — reload matrix แล้วค่อยตั้งข้อความ
+  // (loadMatrix ล้างข้อความก่อนโหลด — เดิมตั้งข้อความก่อน เลยไม่เคยโชว์)
+  const handleLinked = async (trainingName) => {
+    setShowLinkModal(false);
+    if (dirty) {
+      // มีของค้างยังไม่ Save — ไม่ reload ทับ แค่แจ้ง
+      setMsg({
+        type: "ok",
+        text: `Link "${trainingName}" สำเร็จ — กด Save Matrix ก่อน แล้วเลือก position ใหม่เพื่อให้ training ที่เพิ่งผูกโผล่ในลิสต์`,
+      });
+      return;
+    }
+    await loadMatrix();
+    setMsg({ type: "ok", text: `Link "${trainingName}" สำเร็จ` });
+  };
+
+  const q = search.trim().toLowerCase();
+  const filtered = items.filter(
+    (it) =>
+      (!onlyRequired || it.requirementType) &&
+      (!q ||
+        it.name.toLowerCase().includes(q) ||
+        (it.alias || "").toLowerCase().includes(q)),
   );
 
-  const selectStyle = {
-    width: "100%",
-    padding: "8px 12px",
-    fontSize: "13px",
-    border: "1px solid #dee2e6",
-    borderRadius: "8px",
-    outline: "none",
-    boxSizing: "border-box",
-    background: "#fff",
-  };
-  const labelStyle = {
-    fontSize: "12px",
-    fontWeight: 600,
-    color: "#6c757d",
-    marginBottom: "6px",
-    display: "block",
-  };
+  const selectedContract = contracts.find((c) => c.id === contractId);
 
   return (
-    <div className="container-fluid p-0">
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* Header */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "16px 24px",
-            marginBottom: "1rem",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "20px" }}>🧩</span>
-            <span style={{ fontSize: "18px", fontWeight: 700 }}>
-              Matrix Editor
-            </span>
-            <span style={{ color: "#6c757d", fontSize: "12px" }}>
-              กำหนด training ที่ตำแหน่งต้องมี ต่อ contract (M/X/O) — มีผลกับ
-              eligibility &amp; gap analysis
-            </span>
-          </div>
+    <div className="mx-auto w-full min-w-0 max-w-[1800px]">
+      {/* ════════ Header ════════ */}
+      <div className={`${CARD} mb-4 px-4 py-4 sm:px-6`}>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <span className="text-xl">🧩</span>
+          <span className="text-lg font-bold">Matrix Editor</span>
+          <span className="basis-full text-xs text-gray-500 lg:basis-auto">
+            กำหนด training ที่ตำแหน่งต้องมี ต่อ contract (M/X/O) — มีผลกับ
+            eligibility &amp; gap analysis
+          </span>
         </div>
+      </div>
 
-        {/* Selectors */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "16px 24px",
-            marginBottom: "1rem",
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "16px",
-          }}
-        >
-          <div>
-            <label style={labelStyle}>CONTRACT</label>
-            <select
-              value={contractId}
-              onChange={(e) => setContractId(e.target.value)}
-              disabled={loadingLists}
-              style={selectStyle}
-            >
-              <option value="">— เลือก contract —</option>
-              {contracts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.contractNo})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>POSITION</label>
-            <select
-              value={positionId}
-              onChange={(e) => setPositionId(e.target.value)}
-              disabled={loadingLists}
-              style={selectStyle}
-            >
-              <option value="">— เลือก position —</option>
-              {positions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
+      {/* ════════ Selectors ════════ */}
+      <div
+        className={`${CARD} mb-4 grid grid-cols-1 gap-4 px-4 py-4 sm:px-6 md:grid-cols-2`}
+      >
+        <div>
+          <label className={LABEL}>CONTRACT</label>
+          <select
+            value={contractId}
+            onChange={(e) => changeContract(e.target.value)}
+            disabled={loadingLists}
+            className={INPUT}
+          >
+            <option value="">— เลือก contract —</option>
+            {contracts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.contractNo})
+              </option>
+            ))}
+          </select>
         </div>
+        <div>
+          <label className={LABEL}>POSITION</label>
+          <select
+            value={positionId}
+            onChange={(e) => changePosition(e.target.value)}
+            disabled={loadingLists || !contractId}
+            className={INPUT}
+          >
+            <option value="">— เลือก position —</option>
+            {positions.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} ({positionCounts[p.id] ?? 0})
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
-        {/* Message */}
-        {msg && (
-          <div
-            style={{
-              background: msg.type === "ok" ? "#d1e7dd" : "#f8d7da",
-              color: msg.type === "ok" ? "#0f5132" : "#842029",
-              border: `1px solid ${msg.type === "ok" ? "#badbcc" : "#f5c6cb"}`,
-              borderRadius: "8px",
-              padding: "10px 14px",
-              fontSize: "13px",
-              marginBottom: "1rem",
-            }}
-          >
-            {msg.type === "ok" ? "✅ " : "⚠ "}
-            {msg.text}
-          </div>
-        )}
+      <MessageBanner msg={msg} />
 
-        {/* Body */}
-        {!contractId || !positionId ? (
-          <div
-            style={{
-              background: "#fff",
-              border: "1px dashed #dee2e6",
-              borderRadius: "10px",
-              padding: "48px",
-              textAlign: "center",
-              color: "#6c757d",
-              fontSize: "14px",
-            }}
-          >
-            เลือก <strong>Contract</strong> และ <strong>Position</strong>{" "}
-            เพื่อแก้ training matrix
+      {/* ════════ Contract-level: Link Training ════════
+          การ link training เข้า contract ไม่เกี่ยวกับ position (ใช้แค่ contractId)
+          จึงโชว์ทันทีที่เลือก contract */}
+      {contractId && (
+        <div
+          className={`${CARD} mb-4 flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5`}
+        >
+          <div className="text-[13px] text-gray-700">
+            <strong>
+              {selectedContract?.clientName || selectedContract?.name}
+            </strong>
+            {selectedContract?.contractNo && (
+              <span className="text-gray-500">
+                {" "}
+                ({selectedContract.contractNo})
+              </span>
+            )}
+            <div className="text-[11px] text-gray-400">
+              Link training เข้า contract นี้ได้เลย — ไม่ต้องเลือก position ก่อน
+            </div>
           </div>
-        ) : loadingMatrix ? (
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              padding: "48px",
-              textAlign: "center",
-              color: "#6c757d",
-            }}
+          <button
+            onClick={() => setShowLinkModal(true)}
+            className="cursor-pointer whitespace-nowrap rounded-lg border-none bg-[#e7f1ff] px-3.5 py-[7px] text-[13px] font-semibold text-blue-600 shadow-[0_1px_3px_rgba(13,110,253,0.2),0_1px_2px_rgba(0,0,0,0.06)] transition-all hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(13,110,253,0.3),0_2px_3px_rgba(0,0,0,0.08)]"
           >
-            Loading matrix...
-          </div>
-        ) : (
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              overflow: "hidden",
-            }}
-          >
-            {/* Toolbar */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-                padding: "14px 20px",
-                borderBottom: "1px solid #f1f3f5",
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ fontSize: "13px", color: "#495057" }}>
-                <strong>{meta?.position?.name}</strong>
-                {meta?.contract && (
-                  <span style={{ color: "#6c757d" }}>
-                    {" "}
-                    · {meta.contract.clientName || meta.contract.name} (
-                    {meta.contract.contractNo})
-                  </span>
-                )}
-                <span
-                  style={{
-                    marginLeft: "10px",
-                    background: "#e7f1ff",
-                    color: "#084298",
-                    borderRadius: "6px",
-                    padding: "2px 10px",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                  }}
-                >
-                  {requiredCount} required
+            + Link Training
+          </button>
+        </div>
+      )}
+
+      {/* ════════ Body — matrix ต่อ position ════════ */}
+      {!contractId ? (
+        <Placeholder dashed>
+          เลือก <strong>Contract</strong> เพื่อเริ่มต้น
+        </Placeholder>
+      ) : !positionId ? (
+        <Placeholder dashed>
+          เลือก <strong>Position</strong> เพิ่มเติม เพื่อดู/แก้ระดับ requirement
+          (M/O) ของแต่ละตำแหน่ง
+        </Placeholder>
+      ) : loadingMatrix ? (
+        <Placeholder>Loading matrix...</Placeholder>
+      ) : (
+        <div className={CARD}>
+          {/* Toolbar */}
+          <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3.5 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] text-gray-700">
+              <strong>{meta?.position?.name}</strong>
+              {meta?.contract && (
+                <span className="text-gray-500">
+                  · {meta.contract.clientName || meta.contract.name} (
+                  {meta.contract.contractNo})
                 </span>
+              )}
+              <span className="rounded-md bg-[#e7f1ff] px-2.5 py-0.5 text-xs font-semibold text-[#084298]">
+                {requiredCount} required
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              {/* สลับดูเฉพาะที่ required — มี 85 training ไล่หายาก */}
+              <div className="flex shrink-0 overflow-hidden rounded-lg border border-gray-200 text-xs font-semibold">
+                {[
+                  [false, `ทั้งหมด (${items.length})`],
+                  [true, `เฉพาะ required (${requiredCount})`],
+                ].map(([val, label]) => (
+                  <button
+                    key={String(val)}
+                    onClick={() => setOnlyRequired(val)}
+                    className={`flex-1 cursor-pointer whitespace-nowrap border-none px-3 py-[7px] ${
+                      onlyRequired === val
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
               <input
                 type="text"
-                placeholder="ค้นหา training..."
+                placeholder="🔍 ค้นหา training..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                style={{
-                  width: "220px",
-                  padding: "7px 12px",
-                  fontSize: "13px",
-                  border: "1px solid #dee2e6",
-                  borderRadius: "8px",
-                  outline: "none",
-                }}
+                className={`${INPUT} sm:w-[220px]`}
               />
             </div>
-
-            {items.length === 0 ? (
-              <div
-                style={{
-                  padding: "40px",
-                  textAlign: "center",
-                  color: "#6c757d",
-                  fontSize: "13px",
-                }}
-              >
-                contract นี้ยังไม่มี ClientTraining — ต้อง seed/import training
-                ของ contract ก่อน
-              </div>
-            ) : (
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: "13px",
-                }}
-              >
-                <thead>
-                  <tr style={{ borderBottom: "1px solid #f1f3f5" }}>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 20px",
-                        fontSize: "11px",
-                        color: "#6c757d",
-                        fontWeight: 600,
-                      }}
-                    >
-                      TRAINING
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: "10px 20px",
-                        fontSize: "11px",
-                        color: "#6c757d",
-                        fontWeight: 600,
-                        width: "200px",
-                      }}
-                    >
-                      REQUIREMENT
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan="2"
-                        style={{
-                          padding: "24px",
-                          textAlign: "center",
-                          color: "#6c757d",
-                        }}
-                      >
-                        ไม่พบ training ที่ตรงกับ "{search}"
-                      </td>
-                    </tr>
-                  ) : (
-                    filtered.map((it) => {
-                      const active = !!it.requirementType;
-                      return (
-                        <tr
-                          key={it.clientTrainingId}
-                          style={{
-                            borderBottom: "1px solid #f8f9fa",
-                            background: active ? "#fcfdff" : "#fff",
-                          }}
-                        >
-                          <td style={{ padding: "10px 20px" }}>
-                            <span style={{ fontWeight: active ? 600 : 400 }}>
-                              {it.name}
-                            </span>
-                            {it.alias && it.alias !== it.name && (
-                              <span
-                                style={{
-                                  color: "#adb5bd",
-                                  fontSize: "11px",
-                                  marginLeft: "8px",
-                                }}
-                              >
-                                ({it.alias})
-                              </span>
-                            )}
-                          </td>
-                          <td
-                            style={{ padding: "10px 20px", textAlign: "right" }}
-                          >
-                            <select
-                              value={it.requirementType || ""}
-                              onChange={(e) =>
-                                setLevel(it.clientTrainingId, e.target.value)
-                              }
-                              style={{
-                                padding: "5px 10px",
-                                fontSize: "12px",
-                                fontWeight: 600,
-                                border: "1px solid #dee2e6",
-                                borderRadius: "6px",
-                                background: "#fff",
-                                color:
-                                  REQ_LEVELS.find(
-                                    (l) =>
-                                      l.value === (it.requirementType || ""),
-                                  )?.color || "#212529",
-                                cursor: "pointer",
-                              }}
-                            >
-                              {REQ_LEVELS.map((l) => (
-                                <option key={l.value} value={l.value}>
-                                  {l.label}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            )}
-
-            {/* Footer / Save */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                alignItems: "center",
-                gap: "12px",
-                padding: "14px 20px",
-                borderTop: "1px solid #f1f3f5",
-              }}
-            >
-              <span style={{ fontSize: "12px", color: "#6c757d" }}>
-                ติ๊ก {requiredCount} จาก {items.length} training
-              </span>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                style={{
-                  background: "#0d6efd",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "9px 22px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: saving ? "not-allowed" : "pointer",
-                  opacity: saving ? 0.7 : 1,
-                }}
-              >
-                {saving ? "Saving..." : "Save Matrix"}
-              </button>
-            </div>
           </div>
-        )}
-      </div>
+
+          {items.length === 0 ? (
+            <div className="p-10 text-center text-[13px] text-gray-500">
+              contract นี้ยังไม่มี training ที่ link ไว้ — กด{" "}
+              <strong>+ Link Training</strong> ด้านบนเพื่อเพิ่ม
+            </div>
+          ) : (
+            <table className="w-full border-collapse text-[13px]">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 sm:px-5">
+                    TRAINING
+                  </th>
+                  <th className="w-[150px] px-4 py-2.5 text-right text-[11px] font-semibold text-gray-500 sm:w-[200px] sm:px-5">
+                    REQUIREMENT
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={2} className="p-6 text-center text-gray-500">
+                      {q
+                        ? `ไม่พบ training ที่ตรงกับ "${search}"`
+                        : "ยังไม่มี training ที่ตั้งเป็น required"}
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((it) => {
+                    const active = !!it.requirementType;
+                    return (
+                      <tr
+                        key={it.clientTrainingId}
+                        className={`border-b border-gray-50 ${
+                          active ? "bg-[#fcfdff]" : "bg-white"
+                        } hover:bg-gray-50`}
+                      >
+                        <td className="px-4 py-2.5 sm:px-5">
+                          <span className={active ? "font-semibold" : ""}>
+                            {it.name}
+                          </span>
+                          {it.alias && it.alias !== it.name && (
+                            <span className="block text-[11px] text-gray-400 sm:ml-2 sm:inline">
+                              ({it.alias})
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right sm:px-5">
+                          <RequirementSelect
+                            value={it.requirementType}
+                            onChange={(v) => setLevel(it.clientTrainingId, v)}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {/* Footer — ติดขอบล่างจอ ไม่ต้องเลื่อนลงไปหาปุ่ม Save ท้าย 85 แถว */}
+          <div
+            className={`sticky bottom-0 z-[1] flex flex-col gap-2 rounded-b-[10px] border-t px-4 py-3.5 sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:px-5 ${
+              dirty
+                ? "border-[#ffe69c] bg-[#fffbea]"
+                : "border-gray-100 bg-white"
+            }`}
+          >
+            <span className="text-xs text-gray-500">
+              {dirty && (
+                <strong className="mr-2 text-[#664d03]">
+                  ● ยังไม่ได้บันทึก
+                </strong>
+              )}
+              ติ๊ก {requiredCount} จาก {items.length} training
+            </span>
+            <button
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              className={BTN_PRIMARY}
+            >
+              {saving ? "Saving..." : dirty ? "Save Matrix" : "✓ Saved"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showLinkModal && contractId && (
+        <LinkTrainingModal
+          backendUrl={backendUrl}
+          contractId={contractId}
+          onClose={() => setShowLinkModal(false)}
+          onLinked={handleLinked}
+        />
+      )}
     </div>
   );
 }

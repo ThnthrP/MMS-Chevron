@@ -1,12 +1,11 @@
 import { useContext } from "react";
-import { Routes, Route } from "react-router-dom";
-
+import { Routes, Route, Navigate } from "react-router-dom";
 import { AppContent } from "../context/AppContext";
 
 import Layout from "../components/layout/Layout";
 import ProtectedRoute from "../components/ProtectedRoute";
 
-import AdminDashboard from "../pages/dashboard/AdminDashboard";
+import Dashboard from "../pages/dashboard/Dashboard"; // ← เดิม AdminDashboard (ทุก role ใช้หน้านี้)
 
 import AdminUsers from "../pages/admin/AdminUsers";
 
@@ -36,40 +35,71 @@ import AnalyticsReports from "../pages/projects/AnalyticsReports";
 import Certifications from "../pages/compliance/Certifications";
 
 import TrainingRequestDetail from "../pages/compliance/TrainingRequestDetail";
-import TrainingRequestHistory from "../pages/compliance/TrainingRequestHistory";
+import RequestsHistory from "../pages/compliance/RequestsHistory";
+import MedicalRequestDetail from "../pages/compliance/MedicalRequestDetail";
 
-import SupervisorOverview from "../pages/projects/SupervisorOverview";
+import ProjectsOverview from "../pages/projects/ProjectsOverview";
+
+import BulkAddCertification from "../pages/compliance/BulkAddCertification";
+
+import BulkSetPin from "../pages/workers/BulkSetPin";
+
+import PEApprovals from "../pages/projects/PEApprovals";
+
+import AuditLogs from "../pages/admin/AuditLogs";
+
+// ── Role scheme (9 roles ปัจจุบันในระบบ) ──
+// admin, project_engineer, manpower_supply, hr_supervisor,
+// personal_record_officer, hr_officer, safety_manager, safety_officer,
+// training_officer
+// role อื่นที่เคยมี (pe_head, nurse, bd, expert, supervisor, executive,
+// manager) ถูกลบออกจากระบบแล้ว — เอาออกจากทุก allowRoles ด้านล่าง
+//
+// ต้อง sync กับ sidebarMenu.js เสมอ — allowRoles ที่นี่คือ enforcement จริง
+// sidebarMenu.js แค่คุมว่าเมนูโชว์ในแถบข้างซ้ายไหม
+
+// role ที่เข้า "Requests from MP" ได้ — ใช้ร่วมกับหน้า detail ของคำขอ
+const REQUESTS_ROLES = [
+  "admin",
+  "manpower_supply",
+  "hr_supervisor",
+  "personal_record_officer",
+  "hr_officer",
+  "training_officer",
+];
+
+// role ที่เห็น Dashboard — PE ไม่มี Dashboard จึงส่งไปหน้า PE Approvals แทน
+// (หลัง login ทุก role จะมาที่ "/" ก่อน ถ้าไม่ redirect PE จะเจอหน้าไม่มีสิทธิ์)
+const DASHBOARD_ROLES = [
+  "admin",
+  "manpower_supply",
+  "hr_supervisor",
+  "personal_record_officer",
+  "hr_officer",
+  "safety_manager",
+  "safety_officer",
+  "training_officer",
+];
+
+function HomeRoute() {
+  const { userData } = useContext(AppContent);
+  if (userData?.role?.name === "project_engineer") {
+    return <Navigate to="/pe-approvals" replace />;
+  }
+  return (
+    <ProtectedRoute allowRoles={DASHBOARD_ROLES}>
+      <Dashboard />
+    </ProtectedRoute>
+  );
+}
 
 const AppRouter = () => {
   return (
     <ProtectedRoute>
       <Layout>
         <Routes>
-          {/* Dashboard — ตรงกับ sidebarMenu.js section MAIN */}
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute
-                allowRoles={[
-                  "admin",
-                  "pe",
-                  "pe_head",
-                  "hr",
-                  "manpower",
-                  "safety",
-                  "nurse",
-                  "ta",
-                  "bd",
-                  "expert",
-                  "supervisor",
-                  "executive",
-                  "manager",
-                ]}
-              >
-                <AdminDashboard />
-              </ProtectedRoute>
-            }
-          />
+          {/* Dashboard — ทุก role ยกเว้น PE (PE ถูกส่งไป /pe-approvals) */}
+          <Route path="/" element={<HomeRoute />} />
 
           {/* Training Matrix */}
           <Route
@@ -78,11 +108,11 @@ const AppRouter = () => {
               <ProtectedRoute
                 allowRoles={[
                   "admin",
-                  "hr",
-                  "manpower",
-                  "pe",
-                  "pe_head",
-                  "expert",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
                 ]}
               >
                 <TrainingMatrix />
@@ -96,12 +126,12 @@ const AppRouter = () => {
               <ProtectedRoute
                 allowRoles={[
                   "admin",
-                  "hr",
-                  "manpower",
-                  "safety",
-                  "pe",
-                  "expert",
-                  "pe_head",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "safety_manager",
+                  "training_officer",
                 ]}
               >
                 <Workers />
@@ -111,7 +141,16 @@ const AppRouter = () => {
           <Route
             path="/workers/add"
             element={
-              <ProtectedRoute allowRoles={["admin", "hr", "manpower"]}>
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                ]}
+              >
                 <AddWorker />
               </ProtectedRoute>
             }
@@ -122,11 +161,12 @@ const AppRouter = () => {
               <ProtectedRoute
                 allowRoles={[
                   "admin",
-                  "hr",
-                  "manpower",
-                  "safety",
-                  "pe",
-                  "expert",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "safety_manager",
+                  "training_officer",
                 ]}
               >
                 <WorkerDetail />
@@ -136,7 +176,16 @@ const AppRouter = () => {
           <Route
             path="/workers/:id/edit"
             element={
-              <ProtectedRoute allowRoles={["admin", "hr", "manpower"]}>
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                ]}
+              >
                 <EditWorker />
               </ProtectedRoute>
             }
@@ -147,13 +196,12 @@ const AppRouter = () => {
               <ProtectedRoute
                 allowRoles={[
                   "admin",
-                  "hr",
-                  "manpower",
-                  "safety",
-                  "nurse",
-                  "pe",
-                  "pe_head",
-                  "expert",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "safety_manager",
+                  "training_officer",
                 ]}
               >
                 <ComplianceDashboard />
@@ -166,13 +214,12 @@ const AppRouter = () => {
               <ProtectedRoute
                 allowRoles={[
                   "admin",
-                  "hr",
-                  "manpower",
-                  "safety",
-                  "nurse",
-                  "pe",
-                  "pe_head",
-                  "expert",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "safety_manager",
+                  "training_officer",
                 ]}
               >
                 <Certifications />
@@ -181,19 +228,47 @@ const AppRouter = () => {
           />
 
           <Route
-            path="/training-requests-history"
+            path="/certifications/bulk-add"
             element={
-              <ProtectedRoute allowRoles={["admin", "hr"]}>
-                <TrainingRequestHistory />
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                ]}
+              >
+                <BulkAddCertification />
               </ProtectedRoute>
             }
           />
 
+          {/* Requests from MP + หน้า detail — ใช้ role ชุดเดียวกัน
+              (เดิม /training-requests/:id ประกาศซ้ำ 2 ครั้ง และหน้า detail ไม่มี allowRoles
+              role ที่ไม่เห็นเมนู Requests from MP ก็เปิดผ่าน URL ตรงได้) */}
+          <Route
+            path="/requests-history"
+            element={
+              <ProtectedRoute allowRoles={REQUESTS_ROLES}>
+                <RequestsHistory />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/training-requests/:id"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowRoles={REQUESTS_ROLES}>
                 <TrainingRequestDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/medical-requests/:id"
+            element={
+              <ProtectedRoute allowRoles={REQUESTS_ROLES}>
+                <MedicalRequestDetail />
               </ProtectedRoute>
             }
           />
@@ -204,11 +279,13 @@ const AppRouter = () => {
               <ProtectedRoute
                 allowRoles={[
                   "admin",
-                  "hr",
-                  "manpower",
-                  "pe",
-                  "pe_head",
-                  "expert",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "manpower_supply",
+                  "training_officer",
+                  "project_engineer",
+                  "safety_manager",
                 ]}
               >
                 <Project />
@@ -221,14 +298,13 @@ const AppRouter = () => {
               <ProtectedRoute
                 allowRoles={[
                   "admin",
-                  "hr",
-                  "manpower",
-                  "pe",
-                  "expert",
-                  "supervisor",
-                  "executive",
-                  "manager",
-                  "pe_head",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                  "project_engineer",
+                  "safety_manager",
                 ]}
               >
                 <ProjectDetail />
@@ -239,7 +315,18 @@ const AppRouter = () => {
           <Route
             path="/projects/:id/edit"
             element={
-              <ProtectedRoute allowRoles={["admin", "pe"]}>
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                  "project_engineer",
+                  "safety_manager",
+                ]}
+              >
                 <EditProject />
               </ProtectedRoute>
             }
@@ -251,11 +338,13 @@ const AppRouter = () => {
               <ProtectedRoute
                 allowRoles={[
                   "admin",
-                  "manpower",
-                  "hr",
-                  "pe",
-                  "pe_head",
-                  "expert",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                  "project_engineer",
+                  "safety_manager",
                 ]}
               >
                 <Allocation />
@@ -264,9 +353,37 @@ const AppRouter = () => {
           />
 
           <Route
+            path="/pe-approvals"
+            element={
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "project_engineer",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                ]}
+              >
+                <PEApprovals />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
             path="/positions"
             element={
-              <ProtectedRoute allowRoles={["admin", "hr", "manpower"]}>
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                ]}
+              >
                 <ManagePositions />
               </ProtectedRoute>
             }
@@ -275,7 +392,16 @@ const AppRouter = () => {
           <Route
             path="/positions/matrix"
             element={
-              <ProtectedRoute allowRoles={["admin", "hr", "manpower"]}>
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                ]}
+              >
                 <MatrixEditor />
               </ProtectedRoute>
             }
@@ -287,13 +413,14 @@ const AppRouter = () => {
               <ProtectedRoute
                 allowRoles={[
                   "admin",
-                  "manpower",
-                  "hr",
-                  "pe",
-                  "pe_head",
-                  "safety",
-                  "nurse",
-                  "ta",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "project_engineer",
+                  "safety_manager",
+                  "safety_officer",
+                  "training_officer",
                 ]}
               >
                 <Mobilization />
@@ -307,14 +434,12 @@ const AppRouter = () => {
               <ProtectedRoute
                 allowRoles={[
                   "admin",
-                  "hr",
-                  "pe",
-                  "pe_head",
-                  "manpower",
-                  "supervisor",
-                  "executive",
-                  "manager",
-                  "bd",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                  "project_engineer",
                 ]}
               >
                 <PostProjectReview />
@@ -328,14 +453,11 @@ const AppRouter = () => {
               <ProtectedRoute
                 allowRoles={[
                   "admin",
-                  "pe_head",
-                  "bd",
-                  "manager",
-                  "manpower",
-                  "hr",
-                  "pe",
-                  "executive",
-                  "supervisor",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
                 ]}
               >
                 <AnalyticsReports />
@@ -344,22 +466,20 @@ const AppRouter = () => {
           />
 
           <Route
-            path="/supervisor-overview"
+            path="/projects-overview"
             element={
               <ProtectedRoute
                 allowRoles={[
                   "admin",
-                  "supervisor",
-                  "executive",
-                  "manager",
-                  "pe_head",
-                  "manpower",
-                  "hr",
-                  "pe",
-                  "bd",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                  "project_engineer",
                 ]}
               >
-                <SupervisorOverview />
+                <ProjectsOverview />
               </ProtectedRoute>
             }
           />
@@ -367,7 +487,16 @@ const AppRouter = () => {
           <Route
             path="/divisions"
             element={
-              <ProtectedRoute allowRoles={["admin", "hr", "manpower"]}>
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                ]}
+              >
                 <ManageDivisions />
               </ProtectedRoute>
             }
@@ -376,7 +505,16 @@ const AppRouter = () => {
           <Route
             path="/trainings"
             element={
-              <ProtectedRoute allowRoles={["admin", "hr", "manpower"]}>
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                ]}
+              >
                 <ManageTrainings />
               </ProtectedRoute>
             }
@@ -388,6 +526,26 @@ const AppRouter = () => {
             element={
               <ProtectedRoute allowRoles={["admin"]}>
                 <AdminUsers />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Bulk Set PIN — Worker App access, admin only */}
+          <Route
+            path="/workers/bulk-set-pin"
+            element={
+              <ProtectedRoute allowRoles={["admin"]}>
+                <BulkSetPin />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Audit Log — บันทึกการใช้งานระบบ, admin only */}
+          <Route
+            path="/audit-logs"
+            element={
+              <ProtectedRoute allowRoles={["admin"]}>
+                <AuditLogs />
               </ProtectedRoute>
             }
           />

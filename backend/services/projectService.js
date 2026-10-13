@@ -2,6 +2,22 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+// // วิธีเดินทางขาไป — ต้องตรงกับตัวเลือกใน Project.jsx / JobCard.jsx
+// const TRAVEL_MODES = ["boat", "helicopter", "vehicle", "other"];
+// const cleanTravelMode = (v) => (TRAVEL_MODES.includes(v) ? v : null);
+
+// วิธีเดินทางขาไป — ตัวเลือกในรายการ หรือข้อความที่พิมพ์เองจาก "อื่นๆ" (ไม่เกิน 50 ตัว)
+const cleanTravelMode = (v) => {
+  const s = typeof v === "string" ? v.trim().slice(0, 50) : "";
+  return s || null;
+};
+
+// จำนวนวันตอบรับ 1–90 วัน ค่าผิดหรือว่าง = 10 วัน
+const cleanResponseDays = (v) => {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n >= 1 && n <= 90 ? n : 10;
+};
+
 export async function getProjects() {
   return prisma.project.findMany({
     include: {
@@ -69,6 +85,9 @@ export async function createProject(data) {
     startDate,
     endDate,
     isOffshore,
+    travelMode,
+    // responseDeadline,
+    responseDays,
   } = data;
 
   if (!masterProjectRecordId) {
@@ -100,6 +119,9 @@ export async function createProject(data) {
       startDate: startDate ? new Date(startDate) : null,
       endDate: endDate ? new Date(endDate) : null,
       isOffshore: isOffshore ?? false,
+      travelMode: cleanTravelMode(travelMode),
+      // responseDeadline: responseDeadline ? new Date(responseDeadline) : null,
+      responseDays: cleanResponseDays(responseDays),
       masterProjectRecordId,
     },
     include: {
@@ -122,6 +144,11 @@ export async function updateProject(id, data) {
       startDate: data.startDate ? new Date(data.startDate) : null,
       endDate: data.endDate ? new Date(data.endDate) : null,
       isOffshore: data.isOffshore ?? false,
+      travelMode: cleanTravelMode(data.travelMode),
+      // responseDeadline: data.responseDeadline
+      //   ? new Date(data.responseDeadline)
+      //   : null,
+      responseDays: cleanResponseDays(data.responseDays),
     },
     include: {
       contract: { include: { client: true } },
@@ -412,9 +439,15 @@ export async function browseMasterProjectRecords({
             id: true,
             name: true,
             createdAt: true,
-            location: true, // ← เพิ่ม
-            startDate: true, // ← เพิ่ม
-            endDate: true, // ← เพิ่ม
+            location: true,
+            startDate: true,
+            endDate: true,
+            contractId: true, // ← เพิ่ม — ต้องใช้ตอน PUT /api/projects/:id (updateProject ต้องการ contractId)
+            isOffshore: true, // ← เพิ่ม — เพื่อ prefill ค่า Onshore/Offshore ใน edit modal ให้ถูกต้อง
+            notes: true, // ← เพิ่ม — เพื่อ prefill Notes ใน edit modal
+            travelMode: true, // ← เพิ่ม — prefill "ขาไป" ใน edit modal
+            // responseDeadline: true, // ← เพิ่ม — prefill "ตอบกลับภายใน" ใน edit modal
+            responseDays: true,
           },
           orderBy: { createdAt: "desc" },
         },

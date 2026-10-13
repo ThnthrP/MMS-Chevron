@@ -2,6 +2,21 @@
 // sidebarMenu.js
 // Experteam Manpower Management System (MMS) - Production Ready
 // ============================================================
+//
+// ── Role scheme (9 roles ปัจจุบันในระบบ) ──
+//   admin
+//   project_engineer          (เดิม: pe)
+//   manpower_supply           (เดิม: manpower)
+//   hr_supervisor
+//   personal_record_officer
+//   hr_officer                (เดิม: hr — แทนที่ด้วย 3 ตำแหน่ง HR ข้างบนทั้งหมด)
+//   safety_manager
+//   safety_officer            (เดิม: safety)
+//   training_officer          (เดิม: ta)
+//
+// role อื่นที่เคยมี (pe_head, nurse, bd, expert, supervisor, executive,
+// manager) ถูกลบออกจากระบบแล้ว — เอา string เหล่านี้ออกจากทุก array
+// ============================================================
 
 export const APP_MENU = [
   {
@@ -12,18 +27,13 @@ export const APP_MENU = [
         path: "/",
         roles: [
           "admin",
-          "pe",
-          "pe_head",
-          "hr",
-          "manpower",
-          "safety",
-          "nurse",
-          "ta",
-          "bd",
-          "expert",
-          "supervisor",
-          "executive",
-          "manager",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "safety_manager",
+          "safety_officer",
+          "training_officer",
         ],
       },
     ],
@@ -40,20 +50,25 @@ export const APP_MENU = [
         path: "/workers",
         roles: [
           "admin",
-          "hr",
-          "manpower",
-          "safety",
-          "nurse",
-          "ta",
-          "pe",
-          "expert",
-          "pe_head",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "safety_manager", // ← ตามเอกสารอนุมัติ: "การเข้าถึงหน้าข้อมูลพนักงานทั้งหมด"
+          "training_officer",
         ],
       },
       {
         name: "Add Worker",
         path: "/workers/add",
-        roles: ["admin", "hr"],
+        roles: [
+          "admin",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
+        ],
       },
     ],
   },
@@ -67,22 +82,26 @@ export const APP_MENU = [
       {
         name: "Training Matrix",
         path: "/training-matrix",
-        roles: ["admin", "hr", "manpower", "pe", "pe_head", "expert", "ta"],
-        // ← เพิ่ม pe_head: หัวหน้า PE ควรเห็นเท่ากับ pe ที่ดูแลอยู่แล้ว
+        roles: [
+          "admin",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
+        ],
       },
       {
         name: "Compliance Center",
         path: "/compliance",
         roles: [
           "admin",
-          "hr",
-          "manpower",
-          "safety",
-          "nurse",
-          "pe",
-          "pe_head", // ← เพิ่ม: ตาม pe
-          "expert", // ← เพิ่ม: ใช้ประกอบการประเมินคุณสมบัติทางเทคนิค
-          "ta",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "safety_manager",
+          "training_officer",
         ],
         badge: true,
       },
@@ -91,20 +110,25 @@ export const APP_MENU = [
         path: "/certifications",
         roles: [
           "admin",
-          "hr",
-          "manpower",
-          "safety",
-          "nurse",
-          "pe",
-          "pe_head", // ← เพิ่ม: ตาม pe
-          "expert", // ← เพิ่ม: คู่กับ Compliance Center
-          "ta",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "safety_manager",
+          "training_officer",
         ],
       },
       {
-        name: "Training Requests",
-        path: "/training-requests-history",
-        roles: ["admin", "hr", "ta"], // เจ้าของงานจัด training โดยตรง — ไม่เพิ่ม
+        name: "Requests from MP",
+        path: "/requests-history",
+        roles: [
+          "admin",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
+        ],
       },
     ],
   },
@@ -118,29 +142,70 @@ export const APP_MENU = [
       {
         name: "Projects",
         path: "/projects",
-        roles: ["admin", "pe", "pe_head", "manpower", "hr", "expert"],
-        // ← เพิ่ม expert: ให้ตรงกับสิทธิ์ที่มีอยู่แล้วใน route /projects (AppRouter.jsx)
+        roles: [
+          "admin",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
+          "project_engineer",
+          "safety_manager", // ← ตามเอกสารอนุมัติ: "การเข้าถึงหน้าข้อมูล project request"
+        ],
       },
       {
         name: "Allocation",
         path: "/allocation",
-        roles: ["admin", "manpower", "hr", "pe", "pe_head", "expert"],
-        // ← เพิ่ม pe_head: หัวหน้า PE ควรรีวิว/กำกับขั้นตอนคัดเลือกได้เท่า pe
-        // ไม่เพิ่ม safety/nurse/ta ตรงนี้ — เป็นขั้นตอนคัดเลือก/approve
-        // ยังไม่ใช่งานตรวจร่างกาย/training ที่ role พวกนี้รับผิดชอบ
+        roles: [
+          "admin",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
+          "project_engineer",
+          "safety_manager", // ← ตามเอกสารอนุมัติ: "สรุปรายชื่อพนักงานเลือกลงงาน"
+        ],
+      },
+      {
+        name: "PE Approvals",
+        path: "/pe-approvals",
+        roles: [
+          "admin",
+          "project_engineer",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
+        ],
       },
       {
         name: "Mobilization",
         path: "/mobilization",
         roles: [
           "admin",
-          "manpower",
-          "hr",
-          "pe",
-          "pe_head", // ← เพิ่ม: ตาม pe เพื่อกำกับดูแลขั้นตอน deploy
-          "safety",
-          "nurse",
-          "ta",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "project_engineer",
+          "safety_manager",
+          "safety_officer",
+          "training_officer",
+        ],
+      },
+      {
+        name: "Projects Overview",
+        path: "/projects-overview",
+        roles: [
+          "admin",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
+          "project_engineer",
         ],
       },
     ],
@@ -157,16 +222,13 @@ export const APP_MENU = [
         path: "/review",
         roles: [
           "admin",
-          "hr",
-          "pe",
-          "pe_head",
-          "manpower",
-          "supervisor",
-          "executive",
-          "manager",
-          "bd", // ← เพิ่ม: ใช้ผลงานที่ผ่านมาประกอบการเสนอขาย/อ้างอิงกับลูกค้าใหม่
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
+          "project_engineer",
         ],
-        // ไม่เพิ่ม safety/nurse/ta — เป็นการประเมินผลงานทั่วไป ไม่เกี่ยวกับ compliance
       },
     ],
   },
@@ -182,29 +244,11 @@ export const APP_MENU = [
         path: "/reports",
         roles: [
           "admin",
-          "pe_head",
-          "bd",
-          "manager",
-          "manpower",
-          "hr",
-          "pe",
-          "executive",
-          "supervisor",
-        ],
-      },
-      {
-        name: "Projects Overview",
-        path: "/supervisor-overview",
-        roles: [
-          "admin",
-          "supervisor",
-          "executive",
-          "manager",
-          "pe_head",
-          "manpower",
-          "hr",
-          "pe",
-          "bd", // ← เพิ่ม: ดูสถานะโปรเจกต์ปัจจุบันเพื่อคุยกับลูกค้า/คู่ค้า
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
         ],
       },
     ],
@@ -219,22 +263,50 @@ export const APP_MENU = [
       {
         name: "Manage Positions",
         path: "/positions",
-        roles: ["admin", "hr", "manpower"],
+        roles: [
+          "admin",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
+        ],
       },
       {
         name: "Manage Departments",
         path: "/divisions",
-        roles: ["admin", "hr", "manpower"],
+        roles: [
+          "admin",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
+        ],
       },
       {
         name: "Manage Trainings",
         path: "/trainings",
-        roles: ["admin", "hr", "manpower", "ta"],
+        roles: [
+          "admin",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
+        ],
       },
       {
         name: "Matrix Editor",
         path: "/positions/matrix",
-        roles: ["admin", "hr", "manpower"],
+        roles: [
+          "admin",
+          "manpower_supply",
+          "hr_supervisor",
+          "personal_record_officer",
+          "hr_officer",
+          "training_officer",
+        ],
       },
     ],
   },
@@ -248,6 +320,16 @@ export const APP_MENU = [
       {
         name: "User Management",
         path: "/users",
+        roles: ["admin"],
+      },
+      {
+        name: "Bulk Set PIN",
+        path: "/workers/bulk-set-pin",
+        roles: ["admin"],
+      },
+      {
+        name: "Audit Log",
+        path: "/audit-logs",
         roles: ["admin"],
       },
     ],

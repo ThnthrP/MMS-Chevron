@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { getActiveBanMap } from "./employeeBanService.js"; // ← เพิ่มบรรทัดนี้
 
 const prisma = new PrismaClient();
 
@@ -61,6 +62,7 @@ export async function getProjectAllocationDetail(projectId) {
 // ─── Step 8: Find workers + Eligibility check ───
 export async function findWorkers({
   positionId,
+  matrixPositionId, // ตำแหน่งที่ใช้เทียบ Matrix (= ตำแหน่งของ request) — ถ้าไม่ส่งมาใช้ positionId
   requestId,
   contractId,
   employeeIds,
@@ -112,6 +114,14 @@ export async function findWorkers({
       medicalChecks: {
         select: { checkType: true, expiryDate: true, status: true },
       },
+      // ← เพิ่มใหม่: PE / Medical Exam record ล่าสุด — เอาแค่ note มาใช้แสดงใน
+      // คอลัมน์ HEALTH RISK แทน healthNote (ให้สอดคล้องกับ healthRisk ที่ sync
+      // จาก PE record อยู่แล้วใน recomputeLatestMedicalExam)
+      medicalExamRecords: {
+        where: { isLatest: true },
+        select: { note: true },
+        take: 1,
+      },
     },
     orderBy: [{ mobilizationStatus: "asc" }, { fullName: "asc" }],
   });
@@ -122,10 +132,11 @@ export async function findWorkers({
   let requiredTrainings = [];
   let hasMatrix = false; // ← ใหม่: แยก "ไม่มี Matrix เลย" ออกจาก "มี Matrix แต่ไม่มี mandatory"
 
-  if (positionId && contractId) {
+  const matrixPosId = matrixPositionId || positionId;
+  if (matrixPosId && contractId) {
     // ดึงทุก requirement ของ position+contract นี้ก่อน (ไม่กรอง type) เพื่อเช็คว่ามี Matrix ตั้งไว้หรือยัง
     const allRequirements = await prisma.positionRequirement.findMany({
-      where: { positionId, contractId },
+      where: { positionId: matrixPosId, contractId },
       include: {
         clientTraining: { include: { globalTraining: true } },
       },
@@ -148,6 +159,10 @@ export async function findWorkers({
 
   const now = Date.now();
   const norm = (s) => (s || "").replace(/\s+/g, "").toLowerCase();
+
+  // ← เพิ่ม: ดึง active ban ของทุกคนใน list ล่วงหน้าเป็น Map เดียว (กัน N+1 query)
+  const candidateEmployeeIds = employees.map((e) => e.id);
+  const banMap = await getActiveBanMap(candidateEmployeeIds);
 
   return employees.map((emp) => {
     const empTrainingIds = emp.trainings
@@ -190,6 +205,7 @@ export async function findWorkers({
     return {
       id: emp.id,
       empCode: emp.empCode,
+      empId: emp.empId,
       fullName: emp.fullName,
       position: emp.position,
       startWorkDate: emp.startWorkDate,
@@ -199,13 +215,14 @@ export async function findWorkers({
       certifications,
       eligibility,
       missingTrainings,
-      matchPct,
+      matchPct, // ← ไม่แตะ ยังคำนวณตามจริงเหมือนเดิม
       hasMatrix,
 
       // ── roster (คนติดตัว) ──
       isPermanent: emp.isPermanent,
       healthRisk: emp.healthRisk,
       healthNote: emp.healthNote,
+      latestExamNote: emp.medicalExamRecords?.[0]?.note ?? null,
       sseLevel: emp.sseLevel,
       sseCompleted: emp.sseCompleted,
 
@@ -218,11 +235,69 @@ export async function findWorkers({
       platform: latest?.platform ?? null,
       mobDate: latest?.mobDate ?? null,
       demobDate: latest?.demobDate ?? null,
+
+      // ← เพิ่มบรรทัดนี้
+      activeBan: banMap.has(emp.id)
+        ? {
+            id: banMap.get(emp.id).id,
+            bannedUntil: banMap.get(emp.id).bannedUntil,
+            reason: banMap.get(emp.id).reason,
+          }
+        : null,
     };
   });
 }
 
 export async function addToShortlist({ requestId, employeeIds }) {
+  // ── ตรวจฝั่ง server: ต้อง % Match 100% หรือ PE อนุมัติแล้ว และไม่ถูกแบน ──
+  const request = await prisma.manpowerRequest.findUnique({
+    where: { id: requestId },
+    select: { positionId: true, project: { select: { contractId: true } } },
+  });
+  if (!request) {
+    throw Object.assign(new Error("ไม่พบ position request"), { status: 404 });
+  }
+
+  const rows = await findWorkers({
+    positionId: request.positionId,
+    matrixPositionId: request.positionId,
+    requestId,
+    contractId: request.project.contractId,
+    employeeIds,
+  });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+
+  const approvedIds = new Set(
+    (
+      await prisma.matchExceptionRequest.findMany({
+        where: {
+          manpowerRequestId: requestId,
+          employeeId: { in: employeeIds },
+          status: "approved",
+        },
+        select: { employeeId: true },
+      })
+    ).map((r) => r.employeeId),
+  );
+
+  const blocked = employeeIds.filter((id) => {
+    const w = byId.get(id);
+    if (!w || w.activeBan) return true;
+    return !(w.matchPct === 100 || approvedIds.has(id));
+  });
+  if (blocked.length > 0) {
+    const names = blocked
+      .map((id) => byId.get(id)?.fullName)
+      .filter(Boolean)
+      .join(", ");
+    throw Object.assign(
+      new Error(
+        `เพิ่มไม่ได้ ${blocked.length} คน${names ? ` (${names})` : ""} — ต้อง % Match ครบ 100% หรือ PE อนุมัติแล้ว และไม่ถูกแบน`,
+      ),
+      { status: 400 },
+    );
+  }
+
   let round = await prisma.candidateRound.findFirst({
     where: { requestId },
     orderBy: { round: "desc" },
@@ -278,13 +353,48 @@ export async function getShortlist(projectId) {
     },
   });
 
-  return requests.map((req) => ({
-    requestId: req.id,
-    position: req.position,
-    quantity: req.quantity,
-    status: req.status,
-    candidates: req.rounds[0]?.candidates ?? [],
-  }));
+  // คำขออนุมัติ PE ของทุก position request ในโปรเจกต์นี้ (query เดียว)
+  const exceptions = await prisma.matchExceptionRequest.findMany({
+    where: { manpowerRequest: { projectId } },
+    select: {
+      manpowerRequestId: true,
+      employeeId: true,
+      status: true,
+      matchPct: true,
+      decisionNote: true,
+            employee: {
+        select: {
+          fullName: true,
+          empId: true,
+          positionId: true,
+          position: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return requests.map((req) => {
+    const ex = exceptions.filter((e) => e.manpowerRequestId === req.id);
+    const peApprovedIds = new Set(
+      ex.filter((e) => e.status === "approved").map((e) => e.employeeId),
+    );
+    return {
+      requestId: req.id,
+      position: req.position,
+      quantity: req.quantity,
+      status: req.status,
+      // viaPeApproval = เข้ามาจาก PE อนุมัติ → frontend ไม่แสดงในรายชื่อ Step 9
+      candidates: (req.rounds[0]?.candidates ?? []).map((c) => ({
+        ...c,
+        viaPeApproval: peApprovedIds.has(c.employeeId),
+      })),
+      peExceptions: {
+        pending: ex.filter((e) => e.status === "pending"),
+        rejected: ex.filter((e) => e.status === "rejected"),
+      },
+    };
+  });
 }
 
 export async function approveWorkers({ candidateIds, requestId }) {
@@ -481,6 +591,7 @@ export async function getWorkerEligibility(
     employeeId,
     fullName: employee.fullName,
     empCode: employee.empCode,
+    empId: employee.empId,
     position: employee.position?.name,
     mobilizationStatus: employee.mobilizationStatus,
     clients: clientResults,
@@ -761,15 +872,15 @@ export async function getRoster(projectId) {
       fullName: employee.fullName,
       empCode: employee.empCode,
       position: positionName,
-      company: "Experteam", // ค่าคงที่ตาม pattern เดิม — ยังไม่มี field แยกใน schema
-      from: null, // ยังไม่มีใน schema — ให้กรอกเองฝั่ง frontend
+      company: "Experteam",
+      from: currentAssignment?.fromLocation ?? null, // ← แก้: ไม่ fallback ไป previousAssignment.platform แล้ว
       to: currentAssignment?.platform ?? null,
       mobDate: previousAssignment?.mobDate ?? null,
       demobDate: previousAssignment?.demobDate ?? null,
       workingDay,
       dayOff,
       previousLocation: previousAssignment?.platform ?? null,
-      remark: null, // ยังไม่มีใน schema — ให้กรอกเองฝั่ง frontend
+      remark: null,
     };
   });
 
@@ -899,5 +1010,240 @@ export async function getSkillMatrix(projectId) {
     },
     trainings,
     rows,
+  };
+}
+
+// ════════════════════════════════════════════════════════════════
+// Per-Worker Export — CV Summary / Roster History / Skill Matrix
+// ใช้กับ WorkerDetail.jsx (export ของพนักงานคนเดียว ไม่ผูกกับ project)
+// ════════════════════════════════════════════════════════════════
+
+export async function getCvSummaryForWorker(employeeId) {
+  const e = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    include: {
+      position: true,
+      passport: true,
+      medicalChecks: {
+        select: { checkType: true, expiryDate: true, status: true },
+      },
+      trainings: {
+        where: { isLatest: true },
+        include: { globalTraining: true },
+        orderBy: { completedDate: "desc" },
+      },
+      assignments: {
+        orderBy: { mobDate: "desc" },
+        include: {
+          position: true,
+          project: { include: { contract: { include: { client: true } } } },
+        },
+      },
+    },
+  });
+  if (!e) return null;
+
+  const norm = (s) => (s || "").replace(/\s+/g, "").toLowerCase();
+  const medical =
+    e.medicalChecks?.find((m) => norm(m.checkType) === "medicalcheckup") ||
+    null;
+
+  const trainedCourses = e.trainings
+    .filter((t) => t.globalTraining || t.rawTrainingName)
+    .map((t) => ({
+      name: t.globalTraining?.name ?? t.rawTrainingName,
+      completedDate: t.completedDate,
+      institute: t.institute ?? null,
+    }));
+
+  const currentPosition = e.position?.name || null;
+  const responsibilities = e.position?.responsibilities
+    ? e.position.responsibilities.split("\n").filter((l) => l.trim())
+    : [];
+
+  // ประวัติ deploy ทั้งหมด (ไม่ผูก project เดียวแบบตอนสร้าง CV ระดับ project)
+  const projectReferences = e.assignments
+    .filter((a) => a.mobDate)
+    .map((a) => ({
+      projectLabel:
+        a.project?.cvLabel ||
+        a.project?.name ||
+        a.projectLabel ||
+        (a.platform ? `Deployment at ${a.platform}` : "—"),
+      position: a.position?.name ?? currentPosition,
+      mobDate: a.mobDate,
+      demobDate: a.demobDate,
+      platform: a.platform,
+    }));
+
+  return {
+    fullName: e.fullName,
+    empCode: e.empCode,
+    position: currentPosition,
+    nationality: e.nationality || null,
+    birthDate: e.birthDate,
+    startWorkDate: e.startWorkDate,
+
+    personal: {
+      address: e.address || null,
+      gender: e.gender || null,
+      height: e.height ?? null,
+      weight: e.weight ?? null,
+      religion: e.religion || null,
+      language: e.language || null,
+      education: e.education || null,
+      photoUrl: e.photoUrl || null,
+      phone: e.phone || null,
+      email: e.email || null,
+    },
+
+    trainedCourses,
+
+    professional: {
+      company: "Experteam Co., Ltd.",
+      currentPosition,
+      responsibilities,
+      projectReferences,
+    },
+
+    medical: medical
+      ? { expiryDate: medical.expiryDate, status: medical.status }
+      : null,
+    passport: e.passport
+      ? { passportNo: e.passport.passportNo, expiryDate: e.passport.expiryDate }
+      : null,
+  };
+}
+
+// ── Roster History: ประวัติ mob/demob ทั้งหมดของพนักงานคนเดียว (ไม่ใช่แค่ 1 project) ──
+export async function getRosterForWorker(employeeId) {
+  const employee = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    include: { position: true },
+  });
+  if (!employee) return null;
+
+  // เรียง mobDate desc — ใหม่สุดก่อน
+  const assignments = await prisma.assignment.findMany({
+    where: { employeeId },
+    orderBy: { mobDate: "desc" },
+  });
+
+  const rows = assignments.map((a, idx) => {
+    // record ถัดไปใน array (เพราะเรียง desc) = รอบก่อนหน้าตามเวลาจริง
+    const prev = assignments[idx + 1] || null;
+
+    // ── แถวล่าสุด (idx=0) ที่ completed แล้ว (มีทั้ง mobDate/demobDate) ──
+    // ตีความแบบเดียวกับ getRoster (project-level): ถือเป็น "ที่มาก่อนหน้า"
+    // ของรอบถัดไปที่ยังไม่เกิดขึ้น ไม่ใช่ deployment ปัจจุบันที่ยังอยู่
+    // ⚠ trade-off: ถ้ามีหลาย assignment แถวบนสุดจะไม่โชว์ "to" ของตัวเอง
+    // (ตรงกับพฤติกรรมหน้า Allocation.jsx ตอนนี้)
+    const isLatest = idx === 0;
+    const isCompleted = a.mobDate && a.demobDate;
+
+    if (isLatest && isCompleted) {
+      return {
+        fullName: employee.fullName,
+        empCode: employee.empCode,
+        position: employee.position?.name ?? null,
+        company: "Experteam",
+        from: a.fromLocation ?? null,
+        to: null,
+        mobDate: a.mobDate ?? null,
+        demobDate: a.demobDate ?? null,
+        previousLocation: a.platform ?? null,
+        remark: a.remark ?? null,
+      };
+    }
+
+    return {
+      fullName: employee.fullName,
+      empCode: employee.empCode,
+      position: employee.position?.name ?? null,
+      company: "Experteam",
+      from: a.fromLocation ?? null,
+      to: a.platform ?? null,
+      mobDate: a.mobDate ?? null,
+      demobDate: a.demobDate ?? null,
+      previousLocation: prev?.platform ?? null,
+      remark: a.remark ?? null,
+    };
+  });
+
+  return {
+    employee: { fullName: employee.fullName, empCode: employee.empCode },
+    rows,
+  };
+}
+
+// ── Skill Matrix: เทียบกับ position requirement ของพนักงานคนเดียว
+//    contractId เป็น optional — ไม่ระบุ = รวมทุก contract ที่มี matrix ของ position นี้ ──
+export async function getSkillMatrixForWorker(employeeId, contractId) {
+  const employee = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    include: {
+      position: true,
+      trainings: {
+        where: { isLatest: true },
+        include: { globalTraining: true },
+      },
+    },
+  });
+  if (!employee || !employee.positionId) return null;
+
+  const positionRequirements = await prisma.positionRequirement.findMany({
+    where: {
+      positionId: employee.positionId,
+      ...(contractId ? { contractId } : {}),
+    },
+    include: {
+      clientTraining: { include: { globalTraining: true } },
+      contract: { include: { client: true } },
+    },
+  });
+
+  const trainingMap = new Map();
+  for (const r of positionRequirements) {
+    const gtId = r.clientTraining.globalTrainingId;
+    const name =
+      r.clientTraining.globalTraining?.name ?? r.clientTraining.nameAlias;
+    if (gtId && !trainingMap.has(gtId)) trainingMap.set(gtId, name);
+  }
+  const trainings = [...trainingMap.entries()].map(([id, name]) => ({
+    id,
+    name,
+  }));
+
+  const byGlobalId = new Map();
+  for (const t of employee.trainings) {
+    if (t.globalTrainingId) byGlobalId.set(t.globalTrainingId, t);
+  }
+
+  const cells = trainings.map((tr) => {
+    const t = byGlobalId.get(tr.id);
+    return {
+      trainingId: tr.id,
+      completedDate: t?.completedDate ?? null,
+      expiryDate: t?.expiryDate ?? null,
+      status: t?.status ?? null,
+    };
+  });
+
+  return {
+    employee: {
+      fullName: employee.fullName,
+      empCode: employee.empCode,
+      position: employee.position?.name ?? null,
+    },
+    trainings,
+    rows: [
+      {
+        employeeId,
+        fullName: employee.fullName,
+        empCode: employee.empCode,
+        position: employee.position?.name ?? null,
+        cells,
+      },
+    ],
   };
 }

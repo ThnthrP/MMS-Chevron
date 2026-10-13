@@ -4,61 +4,23 @@ import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
 import Select from "react-select";
 
-// ── tones ──
+// ══════════════════════════════════════════════════════════
+// constants
+// ══════════════════════════════════════════════════════════
 const TONE = {
-  ok: { bg: "#d1e7dd", color: "#0f5132" },
-  warn: { bg: "#fff3cd", color: "#664d03" },
-  danger: { bg: "#f8d7da", color: "#842029" },
-  muted: { bg: "#f1f3f5", color: "#6c757d" },
-  info: { bg: "#cfe2ff", color: "#084298" },
+  ok: {
+    active: "border-[#0f5132] bg-[#d1e7dd] text-[#0f5132]",
+    hover: "hover:border-[#0f5132] hover:bg-[#d1e7dd]",
+  },
+  warn: {
+    active: "border-[#664d03] bg-[#fff3cd] text-[#664d03]",
+    hover: "hover:border-[#664d03] hover:bg-[#fff3cd]",
+  },
+  danger: {
+    active: "border-[#842029] bg-[#f8d7da] text-[#842029]",
+    hover: "hover:border-[#842029] hover:bg-[#f8d7da]",
+  },
 };
-
-function Badge({ tone = "muted", children }) {
-  const t = TONE[tone] ?? TONE.muted;
-  return (
-    <span
-      style={{
-        background: t.bg,
-        color: t.color,
-        borderRadius: "6px",
-        padding: "2px 8px",
-        fontSize: "11px",
-        fontWeight: 600,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function ymd(d) {
-  if (!d) return "—";
-  return new Date(d).toISOString().slice(0, 10);
-}
-
-// ── rating stars (1-5) ──
-function Stars({ value, onChange, disabled }) {
-  return (
-    <div style={{ display: "flex", gap: "2px" }}>
-      {[1, 2, 3, 4, 5].map((n) => (
-        <span
-          key={n}
-          onClick={() => !disabled && onChange(n)}
-          style={{
-            cursor: disabled ? "default" : "pointer",
-            fontSize: "18px",
-            lineHeight: 1,
-            color: n <= value ? "#f5a623" : "#dee2e6",
-            userSelect: "none",
-          }}
-        >
-          ★
-        </span>
-      ))}
-    </div>
-  );
-}
 
 const REHIRE = [
   ["yes", "Yes", "ok"],
@@ -66,13 +28,137 @@ const REHIRE = [
   ["no", "No", "danger"],
 ];
 
+const CARD = "rounded-[10px] border border-gray-200 bg-white";
+const TH =
+  "whitespace-nowrap border-b border-gray-200 px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.3px] text-gray-500";
+const TD = "border-b border-gray-100 px-3 py-2.5 align-middle text-[13px]";
+
+// react-select ใช้ styles API ของไลบรารี
+const projectSelectStyles = {
+  control: (p) => ({
+    ...p,
+    borderColor: "#ced4da",
+    borderRadius: "8px",
+    minHeight: "40px",
+    fontSize: "14px",
+    boxShadow: "none",
+    "&:hover": { borderColor: "#86b7fe" },
+  }),
+  option: (p) => ({ ...p, fontSize: "13px" }),
+  placeholder: (p) => ({ ...p, fontSize: "14px", color: "#6c757d" }),
+  menuPortal: (p) => ({ ...p, zIndex: 9999 }),
+  // มือถือ: ไม่ให้เมนูกว้างเกินจอ
+  menu: (p) => ({ ...p, minWidth: "min(560px, calc(100vw - 24px))" }),
+  menuList: (p) => ({ ...p, maxHeight: "360px" }),
+  // ข้อความที่เลือกแล้วขึ้นบรรทัดใหม่ได้ ไม่ตัด ...
+  singleValue: (p) => ({
+    ...p,
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+    overflow: "visible",
+    lineHeight: "1.3",
+  }),
+  valueContainer: (p) => ({ ...p, padding: "6px 8px" }),
+};
+
+// ══════════════════════════════════════════════════════════
+// helpers
+// ══════════════════════════════════════════════════════════
+// YYYY-MM-DD ตามเวลาเครื่อง (เดิมใช้ toISOString() ซึ่งเป็นเวลา UTC
+// วันที่อาจเลื่อนไป 1 วันถ้า backend เก็บเป็นเวลาไทย)
+const ymd = (d) => {
+  if (!d) return "—";
+  const date = new Date(d);
+  return isNaN(date.getTime()) ? "—" : date.toLocaleDateString("en-CA");
+};
+
+const fmtProjectDate = (d) =>
+  d
+    ? new Date(d).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
+
+// ══════════════════════════════════════════════════════════
+// small components
+// ══════════════════════════════════════════════════════════
+function StatusBadge({ completed }) {
+  return (
+    <span
+      className={`whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+        completed
+          ? "bg-[#d1e7dd] text-[#0f5132]"
+          : "bg-[#cfe2ff] text-[#084298]"
+      }`}
+    >
+      {completed ? "Completed" : "Active"}
+    </span>
+  );
+}
+
+function Stars({ value, onChange, disabled }) {
+  return (
+    <div className="flex gap-0.5">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          onClick={() => !disabled && onChange(n)}
+          disabled={disabled}
+          aria-label={`${n} star`}
+          className={`select-none border-none bg-transparent p-0 text-lg leading-none ${
+            disabled ? "cursor-default" : "cursor-pointer hover:scale-110"
+          } ${n <= value ? "text-[#f5a623]" : "text-gray-300"}`}
+        >
+          ★
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function RehirePicker({ value, touched, onChange, disabled }) {
+  return (
+    <div className="flex gap-1">
+      {REHIRE.map(([key, label, tone]) => {
+        const active = value === key;
+        // "Maybe" ที่เป็นค่า default ยังไม่ได้ตั้งใจเลือก → กรอบประ สีจาง
+        const unconfirmed = active && key === "maybe" && !touched;
+        const cls = active
+          ? unconfirmed
+            ? "border-dashed border-[#664d03] bg-white text-gray-400"
+            : TONE[tone].active
+          : `border-gray-200 bg-white text-gray-400 ${disabled ? "" : TONE[tone].hover}`;
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => !disabled && onChange(key)}
+            disabled={disabled}
+            className={`rounded-md border px-2.5 py-[3px] text-[11px] font-semibold transition-colors ${cls} ${
+              disabled ? "cursor-default" : "cursor-pointer"
+            }`}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// main
+// ══════════════════════════════════════════════════════════
 export default function PostProjectReview() {
   const { backendUrl, userData } = useContext(AppContent);
 
-  const canManageReview = ["admin", "manpower"].includes(userData?.role?.name);
+  // ทุกคนที่เข้าหน้านี้ได้ จัดการ review ได้เต็มสิทธิ์ (คุมสิทธิ์ที่ AppRouter)
+  const canManageReview = true;
 
   const [projects, setProjects] = useState([]);
-  //   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useStickyState(
     "review_projectId",
     "",
@@ -80,22 +166,30 @@ export default function PostProjectReview() {
   const [project, setProject] = useState(null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [savingId, setSavingId] = useState(null);
+  const [completing, setCompleting] = useState(false);
 
-  useEffect(() => {
+  const fetchProjects = () =>
     axios
       .get(`${backendUrl}/api/review/projects`, { withCredentials: true })
       .then((res) => setProjects(res.data))
       .catch((err) => console.error(err));
-  }, [backendUrl]);
 
   useEffect(() => {
-    if (!selectedProjectId) {
-      setProject(null);
-      setRows([]);
-      return;
-    }
-    fetchDetail(selectedProjectId);
-  }, [selectedProjectId]);
+    fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendUrl]);
+
+  const buildRows = (workers) =>
+    workers.map((w) => ({
+      ...w,
+      rating: w.review?.rating ?? 0,
+      rehire: w.review?.rehire ?? "maybe", // ค่าที่จะส่งจริงถ้ากด save — ตรงกับ DB default
+      rehireTouched: !!w.review, // ผู้ใช้เคยเลือกจริงแล้วหรือยัง
+      comment: w.review?.comment ?? "",
+      saved: !!w.review,
+      dirty: false,
+    }));
 
   const fetchDetail = async (projectId) => {
     try {
@@ -114,23 +208,22 @@ export default function PostProjectReview() {
     }
   };
 
-  const buildRows = (workers) =>
-    workers.map((w) => ({
-      ...w,
-      rating: w.review?.rating ?? 0,
-      rehire: w.review?.rehire ?? "maybe",
-      comment: w.review?.comment ?? "",
-      saved: !!w.review,
-      dirty: false,
-    }));
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setProject(null);
+      setRows([]);
+      return;
+    }
+    fetchDetail(selectedProjectId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId]);
 
-  const updateRow = (employeeId, patch) => {
+  const updateRow = (employeeId, patch) =>
     setRows((prev) =>
       prev.map((r) =>
         r.employeeId === employeeId ? { ...r, ...patch, dirty: true } : r,
       ),
     );
-  };
 
   const saveRow = async (row) => {
     if (!row.rating) {
@@ -138,6 +231,7 @@ export default function PostProjectReview() {
       return;
     }
     try {
+      setSavingId(row.employeeId);
       await axios.post(
         `${backendUrl}/api/review`,
         {
@@ -153,381 +247,281 @@ export default function PostProjectReview() {
       setRows((prev) =>
         prev.map((r) =>
           r.employeeId === row.employeeId
-            ? { ...r, saved: true, dirty: false }
+            ? { ...r, saved: true, dirty: false, rehireTouched: true }
             : r,
         ),
       );
     } catch (err) {
       console.error(err);
-      alert("Save failed — ดู console");
+      alert(err.response?.data?.message || "Save failed — ดู console");
+    } finally {
+      setSavingId(null);
     }
   };
 
   const markCompleted = async () => {
-    if (!project) {
-      alert("Select a project first.");
-      return;
-    }
-    if (project.status === "completed") {
-      alert("Project นี้ completed อยู่แล้ว");
-      return;
-    }
+    if (!project || project.status === "completed") return;
+
+    const unsaved = rows.filter((r) => r.dirty || !r.saved).length;
+    const warn =
+      unsaved > 0 ? `\n\n⚠ ยังมี ${unsaved} คนที่ยังไม่ได้บันทึก review` : "";
     if (
       !window.confirm(
-        `ปิดโปรเจกต์ "${project.name}"? (assignment ทั้งหมดจะถูก mark completed)`,
+        `ปิดโปรเจกต์ "${project.name}"? (assignment ทั้งหมดจะถูก mark completed)${warn}`,
       )
     )
       return;
+
     try {
+      setCompleting(true);
       await axios.put(
         `${backendUrl}/api/review/complete`,
         { projectId: project.id },
         { withCredentials: true },
       );
-      await fetchDetail(project.id);
-      // refresh dropdown status
-      const res = await axios.get(`${backendUrl}/api/review/projects`, {
-        withCredentials: true,
-      });
-      setProjects(res.data);
+      await Promise.all([fetchDetail(project.id), fetchProjects()]);
     } catch (err) {
       console.error(err);
-      alert("Complete failed — ดู console");
+      alert(err.response?.data?.message || "Complete failed — ดู console");
+    } finally {
+      setCompleting(false);
     }
   };
 
-  // ── styles ──
-  const card = {
-    background: "#fff",
-    border: "1px solid #e9ecef",
-    borderRadius: "10px",
-    overflow: "hidden",
-    marginTop: "16px",
-  };
-  const th = {
-    textAlign: "left",
-    padding: "10px 12px",
-    fontSize: "11px",
-    fontWeight: 700,
-    color: "#6c757d",
-    textTransform: "uppercase",
-    letterSpacing: "0.3px",
-    borderBottom: "1px solid #e9ecef",
-    whiteSpace: "nowrap",
-  };
-  const td = {
-    padding: "10px 12px",
-    fontSize: "13px",
-    borderBottom: "1px solid #f1f3f5",
-    verticalAlign: "middle",
-  };
-  const empty = {
-    padding: "28px",
-    textAlign: "center",
-    color: "#6c757d",
-    fontSize: "13px",
-  };
-
-  // ← ใหม่: format วันที่แบบสั้น สำหรับ disambiguate project ที่ชื่อซ้ำกัน
-  const fmtProjectDate = (d) =>
-    d
-      ? new Date(d).toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })
-      : null;
-
-  // ← ใหม่: options สำหรับ Select Project (react-select แทน native <select>)
   const projectOptions = projects.map((p) => {
     const codePart = p.masterProjectRecord?.projectCode
       ? `[${p.masterProjectRecord.projectCode}] `
       : "";
-    const startPart = fmtProjectDate(p.startDate);
-    const locationPart = p.location || null;
-    const idTail = p.id.slice(-6);
-
     const parts = [];
-    if (locationPart) parts.push(locationPart);
-    if (startPart) parts.push(`Start ${startPart}`);
-
-    const disambiguator = parts.length > 0 ? parts.join(" · ") : `#${idTail}`;
-
+    if (p.location) parts.push(p.location);
+    const start = fmtProjectDate(p.startDate);
+    if (start) parts.push(`Start ${start}`);
+    const disambiguator =
+      parts.length > 0 ? parts.join(" · ") : `#${p.id.slice(-6)}`;
     const clientPart = p.client ? ` — ${p.client}` : "";
     const statusPart = p.status === "completed" ? " (completed)" : "";
-
     return {
       value: p.id,
       label: `${codePart}${p.name}${clientPart} · ${disambiguator}${statusPart}`,
-      project: p,
     };
   });
 
-  const projectSelectStyles = {
-    control: (provided) => ({
-      ...provided,
-      borderColor: "#ced4da",
-      borderRadius: "8px",
-      minHeight: "40px",
-      fontSize: "14px",
-      boxShadow: "none",
-      "&:hover": { borderColor: "#86b7fe" },
-    }),
-    option: (provided) => ({ ...provided, fontSize: "13px" }),
-    placeholder: (provided) => ({
-      ...provided,
-      fontSize: "14px",
-      color: "#6c757d",
-    }),
-    menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
-    menu: (provided) => ({ ...provided, minWidth: "560px" }),
-    menuList: (provided) => ({ ...provided, maxHeight: "360px" }),
+  const isCompleted = project?.status === "completed";
+  const canComplete = canManageReview && project && !isCompleted && !completing;
+  const reviewedCount = rows.filter((r) => r.saved && !r.dirty).length;
+
+  // ── ส่วนที่ใช้ทั้งตารางและการ์ด ──
+  const renderSave = (r) => {
+    if (!canManageReview)
+      return <span className="text-[11px] text-gray-400">—</span>;
+    const needsSave = r.dirty || !r.saved;
+    const saving = savingId === r.employeeId;
+    return (
+      <button
+        type="button"
+        onClick={() => saveRow(r)}
+        disabled={!needsSave || saving}
+        className={`whitespace-nowrap rounded-md border-none px-3 py-[5px] text-xs font-semibold transition-all ${
+          needsSave
+            ? "cursor-pointer bg-blue-600 text-white shadow-[0_1px_3px_rgba(13,110,253,0.3),0_1px_2px_rgba(0,0,0,0.06)] hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(13,110,253,0.4),0_2px_3px_rgba(0,0,0,0.08)] disabled:cursor-wait disabled:opacity-70"
+            : "cursor-default bg-[#d1e7dd] text-[#0f5132]"
+        }`}
+      >
+        {saving ? "Saving…" : needsSave ? "Save" : "✓ Saved"}
+      </button>
+    );
   };
 
+  const renderComment = (r) => (
+    <input
+      type="text"
+      placeholder="หมายเหตุ…"
+      value={r.comment}
+      disabled={!canManageReview}
+      onChange={(e) => updateRow(r.employeeId, { comment: e.target.value })}
+      className="box-border w-full min-w-[160px] rounded-md border border-gray-300 bg-white px-2 py-[5px] text-xs outline-none focus:border-blue-400 disabled:bg-gray-50"
+    />
+  );
+
+  const renderRehire = (r) => (
+    <RehirePicker
+      value={r.rehire}
+      touched={r.rehireTouched}
+      disabled={!canManageReview}
+      onChange={(key) =>
+        updateRow(r.employeeId, { rehire: key, rehireTouched: true })
+      }
+    />
+  );
+
+  const renderStars = (r) => (
+    <Stars
+      value={r.rating}
+      disabled={!canManageReview}
+      onChange={(n) => updateRow(r.employeeId, { rating: n })}
+    />
+  );
+
+  const emptyBox = (text) => (
+    <div className="p-7 text-center text-[13px] text-gray-500">{text}</div>
+  );
+
   return (
-    <div className="container-fluid p-0">
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* header */}
-        <div style={{ ...card, marginTop: 0 }}>
-          <div style={{ padding: "18px" }}>
-            <div style={{ fontSize: "20px", fontWeight: 800 }}>
-              ⭐ Post-Project Review
-            </div>
-            <div
-              style={{ marginTop: "6px", fontSize: "12px", color: "#6c757d" }}
-            >
-              <span
-                style={{
-                  background: "#e7e9ec",
-                  borderRadius: "6px",
-                  padding: "2px 8px",
-                  fontWeight: 700,
-                  marginRight: "8px",
-                }}
-              >
-                Phase 4
-              </span>
-              Step 12: Performance Review → Status: 'Available'
-            </div>
-          </div>
+    <div className="mx-auto w-full min-w-0 max-w-[1800px]">
+      {/* ════════ Header ════════ */}
+      <div className={`${CARD} p-4 sm:p-[18px]`}>
+        <div className="text-xl font-extrabold">⭐ Post-Project Review</div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <span className="rounded-md bg-[#e7e9ec] px-2 py-0.5 font-bold">
+            Phase 4
+          </span>
+          Step 12: Performance Review → Status: 'Available'
+        </div>
+      </div>
+
+      {/* ════════ Project select + Complete ════════ */}
+      <div
+        className={`${CARD} mt-4 flex flex-col gap-3 px-4 py-4 sm:px-[18px] lg:flex-row lg:items-center`}
+      >
+        <div className="w-full min-w-0 lg:max-w-[700px] lg:flex-1">
+          <Select
+            options={projectOptions}
+            styles={projectSelectStyles}
+            menuPortalTarget={
+              typeof document !== "undefined" ? document.body : null
+            }
+            menuPosition="fixed"
+            value={
+              projectOptions.find((o) => o.value === selectedProjectId) || null
+            }
+            onChange={(o) => setSelectedProjectId(o ? o.value : "")}
+            placeholder="-- Select Active / Completed Project --"
+            isClearable
+            noOptionsMessage={() => "No projects found"}
+          />
         </div>
 
-        {/* project select + complete */}
-        <div
-          style={{
-            ...card,
-            padding: "16px 18px",
-            display: "flex",
-            gap: "12px",
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ flex: "1 1 320px", maxWidth: "420px" }}>
-            <Select
-              options={projectOptions}
-              styles={projectSelectStyles}
-              menuPortalTarget={
-                typeof document !== "undefined" ? document.body : null
-              }
-              menuPosition="fixed"
-              value={
-                projectOptions.find((o) => o.value === selectedProjectId) ||
-                null
-              }
-              onChange={(o) => setSelectedProjectId(o ? o.value : "")}
-              placeholder="-- Select Active / Completed Project --"
-              isClearable
-              noOptionsMessage={() => "No projects found"}
-            />
-          </div>
-
+        <div className="flex flex-wrap items-center gap-3">
           {canManageReview && (
             <button
+              type="button"
               onClick={markCompleted}
-              disabled={!project || project.status === "completed"}
-              style={{
-                border: "1px solid #198754",
-                background:
-                  project && project.status !== "completed"
-                    ? "#198754"
-                    : "#e9ecef",
-                color:
-                  project && project.status !== "completed"
-                    ? "#fff"
-                    : "#adb5bd",
-                borderRadius: "8px",
-                padding: "9px 16px",
-                fontSize: "13px",
-                fontWeight: 700,
-                cursor:
-                  project && project.status !== "completed"
-                    ? "pointer"
-                    : "not-allowed",
-                whiteSpace: "nowrap",
-              }}
+              disabled={!canComplete}
+              className={`whitespace-nowrap rounded-lg border px-4 py-[9px] text-[13px] font-bold transition-all ${
+                canComplete
+                  ? "cursor-pointer border-[#198754] bg-[#198754] text-white shadow-[0_2px_5px_rgba(25,135,84,0.35)] hover:-translate-y-px hover:shadow-[0_4px_8px_rgba(25,135,84,0.45)]"
+                  : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+              }`}
             >
-              ✔ Mark Project Completed
+              {completing ? "กำลังปิดโปรเจกต์…" : "✔ Mark Project Completed"}
             </button>
           )}
-
-          {project && (
-            <Badge tone={project.status === "completed" ? "ok" : "info"}>
-              {project.status === "completed" ? "Completed" : "Active"}
-            </Badge>
+          {project && <StatusBadge completed={isCompleted} />}
+          {project && rows.length > 0 && (
+            <span className="text-xs text-gray-500">
+              Reviewed{" "}
+              <strong
+                className={
+                  reviewedCount === rows.length
+                    ? "text-[#198754]"
+                    : "text-gray-900"
+                }
+              >
+                {reviewedCount}/{rows.length}
+              </strong>
+            </span>
           )}
         </div>
+      </div>
 
-        {/* workers + review */}
-        <div style={card}>
-          {loading ? (
-            <div style={empty}>Loading…</div>
-          ) : !project ? (
-            <div style={empty}>
-              Select a project to review deployed workers.
+      {/* ════════ Workers + Review ════════ */}
+      <div className={`${CARD} mt-4 overflow-hidden`}>
+        {loading ? (
+          emptyBox("Loading…")
+        ) : !project ? (
+          emptyBox("Select a project to review deployed workers.")
+        ) : rows.length === 0 ? (
+          emptyBox("No deployed workers for this project.")
+        ) : (
+          <>
+            {/* ── ต่ำกว่า lg: การ์ด ── */}
+            <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2 lg:hidden">
+              {rows.map((r) => (
+                <div
+                  key={r.employeeId}
+                  className={`rounded-lg border p-3 text-[13px] ${
+                    r.dirty
+                      ? "border-blue-300 bg-blue-50/30"
+                      : "border-gray-200 bg-white"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-bold">{r.fullName}</div>
+                      <div className="text-[11px] text-gray-500">{r.empId}</div>
+                    </div>
+                    {renderSave(r)}
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500">
+                    {r.position}
+                    {r.platform && ` · ${r.platform}`}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {ymd(r.mobDate)} → {ymd(r.demobDate)}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2.5">
+                    {renderStars(r)}
+                    {renderRehire(r)}
+                  </div>
+                  <div className="mt-2">{renderComment(r)}</div>
+                </div>
+              ))}
             </div>
-          ) : rows.length === 0 ? (
-            <div style={empty}>No deployed workers for this project.</div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+
+            {/* ── lg+: ตาราง ── */}
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="w-full border-collapse">
                 <thead>
                   <tr>
-                    <th style={th}>Worker</th>
-                    <th style={th}>Position</th>
-                    <th style={th}>Platform</th>
-                    <th style={th}>MOB → D-MOB</th>
-                    <th style={th}>Rating</th>
-                    <th style={th}>Rehire?</th>
-                    <th style={th}>Comment</th>
-                    <th style={th}></th>
+                    <th className={TH}>Worker</th>
+                    <th className={TH}>Position</th>
+                    <th className={TH}>Platform</th>
+                    <th className={TH}>MOB → D-MOB</th>
+                    <th className={TH}>Rating</th>
+                    <th className={TH}>Rehire?</th>
+                    <th className={TH}>Comment</th>
+                    <th className={TH}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.employeeId}>
-                      <td style={td}>
-                        <div style={{ fontWeight: 700 }}>{r.fullName}</div>
-                        <div style={{ fontSize: "11px", color: "#6c757d" }}>
-                          {r.empCode}
+                    <tr
+                      key={r.employeeId}
+                      className={r.dirty ? "bg-blue-50/30" : ""}
+                    >
+                      <td className={TD}>
+                        <div className="font-bold">{r.fullName}</div>
+                        <div className="text-[11px] text-gray-500">
+                          {r.empId}
                         </div>
                       </td>
-                      <td style={td}>{r.position}</td>
-                      <td style={td}>{r.platform || "—"}</td>
-                      <td
-                        style={{
-                          ...td,
-                          color: "#6c757d",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                      <td className={TD}>{r.position}</td>
+                      <td className={TD}>{r.platform || "—"}</td>
+                      <td className={`${TD} whitespace-nowrap text-gray-500`}>
                         {ymd(r.mobDate)} → {ymd(r.demobDate)}
                       </td>
-
-                      {/* rating */}
-                      <td style={td}>
-                        <Stars
-                          value={r.rating}
-                          onChange={(n) =>
-                            updateRow(r.employeeId, { rating: n })
-                          }
-                          disabled={!canManageReview}
-                        />
-                      </td>
-
-                      {/* rehire */}
-                      <td style={td}>
-                        <div style={{ display: "flex", gap: "4px" }}>
-                          {REHIRE.map(([key, label, tone]) => {
-                            const active = r.rehire === key;
-                            const t = TONE[tone];
-                            return (
-                              <button
-                                key={key}
-                                onClick={() =>
-                                  canManageReview &&
-                                  updateRow(r.employeeId, { rehire: key })
-                                }
-                                disabled={!canManageReview}
-                                style={{
-                                  border: `1px solid ${active ? t.color : "#dee2e6"}`,
-                                  background: active ? t.bg : "#fff",
-                                  color: active ? t.color : "#adb5bd",
-                                  borderRadius: "6px",
-                                  padding: "3px 10px",
-                                  fontSize: "11px",
-                                  fontWeight: 600,
-                                  cursor: canManageReview
-                                    ? "pointer"
-                                    : "default",
-                                }}
-                              >
-                                {label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </td>
-
-                      {/* comment */}
-                      <td style={td}>
-                        <input
-                          type="text"
-                          placeholder="หมายเหตุ…"
-                          value={r.comment}
-                          disabled={!canManageReview}
-                          onChange={(e) =>
-                            updateRow(r.employeeId, { comment: e.target.value })
-                          }
-                          style={{
-                            border: "1px solid #ced4da",
-                            borderRadius: "6px",
-                            padding: "5px 8px",
-                            fontSize: "12px",
-                            width: "100%",
-                            minWidth: "160px",
-                            background: canManageReview ? "#fff" : "#f8f9fa",
-                          }}
-                        />
-                      </td>
-
-                      {/* save */}
-                      <td style={td}>
-                        {canManageReview ? (
-                          <button
-                            onClick={() => saveRow(r)}
-                            disabled={!r.dirty && r.saved}
-                            style={{
-                              border: `1px solid ${
-                                r.dirty || !r.saved ? "#0d6efd" : "#dee2e6"
-                              }`,
-                              background: "#fff",
-                              color:
-                                r.dirty || !r.saved ? "#0d6efd" : "#adb5bd",
-                              borderRadius: "6px",
-                              padding: "5px 12px",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              cursor:
-                                r.dirty || !r.saved ? "pointer" : "default",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {r.saved && !r.dirty ? "✓ Saved" : "Save"}
-                          </button>
-                        ) : (
-                          <span style={{ fontSize: "11px", color: "#adb5bd" }}>
-                            —
-                          </span>
-                        )}
-                      </td>
+                      <td className={TD}>{renderStars(r)}</td>
+                      <td className={TD}>{renderRehire(r)}</td>
+                      <td className={TD}>{renderComment(r)}</td>
+                      <td className={TD}>{renderSave(r)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

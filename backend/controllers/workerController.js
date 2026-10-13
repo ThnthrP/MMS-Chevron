@@ -1,4 +1,8 @@
+import { PrismaClient } from "@prisma/client";
 import * as service from "../services/workerService.js";
+import * as allocationService from "../services/allocationService.js";
+
+const prisma = new PrismaClient();
 
 export async function getWorkers(req, res) {
   try {
@@ -9,6 +13,19 @@ export async function getWorkers(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
+
+// ── ดึงค่า Health Risk ทั้งหมดที่มีอยู่จริงในระบบ (distinct) ──
+// ใช้เป็น option list ให้ CreatableSelect ในหน้า EditWorker — โตเองตามข้อมูลจริง
+// ไม่ต้องแก้โค้ด frontend ทุกครั้งที่เจอค่าใหม่จากการ import
+export const getHealthRiskOptions = async (req, res) => {
+  try {
+    const options = await service.getHealthRiskOptions();
+    res.json(options);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch health risk options" });
+  }
+};
 
 // ── รหัสพนักงาน EXPT ถัดไป สำหรับ prefill ในฟอร์ม Add Worker ──
 export async function getNextEmpCode(req, res) {
@@ -65,6 +82,13 @@ export async function updateWorker(req, res) {
           message: `Employee Code "${req.body.empCode}" already exists.`,
         });
       }
+      if (field === "empId") {
+        // ← เพิ่ม
+        return res.status(400).json({
+          // ← เพิ่ม
+          message: `Employee ID "${req.body.empId}" already exists for another employee.`, // ← เพิ่ม
+        }); // ← เพิ่ม
+      } // ← เพิ่ม
     }
     console.error(error);
     res.status(500).json({ message: "Failed to update worker" });
@@ -216,5 +240,112 @@ export async function uploadPhoto(req, res) {
     res
       .status(500)
       .json({ message: error.message || "Failed to upload photo" });
+  }
+}
+
+export async function uploadCertFile(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+    const certFileUrl = `/uploads/certs/${req.file.filename}`;
+    const training = await service.updateTrainingCertFile(
+      req.params.trainingId,
+      certFileUrl,
+      req.file.originalname,
+    );
+    res.json(training);
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ message: error.message || "Failed to upload certificate file" });
+  }
+}
+
+export async function deleteCertFile(req, res) {
+  try {
+    const training = await service.deleteTrainingCertFile(
+      req.params.trainingId,
+    );
+    res.json(training);
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ message: error.message || "Failed to delete certificate file" });
+  }
+}
+
+export async function createMedicalExam(req, res) {
+  try {
+    const record = await service.createMedicalExam(req.params.id, req.body);
+    res.status(201).json(record);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to create medical exam record" });
+  }
+}
+
+export async function updateMedicalExam(req, res) {
+  try {
+    const record = await service.updateMedicalExam(req.params.examId, req.body);
+    res.json(record);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to update medical exam record" });
+  }
+}
+
+export async function deleteMedicalExam(req, res) {
+  try {
+    await service.deleteMedicalExam(req.params.examId);
+    res.json({ message: "Medical exam record deleted" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to delete medical exam record" });
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Per-Worker Export — CV Summary / Roster History / Skill Matrix
+// ════════════════════════════════════════════════════════════════
+export async function workerCvSummary(req, res) {
+  try {
+    const data = await allocationService.getCvSummaryForWorker(req.params.id);
+    if (!data) return res.status(404).json({ message: "Worker not found" });
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+export async function workerRoster(req, res) {
+  try {
+    const data = await allocationService.getRosterForWorker(req.params.id);
+    if (!data) return res.status(404).json({ message: "Worker not found" });
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+export async function workerSkillMatrix(req, res) {
+  try {
+    const { contractId } = req.query;
+    const data = await allocationService.getSkillMatrixForWorker(
+      req.params.id,
+      contractId,
+    );
+    if (!data)
+      return res.status(404).json({
+        message: "No matrix found (worker/position missing, or no matrix set)",
+      });
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
   }
 }

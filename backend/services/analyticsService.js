@@ -73,7 +73,7 @@ export async function getAnalytics() {
     expired = 0;
   for (const t of trainings) {
     if (!t.expiryDate) {
-      valid++; // ไม่มีวันหมดอายุ = valid
+      valid++;
       continue;
     }
     const exp = new Date(t.expiryDate).getTime();
@@ -102,5 +102,110 @@ export async function getAnalytics() {
       expired,
       total: valid + expiring + expired,
     },
+  };
+} // ← ปิด getAnalytics ตรงนี้
+
+// ════════════════════════════════════════════════════════════════
+// ใหม่: Position/Onshore-Offshore/Project breakdown
+// นับจาก Assignment จริง (ตำแหน่งตอน deploy) ไม่ใช่ Employee.position
+// filter ตาม mobDate — year บังคับ, quarter ไม่ใส่ = ทั้งปี
+// ════════════════════════════════════════════════════════════════
+function getDateRange(year, quarter) {
+  if (!year) return null;
+  const y = Number(year);
+  if (!quarter) {
+    return {
+      start: new Date(Date.UTC(y, 0, 1)),
+      end: new Date(Date.UTC(y + 1, 0, 1)),
+    };
+  }
+  const q = Number(quarter);
+  const startMonth = (q - 1) * 3;
+  return {
+    start: new Date(Date.UTC(y, startMonth, 1)),
+    end: new Date(Date.UTC(y, startMonth + 3, 1)),
+  };
+}
+
+export async function getDeploymentReport({ year, quarter } = {}) {
+  const range = getDateRange(year, quarter);
+
+  const assignments = await prisma.assignment.findMany({
+    where: {
+      status: { not: "cancelled" },
+      projectId: { not: null },
+      ...(range ? { mobDate: { gte: range.start, lt: range.end } } : {}),
+    },
+    select: {
+      employeeId: true,
+      position: { select: { id: true, name: true } },
+      project: {
+        select: {
+          id: true,
+          name: true,
+          isOffshore: true,
+          masterProjectRecordId: true,
+          masterProjectRecord: {
+            select: { projectCode: true, jobTitle: true },
+          },
+        },
+      },
+    },
+  });
+
+  const positionMap = {};
+  for (const a of assignments) {
+    const key = a.position?.name || "Unassigned";
+    if (!positionMap[key]) positionMap[key] = new Set();
+    positionMap[key].add(a.employeeId);
+  }
+  const positionUsage = Object.entries(positionMap)
+    .map(([name, set]) => ({ name, count: set.size }))
+    .sort((a, b) => b.count - a.count);
+
+  const siteType = { onshore: 0, offshore: 0, unspecified: 0 };
+  for (const a of assignments) {
+    if (a.project?.isOffshore === true) siteType.offshore++;
+    else if (a.project?.isOffshore === false) siteType.onshore++;
+    else siteType.unspecified++;
+  }
+
+  const projectMap = {};
+  for (const a of assignments) {
+    const p = a.project;
+    if (!p) continue;
+    const key = p.masterProjectRecordId || p.id;
+    if (!projectMap[key]) {
+      projectMap[key] = {
+        projectCode: p.masterProjectRecord?.projectCode || null,
+        jobTitle: p.masterProjectRecord?.jobTitle || p.name,
+        employees: new Set(),
+        positions: {},
+      };
+    }
+    projectMap[key].employees.add(a.employeeId);
+    const posName = a.position?.name || "Unassigned";
+    projectMap[key].positions[posName] =
+      (projectMap[key].positions[posName] || 0) + 1;
+  }
+  const byProject = Object.values(projectMap)
+    .map((v) => ({
+      projectCode: v.projectCode,
+      jobTitle: v.jobTitle,
+      employeeCount: v.employees.size,
+      positions: Object.entries(v.positions)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count),
+    }))
+    .sort((a, b) => b.employeeCount - a.employeeCount);
+
+  return {
+    filter: {
+      year: year ? Number(year) : null,
+      quarter: quarter ? Number(quarter) : null,
+    },
+    positionUsage,
+    siteType,
+    byProject,
   };
 }

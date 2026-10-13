@@ -31,6 +31,28 @@ function getMedicalCheckBucket(medicalCheck) {
     : getExpiryBucket(medicalCheck.expiryDate);
 }
 
+// ลำดับความรุนแรงของ bucket — ใช้หา "แย่สุด" ของผลตรวจสุขภาพทุกใบ
+const BUCKET_RANK = {
+  valid: 0,
+  upcoming: 1,
+  warning: 2,
+  critical: 3,
+  expired: 4,
+};
+
+// bucket ที่แย่ที่สุดในบรรดา medicalChecks ของพนักงาน 1 คน (ไม่มีใบเลย = "valid")
+// ใช้ให้หน้า Compliance เรียงแถว/กรอง Status รวม medical ด้วย
+// แม้คอลัมน์ Training Alerts จะนับเฉพาะ training แล้วก็ตาม
+function getWorstMedicalBucket(medicalChecks = []) {
+  let worst = "valid";
+  for (const m of medicalChecks) {
+    if (!m.expiryDate) continue;
+    const b = getMedicalCheckBucket(m);
+    if ((BUCKET_RANK[b] ?? 0) > BUCKET_RANK[worst]) worst = b;
+  }
+  return worst;
+}
+
 export async function getComplianceDashboard() {
   const employees = await prisma.employee.findMany({
     where: {
@@ -89,17 +111,23 @@ export async function getComplianceDashboard() {
       requirementsByPosition[employee.positionId] || [];
 
     // =========================
-    // Cert Alerts (Training + Medical)
+    // Training Alerts — นับเฉพาะ training cert
+    // (ผลตรวจสุขภาพแสดงแยกในคอลัมน์ Medical — ไม่นับซ้ำที่นี่)
     // =========================
-    const alerts = { expired: 0, critical: 0, warning: 0, valid: 0 };
+    const alerts = {
+      expired: 0,
+      critical: 0,
+      warning: 0,
+      upcoming: 0,
+      valid: 0,
+    };
 
     for (const t of employee.trainings) {
       alerts[getExpiryBucket(t.expiryDate)]++;
     }
 
-    for (const m of employee.medicalChecks) {
-      alerts[getMedicalCheckBucket(m)]++;
-    }
+    // สถานะแย่สุดของผลตรวจสุขภาพ — ใช้เรียงแถว/กรอง Status ฝั่ง frontend
+    const medicalWorst = getWorstMedicalBucket(employee.medicalChecks);
 
     // =========================
     // Employee Training IDs
@@ -149,12 +177,14 @@ export async function getComplianceDashboard() {
     return {
       id: employee.id,
       empCode: employee.empCode, // ← เพิ่ม: ใช้แสดงใต้ชื่อ
+      empId: employee.empId,
       fullName: employee.fullName,
       department: employee.division, // schema ใช้ฟิลด์ division
       startWorkDate: employee.startWorkDate, // ← เพิ่ม: ใช้คำนวณ Experience
       position: employee.position,
       medicalChecks: employee.medicalChecks, // ← เพิ่ม: ใช้คอลัมน์ Medical
       alerts,
+      medicalWorst,
       clients,
     };
   });
@@ -290,19 +320,15 @@ export async function getComplianceStats() {
     where: { status: "active" },
     include: {
       trainings: { where: { isLatest: true } },
-      medicalChecks: true,
     },
   });
 
-  const stats = { expired: 0, critical: 0, warning: 0, valid: 0 };
+  // การ์ดสถิติหน้า Compliance — นับเฉพาะ training cert ให้ตรงกับคอลัมน์ Training Alerts
+  const stats = { expired: 0, critical: 0, warning: 0, upcoming: 0, valid: 0 };
 
   for (const employee of employees) {
     for (const cert of employee.trainings) {
       stats[getExpiryBucket(cert.expiryDate)]++;
-    }
-
-    for (const medical of employee.medicalChecks) {
-      stats[getMedicalCheckBucket(medical)]++;
     }
   }
 
@@ -317,18 +343,21 @@ export async function getWorkerAlerts(employeeId) {
         where: { isLatest: true },
         include: { globalTraining: true },
       },
-      medicalChecks: true,
     },
   });
+  if (!employee) throw new Error("Worker not found");
 
+  // เฉพาะ training cert — ผลตรวจสุขภาพดูได้ที่คอลัมน์ Medical
   const expired = [],
     critical = [],
-    warning = [];
+    warning = [],
+    upcoming = []; // ← เพิ่ม upcoming
 
   const pushByBucket = (bucket, item) => {
     if (bucket === "expired") expired.push(item);
     else if (bucket === "critical") critical.push(item);
     else if (bucket === "warning") warning.push(item);
+    else if (bucket === "upcoming") upcoming.push(item); // ← เพิ่ม
     // "valid" → ไม่ต้องขึ้น alert
   };
 
@@ -345,20 +374,7 @@ export async function getWorkerAlerts(employeeId) {
     });
   }
 
-  for (const m of employee.medicalChecks) {
-    if (!m.expiryDate) continue;
-    const daysLeft = Math.ceil(
-      (new Date(m.expiryDate) - Date.now()) / 86400000,
-    );
-    pushByBucket(getMedicalCheckBucket(m), {
-      type: "Medical",
-      name: m.checkType,
-      expiryDate: m.expiryDate,
-      daysLeft,
-    });
-  }
-
-  return { fullName: employee.fullName, expired, critical, warning };
+  return { fullName: employee.fullName, expired, critical, warning, upcoming }; // ← เพิ่ม
 }
 
 // ============================================================
@@ -388,7 +404,15 @@ export async function getCertificationDetail(globalTrainingId) {
     orderBy: { empCode: "asc" },
   });
 
-  const stats = { expired: 0, critical: 0, warning: 0, valid: 0, missing: 0 };
+  // getCertificationDetail (ใช้โดย Certifications.jsx — training เท่านั้น อยู่แล้ว)
+  const stats = {
+    expired: 0,
+    critical: 0,
+    warning: 0,
+    upcoming: 0,
+    valid: 0,
+    missing: 0,
+  };
 
   const workers = employees.map((employee) => {
     const t = employee.trainings[0] || null;
@@ -410,6 +434,7 @@ export async function getCertificationDetail(globalTrainingId) {
     return {
       employeeId: employee.id,
       empCode: employee.empCode,
+      empId: employee.empId,
       fullName: employee.fullName,
       position: employee.position?.name || null,
       department: employee.division || null,

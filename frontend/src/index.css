@@ -6,3 +6,16 @@
   /* font-family: "Outfit", sans-serif; */
   font-family: "Sarabun", "Roboto", sans-serif;
 }
+
+/* iOS ซูมเมื่อแตะช่องกรอกที่ font < 16px — บังคับ 16px เฉพาะจอสัมผัส (รวม react-select, iPad แนวนอน) */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px !important; }
+}
+
+/* Tailwind v4 เปลี่ยนค่าเริ่มต้นของปุ่มเป็น cursor: default — คืนมือชี้ให้ทุกปุ่มที่กดได้ */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+}

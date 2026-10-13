@@ -1,4 +1,9 @@
 import { PrismaClient } from "@prisma/client";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const prisma = new PrismaClient();
 
@@ -179,6 +184,9 @@ export async function getWorkerById(id) {
         orderBy: { mobDate: "desc" },
         include: { position: true },
       },
+      medicalExamRecords: {
+        orderBy: { examDate: "desc" },
+      },
     },
   });
 }
@@ -192,6 +200,8 @@ export async function createWorker(data) {
   const buildData = (code) => ({
     empCode: code,
     fullName: data.fullName,
+    fullNameTH: data.fullNameTH || null, // ← เพิ่ม
+    empId: data.empId || null, // ← เพิ่ม
     nationality: data.nationality || null,
     phone: data.phone || null,
     email: data.email || null,
@@ -296,16 +306,30 @@ export async function deleteTraining(trainingId) {
 }
 
 export async function createMedical(employeeId, data) {
+  const checkType = data.checkType || "Medical Check up";
+  const fields = {
+    hospital: data.hospital || null,
+    issuedDate: data.issuedDate ? new Date(data.issuedDate) : null,
+    expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
+    status: data.status || "pending",
+    notes: data.notes || null,
+  };
+
+  // มี checkType เดียวกันอยู่แล้ว → อัปเดตใบเดิม ไม่สร้างใบซ้ำ
+  // (unique key มี medicalRequirementId ที่เป็น null ได้ DB จึงกันซ้ำให้ไม่ได้)
+  const existing = await prisma.medicalCheck.findFirst({
+    where: { employeeId, checkType },
+    orderBy: { expiryDate: "desc" },
+  });
+  if (existing) {
+    return prisma.medicalCheck.update({
+      where: { id: existing.id },
+      data: fields,
+    });
+  }
+
   return prisma.medicalCheck.create({
-    data: {
-      employeeId,
-      checkType: data.checkType || "Medical Check up",
-      hospital: data.hospital || null,
-      issuedDate: data.issuedDate ? new Date(data.issuedDate) : null,
-      expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
-      status: data.status || "pending",
-      notes: data.notes || null,
-    },
+    data: { employeeId, checkType, ...fields },
   });
 }
 
@@ -361,12 +385,139 @@ export async function deleteDeployment(deploymentId) {
   return prisma.assignment.delete({ where: { id: deploymentId } });
 }
 
+// ════════════════════════════════════════════════════════════════
+// Medical Exam Record (PE tracking) — CRUD + auto-sync Employee.healthRisk
+// ════════════════════════════════════════════════════════════════
+
+// ── ฟังก์ชันกลาง: หา record ที่ examDate ล่าสุดจริงๆ ในบรรดา record
+// ทั้งหมดของ employee คนนี้ แล้วตั้ง isLatest ให้ตรงกับตัวนั้นตัวเดียว
+// พร้อม sync Employee.healthRisk ตาม — เรียกใช้หลัง create/update/delete
+// ทุกครั้ง เพื่อให้ผลลัพธ์ถูกต้องเสมอไม่ว่าจะแก้ไข/ลบ/เพิ่ม record ไหนก่อนหลัง
+//
+// record ที่ไม่มี examDate (ไม่ควรเกิดเพราะ frontend บังคับกรอก แต่กันไว้
+// เผื่อข้อมูลเก่า) จะถูกนับว่าเก่าที่สุดเสมอ ไม่มีทางถูกเลือกเป็น latest
+// ถ้ามี record อื่นที่มี examDate อยู่
+async function recomputeLatestMedicalExam(employeeId) {
+  const records = await prisma.medicalExamRecord.findMany({
+    where: { employeeId },
+  });
+
+  // ไม่เหลือ record เลย → healthRisk กลับเป็น null (fallback โหมดกรอกมือ)
+  if (records.length === 0) {
+    await prisma.employee.update({
+      where: { id: employeeId },
+      data: { healthRisk: null },
+    });
+    return null;
+  }
+
+  let winner = records[0];
+  for (const r of records) {
+    const rTime = r.examDate ? new Date(r.examDate).getTime() : -Infinity;
+    const wTime = winner.examDate
+      ? new Date(winner.examDate).getTime()
+      : -Infinity;
+    if (rTime > wTime) winner = r;
+  }
+
+  await prisma.$transaction([
+    prisma.medicalExamRecord.updateMany({
+      where: { employeeId, NOT: { id: winner.id } },
+      data: { isLatest: false },
+    }),
+    prisma.medicalExamRecord.update({
+      where: { id: winner.id },
+      data: { isLatest: true },
+    }),
+    prisma.employee.update({
+      where: { id: employeeId },
+      data: { healthRisk: winner.healthRisk || null },
+    }),
+  ]);
+
+  return winner;
+}
+
+// สร้าง record ใหม่ → แล้ว recompute ว่า record ไหนควรเป็น isLatest จริงๆ
+// (ไม่ใช่ตั้ง isLatest=true ให้ record ใหม่เสมอเหมือนเดิม — เพราะถ้า examDate
+// ที่กรอกเข้ามาเก่ากว่า record ที่มีอยู่แล้ว ก็ไม่ควรกลายเป็น latest)
+export async function createMedicalExam(employeeId, data) {
+  const latestSoFar = await prisma.medicalExamRecord.findFirst({
+    where: { employeeId, isLatest: true },
+  });
+
+  const created = await prisma.medicalExamRecord.create({
+    data: {
+      ...data,
+      examDate: data.examDate ? new Date(data.examDate) : null,
+      commentDate: data.commentDate ? new Date(data.commentDate) : null,
+      employeeId,
+      version: (latestSoFar?.version ?? 0) + 1,
+      isLatest: false, // ← จะถูก recompute ด้านล่างให้ถูกต้องอีกที
+      source: "manual",
+    },
+  });
+
+  await recomputeLatestMedicalExam(employeeId);
+
+  // ดึงกลับมาใหม่ เพราะ isLatest อาจถูก recompute เปลี่ยนไปจากตอน create
+  return prisma.medicalExamRecord.findUnique({ where: { id: created.id } });
+}
+
+// แก้ไข record ที่มีอยู่แล้ว (รวมถึงกรณีแก้ examDate ให้ใหม่กว่า/เก่ากว่าเดิม)
+// แล้ว recompute ว่า record ไหนควรเป็น latest จริงๆ หลังแก้เสร็จ
+// ครอบคลุมทั้ง 2 เคส:
+//   - แก้ record ที่ไม่ใช่ latest ให้มี examDate ใหม่กว่า latest ปัจจุบัน → ต้องสลับ
+//   - แก้ record ที่เป็น latest อยู่ ให้มี examDate เก่ากว่า record อื่น → ต้องสลับ
+export async function updateMedicalExam(examId, data) {
+  const existing = await prisma.medicalExamRecord.findUnique({
+    where: { id: examId },
+  });
+  if (!existing) throw new Error("Medical exam record not found");
+
+  await prisma.medicalExamRecord.update({
+    where: { id: examId },
+    data: {
+      ...data,
+      examDate: data.examDate ? new Date(data.examDate) : null,
+      commentDate: data.commentDate ? new Date(data.commentDate) : null,
+    },
+  });
+
+  await recomputeLatestMedicalExam(existing.employeeId);
+
+  return prisma.medicalExamRecord.findUnique({ where: { id: examId } });
+}
+
+// ลบ record — แล้ว recompute ว่า record ที่เหลือ (ถ้ามี) ตัวไหนควรเป็น latest
+export async function deleteMedicalExam(examId) {
+  const record = await prisma.medicalExamRecord.delete({
+    where: { id: examId },
+  });
+
+  await recomputeLatestMedicalExam(record.employeeId);
+
+  return record;
+}
+
 export async function updateWorker(id, data) {
+  // เช็คค่าก่อนหน้า เพื่อรู้ว่านี่คือ "การเปลี่ยนเป็น on_site ครั้งแรก" หรือเปล่า
+  const before = await prisma.employee.findUnique({
+    where: { id },
+    select: { mobilizationStatus: true },
+  });
+
+  const isNewlyOnSite =
+    before?.mobilizationStatus !== "on_site" &&
+    data.mobilizationStatus === "on_site";
+
   const result = await prisma.employee.update({
     where: { id },
     data: {
       empCode: data.empCode,
       fullName: data.fullName,
+      fullNameTH: data.fullNameTH || null,
+      empId: data.empId || null,
       nationality: data.nationality || null,
       phone: data.phone || null,
       email: data.email || null,
@@ -378,6 +529,7 @@ export async function updateWorker(id, data) {
       availabilityStatus: data.availabilityStatus || "available",
       mobilizationStatus: data.mobilizationStatus || "pending",
       isOffshore: data.isOffshore || false,
+      ...(isNewlyOnSite ? { onSiteAt: new Date() } : {}), // ← เพิ่มบรรทัดนี้
       ...buildRosterData(data),
     },
   });
@@ -393,6 +545,43 @@ export async function updateWorkerPhoto(id, photoUrl) {
   return prisma.employee.update({
     where: { id: String(id) },
     data: { photoUrl },
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// Certification File Upload — บันทึก path ไฟล์ cert ที่ multer เซฟไว้แล้ว
+// ลง EmployeeTraining.certFileUrl (เหมือน pattern updateWorkerPhoto)
+// ════════════════════════════════════════════════════════════════
+export async function updateTrainingCertFile(
+  trainingId,
+  certFileUrl,
+  certFileName,
+) {
+  return prisma.employeeTraining.update({
+    where: { id: trainingId },
+    data: { certFileUrl, certFileName },
+  });
+}
+
+export async function deleteTrainingCertFile(trainingId) {
+  const existing = await prisma.employeeTraining.findUnique({
+    where: { id: trainingId },
+    select: { certFileUrl: true },
+  });
+  if (!existing) throw new Error("Training record not found");
+
+  if (existing.certFileUrl) {
+    const filePath = path.join(
+      __dirname,
+      "..",
+      existing.certFileUrl.replace(/^\//, ""),
+    );
+    fs.existsSync(filePath) && fs.unlinkSync(filePath);
+  }
+
+  return prisma.employeeTraining.update({
+    where: { id: trainingId },
+    data: { certFileUrl: null, certFileName: null },
   });
 }
 
@@ -417,4 +606,14 @@ export async function deleteMedical(medicalId) {
   return prisma.medicalCheck.delete({
     where: { id: medicalId },
   });
+}
+
+export async function getHealthRiskOptions() {
+  const results = await prisma.employee.findMany({
+    where: { healthRisk: { not: null } },
+    select: { healthRisk: true },
+    distinct: ["healthRisk"],
+    orderBy: { healthRisk: "asc" },
+  });
+  return results.map((r) => r.healthRisk).filter(Boolean);
 }

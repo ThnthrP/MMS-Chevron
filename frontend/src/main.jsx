@@ -4,11 +4,14 @@ import "./index.css";
 import App from "./App.jsx";
 import { BrowserRouter } from "react-router-dom";
 import { AppContextProvider } from "./context/AppContext.jsx";
+import { WorkerAppContextProvider } from "./context/WorkerAppContext.jsx"; // ← เพิ่ม
 
 createRoot(document.getElementById("root")).render(
   <BrowserRouter>
-  <AppContextProvider>
-    <App />
-  </AppContextProvider>
-  </BrowserRouter>
+    <AppContextProvider>
+      <WorkerAppContextProvider>
+        <App />
+      </WorkerAppContextProvider>
+    </AppContextProvider>
+  </BrowserRouter>,
 );

@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { getActiveBanMap } from "./employeeBanService.js"; // ← เพิ่มบรรทัดนี้
 
 const prisma = new PrismaClient();
 
@@ -108,11 +109,64 @@ export async function getMobilizationList(projectId) {
     },
   });
 
+  // ← แก้: สรุปความคืบหน้าต่อ position request — ต้องรู้ทั้ง approved (จาก Allocation)
+  // และ deployed (จริงในหน้านี้) เพื่อให้ badge/dropdown สื่อสถานะ deploy ตรงกับงานจริง
+  const positionSummary = await Promise.all(
+    requests.map(async (req) => {
+      const candidateEmployeeIds = (req.rounds[0]?.candidates ?? []).map(
+        (c) => c.employeeId,
+      );
+      const deployedCount = candidateEmployeeIds.length
+        ? await prisma.assignment.count({
+            where: {
+              projectId,
+              employeeId: { in: candidateEmployeeIds },
+              bookingId: null, // roster-style assignment เหมือนที่ใช้ตรวจ r.deployed ฝั่ง frontend
+            },
+          })
+        : 0;
+
+      return {
+        requestId: req.id,
+        positionName: req.position?.name || null,
+        quantity: req.quantity,
+        approvedCount: req.rounds[0]?.candidates?.length ?? 0,
+        deployedCount, // ← ใหม่
+      };
+    }),
+  );
+
+  // ── รวบ employeeId ทั้งหมดล่วงหน้า ──
+  const allCandidateEmployeeIds = [];
+  for (const req of requests) {
+    for (const c of req.rounds[0]?.candidates ?? []) {
+      allCandidateEmployeeIds.push(c.employeeId);
+    }
+  }
+
   // assignment เดิมของ project นี้ (คนที่ deploy ไปแล้ว)
   const assignments = await prisma.assignment.findMany({
     where: { projectId },
   });
   const asgByEmp = new Map(assignments.map((a) => [a.employeeId, a]));
+
+  // ← assignment ล่าสุด "นอก" project นี้ ของทุกคนใน list — ใช้ suggest ค่า From
+  const priorAssignments = await prisma.assignment.findMany({
+    where: {
+      employeeId: { in: allCandidateEmployeeIds },
+      projectId: { not: projectId },
+      demobDate: { not: null },
+    },
+    orderBy: { demobDate: "desc" },
+  });
+  const priorPlatformByEmp = new Map();
+  for (const a of priorAssignments) {
+    if (!priorPlatformByEmp.has(a.employeeId)) {
+      priorPlatformByEmp.set(a.employeeId, a.platform ?? null);
+    }
+  }
+
+  const banMap = await getActiveBanMap(allCandidateEmployeeIds); // ← ย้ายมาไว้ตรงนี้ ก่อน loop
 
   const seen = new Set();
   const workers = [];
@@ -145,13 +199,17 @@ export async function getMobilizationList(projectId) {
         candidateId: c.id,
         employeeId: e.id,
         empCode: e.empCode,
+        empId: e.empId,
         fullName: e.fullName,
-        position: e.position?.name || req.position?.name || null, // เก็บไว้เผื่อที่อื่นยังใช้ (backward compat)
-        employeePosition: e.position?.name || null, // ← ใหม่: ตำแหน่งจริงของพนักงานคนนี้
-        requestedPosition: req.position?.name || null, // ← ใหม่: ตำแหน่งที่ position request ต้องการ
+        position: e.position?.name || req.position?.name || null,
+        employeePosition: e.position?.name || null,
+        requestedPosition: req.position?.name || null,
         birthDate: e.birthDate,
         requestId: req.id,
 
+        workerConfirmStatus: c.workerConfirmStatus,
+
+        healthRisk: e.healthRisk ?? null,
         medicalExpiry: medical?.expiryDate ?? null,
         medicalStatus: medical?.status ?? null,
         assignment: asg
@@ -159,12 +217,21 @@ export async function getMobilizationList(projectId) {
               mobDate: asg.mobDate,
               demobDate: asg.demobDate,
               platform: asg.platform,
+              fromLocation: asg.fromLocation,
               status: asg.status,
-              createdAt: asg.createdAt, // ← "Deployed on"
+              createdAt: asg.createdAt,
               updatedAt: asg.updatedAt,
             }
           : null,
-        checklist, // ← ใหม่: array ของ MobilizationTask 6 รายการ
+        previousPlatform: priorPlatformByEmp.get(e.id) ?? null,
+        checklist,
+        activeBan: banMap.has(e.id)
+          ? {
+              id: banMap.get(e.id).id, // ← ต้องมีบรรทัดนี้ ถ้ายังไม่มี
+              bannedUntil: banMap.get(e.id).bannedUntil,
+              reason: banMap.get(e.id).reason,
+            }
+          : null,
       });
     }
   }
@@ -174,10 +241,11 @@ export async function getMobilizationList(projectId) {
       id: project.id,
       name: project.name,
       location: project.location || null,
-      startDate: project.startDate, // default MOB ฝั่ง frontend
+      startDate: project.startDate,
       client: project.contract?.client?.name || null,
     },
     demobDays: DEMOB_DAYS,
+    positionSummary,
     workers,
   };
 }
@@ -253,6 +321,7 @@ export async function deployToSite({ projectId, deployments }) {
         mobDate: mob,
         demobDate: demob,
         platform: d.platform,
+        fromLocation: d.fromLocation ?? null, // ← ใหม่
         status,
       },
     });

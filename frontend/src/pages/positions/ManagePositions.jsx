@@ -1,26 +1,99 @@
 import { useState, useEffect, useContext } from "react";
 import axios from "axios";
-import Select from "react-select"; // ← เพิ่มใหม่
 import { AppContent } from "../../context/AppContext";
 
-// const CATEGORIES = ["Technical", "Supervisory", "Engineering"];
-
+// ══════════════════════════════════════════════════════════
+// helpers
+// ══════════════════════════════════════════════════════════
 const emptyForm = {
   name: "",
   nameTH: "",
-  category: "",
-  isOffshore: false,
-  responsibilities: "", // ← เพิ่มใหม่
+  category: "", // ไม่มีช่องกรอกแล้ว แต่ยังส่งค่าเดิมกลับไป กันข้อมูลเก่าหาย
+  isOffshore: false, // เช่นเดียวกัน
 };
 
+// "a\nb\nc" -> ["a","b","c"]
+const toItems = (text) =>
+  (text || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+// ["a","","b"] -> "a\nb"
+const toText = (items) => items.filter((i) => i.trim()).join("\n");
+
+const autoGrow = (el) => {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
+};
+
+// ══════════════════════════════════════════════════════════
+// constants
+// ══════════════════════════════════════════════════════════
+const CARD = "rounded-[10px] border border-gray-200 bg-white";
+const INPUT =
+  "box-border w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-blue-400";
+const LABEL = "mb-1.5 block text-[13px] font-semibold";
+const TH =
+  "sticky top-0 z-[1] whitespace-nowrap bg-white px-4 py-2.5 text-[11px] font-semibold tracking-[0.5px] text-gray-500 shadow-[inset_0_-1px_0_#dee2e6]";
+const ICON_BTN =
+  "cursor-pointer rounded-md border-none px-2 py-1 text-[13px] leading-none transition-all hover:-translate-y-px";
+const EDIT_BTN = `${ICON_BTN} bg-[#e7f1ff] shadow-[0_1px_3px_rgba(13,110,253,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(13,110,253,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
+const DELETE_BTN = `${ICON_BTN} bg-[#fff5f5] shadow-[0_1px_3px_rgba(220,53,69,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(220,53,69,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
+
+// ══════════════════════════════════════════════════════════
+// small components
+// ══════════════════════════════════════════════════════════
+function MatrixCell({ count }) {
+  return count > 0 ? (
+    <span
+      className="font-semibold text-[#198754]"
+      title="มี training requirement (รวมทุก contract)"
+    >
+      {count}
+    </span>
+  ) : (
+    <span
+      className="whitespace-nowrap rounded-md bg-[#fff3cd] px-2 py-0.5 text-[11px] font-semibold text-[#664d03]"
+      title="ยังไม่มี matrix — ระบบจะคัดเลือกคนตำแหน่งนี้ไม่ได้"
+    >
+      no matrix
+    </span>
+  );
+}
+
+function RespCell({ lines }) {
+  return lines.length > 0 ? (
+    <span
+      className="font-semibold text-[#198754]"
+      title={lines.map((l, i) => `${i + 1}. ${l}`).join("\n")}
+    >
+      {lines.length}
+    </span>
+  ) : (
+    <span
+      className="whitespace-nowrap rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-500"
+      title="ยังไม่กรอก — ส่วน Responsibility ในเรซูเม่ (Generate CV Summary) จะไม่โชว์"
+    >
+      not set
+    </span>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// main
+// ══════════════════════════════════════════════════════════
 export default function ManagePositions() {
   const { backendUrl } = useContext(AppContent);
   const [positions, setPositions] = useState([]);
-  const [divisions, setDivisions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+
   const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState(null); // position object หรือ null (create)
+  const [editing, setEditing] = useState(null); // position object | null (create)
   const [form, setForm] = useState(emptyForm);
+  const [respItems, setRespItems] = useState([""]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -40,24 +113,22 @@ export default function ManagePositions() {
 
   useEffect(() => {
     fetchPositions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // กด Esc ปิด modal
   useEffect(() => {
-    axios
-      .get(`${backendUrl}/api/divisions`, { withCredentials: true })
-      .then((res) => setDivisions(res.data)) // [{id, name}, ...]
-      .catch((err) => console.error(err));
-  }, [backendUrl]);
-
-  // รวมจำนวนพนักงานทุกตำแหน่ง (โชว์ท้ายตาราง)
-  const totalWorkers = positions.reduce(
-    (sum, p) => sum + (p._count?.employees ?? 0),
-    0,
-  );
+    if (!showModal) return;
+    const onKey = (e) => e.key === "Escape" && !saving && closeModal();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showModal, saving]);
 
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
+    setRespItems([""]);
     setError("");
     setShowModal(true);
   };
@@ -69,8 +140,9 @@ export default function ManagePositions() {
       nameTH: p.nameTH || "",
       category: p.category || "",
       isOffshore: p.isOffshore || false,
-      responsibilities: p.responsibilities || "", // ← เพิ่มใหม่
     });
+    const items = toItems(p.responsibilities);
+    setRespItems(items.length > 0 ? items : [""]);
     setError("");
     setShowModal(true);
   };
@@ -95,7 +167,7 @@ export default function ManagePositions() {
         nameTH: form.nameTH || null,
         category: form.category || null,
         isOffshore: form.isOffshore,
-        responsibilities: form.responsibilities.trim() || null, // ← เพิ่มใหม่
+        responsibilities: toText(respItems) || null,
       };
       if (editing) {
         await axios.put(`${backendUrl}/api/positions/${editing.id}`, payload, {
@@ -116,7 +188,10 @@ export default function ManagePositions() {
   };
 
   const handleDelete = async (p) => {
-    if (!confirm(`ลบตำแหน่ง "${p.name}" ?`)) return;
+    const workers = p._count?.employees ?? 0;
+    const warn =
+      workers > 0 ? `\n\n⚠ ตำแหน่งนี้มีพนักงานอยู่ ${workers} คน` : "";
+    if (!window.confirm(`ลบตำแหน่ง "${p.name}" ?${warn}`)) return;
     try {
       await axios.delete(`${backendUrl}/api/positions/${p.id}`, {
         withCredentials: true,
@@ -127,346 +202,218 @@ export default function ManagePositions() {
     }
   };
 
-  const inputStyle = {
-    width: "100%",
-    padding: "8px 12px",
-    fontSize: "13px",
-    border: "1px solid #dee2e6",
-    borderRadius: "8px",
-    outline: "none",
-    boxSizing: "border-box",
-    background: "#fff",
-  };
-  const labelStyle = {
-    fontSize: "13px",
-    fontWeight: 600,
-    marginBottom: "6px",
-    display: "block",
-  };
+  const updateItem = (i, value) =>
+    setRespItems((prev) => prev.map((x, idx) => (idx === i ? value : x)));
 
-  // จำนวนบรรทัดที่กรอกไว้ (ใช้แสดงในตาราง + คำนวณ preview เลขข้อ)
-  const responsibilityLines = (text) =>
-    (text || "")
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
+  const removeItem = (i) =>
+    setRespItems((prev) => {
+      const next = prev.filter((_, idx) => idx !== i);
+      return next.length > 0 ? next : [""];
+    });
 
-  const departmentOptions = divisions.map((d) => ({
-    value: d.name,
-    label: d.name,
-  }));
+  // ── derived ──
+  const q = search.trim().toLowerCase();
+  const filtered = positions.filter(
+    (p) =>
+      !q ||
+      (p.name || "").toLowerCase().includes(q) ||
+      (p.nameTH || "").toLowerCase().includes(q),
+  );
+  const totalWorkers = filtered.reduce(
+    (sum, p) => sum + (p._count?.employees ?? 0),
+    0,
+  );
+  const previewLines = respItems.filter((i) => i.trim());
+
+  const emptyText = loading
+    ? "Loading..."
+    : q
+      ? `ไม่พบตำแหน่ง "${search}"`
+      : "No positions yet — click + New Position";
+
+  const renderActions = (p) => (
+    <div className="flex justify-center gap-2">
+      <button title="Edit" onClick={() => openEdit(p)} className={EDIT_BTN}>
+        ✏️
+      </button>
+      <button
+        title="Delete"
+        onClick={() => handleDelete(p)}
+        className={DELETE_BTN}
+      >
+        🗑
+      </button>
+    </div>
+  );
 
   return (
-    <div className="container-fluid p-0">
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* Header Card */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "16px 24px",
-            marginBottom: "1rem",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <span style={{ fontSize: "20px" }}>🧰</span>
-              <span style={{ fontSize: "18px", fontWeight: 700 }}>
-                Manage Positions
-              </span>
-              <span style={{ color: "#6c757d", fontSize: "12px" }}>
-                ตำแหน่งกลาง (canonical) — ใช้ในฟอร์ม worker/project &amp;
-                training matrix
-              </span>
-            </div>
-            <button
-              onClick={openCreate}
-              style={{
-                background: "#0d6efd",
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                padding: "8px 16px",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              + New Position
-            </button>
-          </div>
+    <div className="mx-auto w-full min-w-0 max-w-[1800px]">
+      {/* ════════ Header ════════ */}
+      <div
+        className={`${CARD} mb-4 flex flex-col gap-3 px-4 py-4 sm:px-6 md:flex-row md:items-center md:justify-between`}
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+          <span className="text-xl">🧰</span>
+          <span className="text-lg font-bold">Manage Positions</span>
+          <span className="basis-full text-xs text-gray-500 lg:basis-auto">
+            ตำแหน่งกลาง (canonical) — ใช้ในฟอร์ม worker/project &amp; training
+            matrix
+          </span>
         </div>
-
-        {/* Table */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            overflow: "hidden",
-          }}
+        <button
+          onClick={openCreate}
+          className="w-full shrink-0 cursor-pointer rounded-lg border-none bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-blue-700 md:w-auto"
         >
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: "13px",
-            }}
-          >
-            <thead>
-              <tr style={{ borderBottom: "1px solid #dee2e6" }}>
-                {[
-                  ["POSITION", "left"],
-                  ["DEPARTMENT", "left"],
-                  ["OFFSHORE", "center"],
-                  ["WORKERS", "center"],
-                  ["MATRIX", "center"],
-                  ["CV RESPONSIBILITY", "center"],
-                  ["ACTIONS", "center"],
-                ].map(([h, align]) => (
-                  <th
-                    key={h}
-                    style={{
-                      padding: "10px 16px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: "#6c757d",
-                      letterSpacing: "0.5px",
-                      textAlign: align,
-                      background: "#fff",
-                      whiteSpace: "nowrap",
-                    }}
+          + New Position
+        </button>
+      </div>
+
+      {/* ════════ Search ════════ */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          placeholder="🔍 ค้นหาตำแหน่ง (EN / TH)..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className={`${INPUT} sm:max-w-[320px]`}
+        />
+        {q && (
+          <span className="text-xs text-gray-500">
+            พบ {filtered.length} จาก {positions.length} ตำแหน่ง
+          </span>
+        )}
+      </div>
+
+      {/* ════════ List ════════ */}
+      <div className={`${CARD} overflow-hidden`}>
+        {/* ── ต่ำกว่า lg: การ์ด ── */}
+        <div className="lg:hidden">
+          {loading || filtered.length === 0 ? (
+            <div className="p-10 text-center text-[13px] text-gray-500">
+              {emptyText}
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2">
+                {filtered.map((p) => (
+                  <div
+                    key={p.id}
+                    className="rounded-lg border border-gray-200 bg-white p-3 text-[13px]"
                   >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td
-                    colSpan="7"
-                    style={{
-                      textAlign: "center",
-                      padding: "40px",
-                      color: "#6c757d",
-                    }}
-                  >
-                    Loading...
-                  </td>
-                </tr>
-              ) : positions.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan="7"
-                    style={{
-                      textAlign: "center",
-                      padding: "40px",
-                      color: "#6c757d",
-                    }}
-                  >
-                    No positions yet — click + New Position
-                  </td>
-                </tr>
-              ) : (
-                positions.map((p, idx) => {
-                  const respLines = responsibilityLines(p.responsibilities);
-                  return (
-                    <tr
-                      key={p.id}
-                      style={{
-                        borderBottom:
-                          idx < positions.length - 1
-                            ? "1px solid #f1f3f5"
-                            : "none",
-                        transition: "background 0.15s",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "#f8f9fa")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "#fff")
-                      }
-                    >
-                      {/* POSITION */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <div style={{ fontWeight: 600 }}>{p.name}</div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="break-words font-semibold">
+                          {p.name}
+                        </div>
                         {p.nameTH && (
-                          <div style={{ fontSize: "12px", color: "#6c757d" }}>
+                          <div className="text-xs text-gray-500">
                             {p.nameTH}
                           </div>
                         )}
-                      </td>
-
-                      {/* CATEGORY */}
-                      <td style={{ padding: "12px 16px", color: "#6c757d" }}>
-                        {p.category || "—"}
-                      </td>
-
-                      {/* OFFSHORE */}
-                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                        {p.isOffshore ? (
-                          <span
-                            style={{
-                              background: "#cfe2ff",
-                              color: "#084298",
-                              borderRadius: "6px",
-                              padding: "2px 10px",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                            }}
-                          >
-                            Offshore
-                          </span>
-                        ) : (
-                          <span style={{ color: "#adb5bd" }}>—</span>
-                        )}
-                      </td>
-
-                      {/* WORKERS */}
-                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                        {p._count?.employees ?? 0}
-                      </td>
-
-                      {/* MATRIX */}
-                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                        {(p._count?.requirements ?? 0) > 0 ? (
-                          <span
-                            style={{ color: "#198754", fontWeight: 600 }}
-                            title="มี training requirement (รวมทุก contract)"
-                          >
-                            {p._count.requirements}
-                          </span>
-                        ) : (
-                          <span
-                            style={{
-                              background: "#fff3cd",
-                              color: "#664d03",
-                              borderRadius: "6px",
-                              padding: "2px 8px",
-                              fontSize: "11px",
-                              fontWeight: 600,
-                            }}
-                            title="ยังไม่มี matrix — ระบบจะคัดเลือกคนตำแหน่งนี้ไม่ได้"
-                          >
-                            no matrix
-                          </span>
-                        )}
-                      </td>
-
-                      {/* CV RESPONSIBILITY — เพิ่มใหม่ */}
-                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                        {respLines.length > 0 ? (
-                          <span
-                            style={{ color: "#198754", fontWeight: 600 }}
-                            title={respLines
-                              .map((l, i) => `${i + 1}. ${l}`)
-                              .join("\n")}
-                          >
-                            {respLines.length} item
-                            {respLines.length > 1 ? "s" : ""}
-                          </span>
-                        ) : (
-                          <span
-                            style={{
-                              background: "#f1f3f5",
-                              color: "#6c757d",
-                              borderRadius: "6px",
-                              padding: "2px 8px",
-                              fontSize: "11px",
-                              fontWeight: 600,
-                            }}
-                            title="ยังไม่กรอก — ส่วน Responsibility ในเรซูเม่ (Generate CV Summary) จะไม่โชว์"
-                          >
-                            not set
-                          </span>
-                        )}
-                      </td>
-
-                      {/* ACTIONS */}
-                      <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "center",
-                            gap: "8px",
-                          }}
-                        >
-                          <button
-                            title="Edit"
-                            onClick={() => openEdit(p)}
-                            style={{
-                              background: "#fff",
-                              border: "1px solid #dee2e6",
-                              borderRadius: "6px",
-                              padding: "4px 8px",
-                              cursor: "pointer",
-                              fontSize: "13px",
-                              lineHeight: 1,
-                            }}
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            title="Delete"
-                            onClick={() => handleDelete(p)}
-                            style={{
-                              background: "#fff",
-                              border: "1px solid #f5c6cb",
-                              borderRadius: "6px",
-                              padding: "4px 8px",
-                              cursor: "pointer",
-                              fontSize: "13px",
-                              lineHeight: 1,
-                            }}
-                          >
-                            🗑
-                          </button>
+                      </div>
+                      {renderActions(p)}
+                    </div>
+                    <div className="mt-2.5 grid grid-cols-3 gap-2 border-t border-gray-100 pt-2.5 text-center">
+                      {[
+                        ["Workers", p._count?.employees ?? 0],
+                        [
+                          "Matrix",
+                          <MatrixCell
+                            key="m"
+                            count={p._count?.requirements ?? 0}
+                          />,
+                        ],
+                        [
+                          "CV Resp.",
+                          <RespCell
+                            key="r"
+                            lines={toItems(p.responsibilities)}
+                          />,
+                        ],
+                      ].map(([label, content]) => (
+                        <div key={label}>
+                          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.5px] text-gray-400">
+                            {label}
+                          </div>
+                          {content}
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between border-t-2 border-gray-200 bg-gray-50 px-4 py-3 text-[13px] font-bold">
+                <span>รวม {filtered.length} ตำแหน่ง</span>
+                <span className="text-blue-600">{totalWorkers} คน</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── lg+: ตาราง ── */}
+        <div className="hidden max-h-[76vh] overflow-y-auto lg:block">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr>
+                <th className={`${TH} text-left`}>POSITION</th>
+                <th className={`${TH} text-center`}>WORKERS (คน)</th>
+                <th className={`${TH} text-center`}>MATRIX (requirement)</th>
+                <th className={`${TH} text-center`}>
+                  CV RESPONSIBILITY (items)
+                </th>
+                <th className={`${TH} text-center`}>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading || filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-10 text-center text-gray-500">
+                    {emptyText}
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((p, idx) => (
+                  <tr
+                    key={p.id}
+                    className={`transition-colors duration-150 hover:bg-gray-50 ${
+                      idx < filtered.length - 1
+                        ? "border-b border-gray-100"
+                        : ""
+                    }`}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="font-semibold">{p.name}</div>
+                      {p.nameTH && (
+                        <div className="text-xs text-gray-500">{p.nameTH}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {p._count?.employees ?? 0}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <MatrixCell count={p._count?.requirements ?? 0} />
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <RespCell lines={toItems(p.responsibilities)} />
+                    </td>
+                    <td className="px-4 py-3">{renderActions(p)}</td>
+                  </tr>
+                ))
               )}
             </tbody>
-            {!loading && positions.length > 0 && (
+            {!loading && filtered.length > 0 && (
               <tfoot>
-                <tr
-                  style={{
-                    borderTop: "2px solid #dee2e6",
-                    background: "#f8f9fa",
-                  }}
-                >
-                  <td
-                    colSpan="3"
-                    style={{
-                      padding: "12px 16px",
-                      fontWeight: 700,
-                      fontSize: "13px",
-                    }}
-                  >
-                    รวม {positions.length} ตำแหน่ง
+                <tr className="sticky bottom-0 bg-gray-50 shadow-[inset_0_2px_0_#dee2e6]">
+                  <td className="px-4 py-3 text-[13px] font-bold">
+                    รวม {filtered.length} ตำแหน่ง
                   </td>
                   <td
-                    style={{
-                      padding: "12px 16px",
-                      textAlign: "center",
-                      fontWeight: 700,
-                      color: "#0d6efd",
-                    }}
+                    className="px-4 py-3 text-center font-bold text-blue-600"
                     title="รวมพนักงานทุกตำแหน่ง"
                   >
                     {totalWorkers}
                   </td>
-                  <td colSpan="3"></td>
+                  <td colSpan={3}></td>
                 </tr>
               </tfoot>
             )}
@@ -474,278 +421,140 @@ export default function ManagePositions() {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* ════════ Modal ════════ */}
       {showModal && (
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 999999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-          }}
+          className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 p-3 sm:p-5"
+          onClick={() => !saving && closeModal()}
         >
           <div
-            style={{
-              background: "#fff",
-              borderRadius: "10px",
-              width: "100%",
-              maxWidth: "560px",
-              maxHeight: "90vh",
-              overflowY: "auto",
-              overflow: "hidden",
-            }}
+            className="flex max-h-[90vh] w-full max-w-[760px] flex-col overflow-hidden rounded-[10px] bg-white"
+            onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div
-              style={{
-                background: "#1e3a5f",
-                color: "#fff",
-                padding: "16px 24px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <span style={{ fontWeight: 600, fontSize: "16px" }}>
+            <div className="flex shrink-0 items-center justify-between gap-3 bg-[#1e3a5f] px-4 py-4 text-white sm:px-6">
+              <span className="text-base font-semibold">
                 🧰 {editing ? "Edit Position" : "New Position"}
               </span>
               <button
                 onClick={closeModal}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#fff",
-                  fontSize: "20px",
-                  cursor: "pointer",
-                }}
+                disabled={saving}
+                className="cursor-pointer border-none bg-transparent text-xl leading-none text-white"
               >
                 ✕
               </button>
             </div>
 
             {/* Body */}
-            <div
-              style={{ padding: "24px", maxHeight: "70vh", overflowY: "auto" }}
-            >
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               {error && (
-                <div
-                  style={{
-                    background: "#f8d7da",
-                    color: "#842029",
-                    border: "1px solid #f5c6cb",
-                    borderRadius: "8px",
-                    padding: "10px 14px",
-                    fontSize: "13px",
-                    marginBottom: "16px",
-                  }}
-                >
+                <div className="mb-4 rounded-lg border border-[#f5c6cb] bg-[#f8d7da] px-3.5 py-2.5 text-[13px] text-[#842029]">
                   {error}
                 </div>
               )}
 
-              <div style={{ marginBottom: "16px" }}>
-                <label style={labelStyle}>
+              <div className="mb-4">
+                <label className={LABEL}>
                   Position Name *{" "}
-                  <span style={{ color: "#6c757d" }}>(canonical)</span>
+                  <span className="font-normal text-gray-500">(canonical)</span>
                 </label>
                 <input
                   type="text"
                   placeholder="e.g., Welder, Regular"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  style={inputStyle}
+                  className={INPUT}
+                  autoFocus
                 />
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "16px",
-                  marginBottom: "16px",
-                }}
-              >
-                <div>
-                  <label style={labelStyle}>Name (TH)</label>
-                  <input
-                    type="text"
-                    placeholder="ชื่อภาษาไทย"
-                    value={form.nameTH}
-                    onChange={(e) =>
-                      setForm({ ...form, nameTH: e.target.value })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Department</label>
-                  <Select
-                    options={departmentOptions}
-                    value={
-                      departmentOptions.find(
-                        (o) => o.value === form.category,
-                      ) || null
-                    }
-                    onChange={(o) =>
-                      setForm({ ...form, category: o ? o.value : "" })
-                    }
-                    placeholder="ค้นหา / เลือกแผนก..."
-                    isClearable
-                    menuPortalTarget={
-                      typeof document !== "undefined" ? document.body : null
-                    }
-                    menuPosition="fixed"
-                    styles={{
-                      menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
-                      control: (b) => ({
-                        ...b,
-                        fontSize: "13px",
-                        minHeight: "38px",
-                        borderColor: "#dee2e6",
-                      }),
-                      option: (b) => ({ ...b, fontSize: "13px" }),
-                    }}
-                    noOptionsMessage={() => "ไม่มีแผนก"}
-                  />
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  background: "#f8f9fa",
-                  border: "1px solid #e9ecef",
-                  borderRadius: "8px",
-                  padding: "12px 14px",
-                  marginBottom: "16px",
-                }}
-              >
+              <div className="mb-4">
+                <label className={LABEL}>Name (TH)</label>
                 <input
-                  type="checkbox"
-                  id="posOffshore"
-                  checked={form.isOffshore}
-                  onChange={(e) =>
-                    setForm({ ...form, isOffshore: e.target.checked })
-                  }
-                  style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                  type="text"
+                  placeholder="ชื่อภาษาไทย"
+                  value={form.nameTH}
+                  onChange={(e) => setForm({ ...form, nameTH: e.target.value })}
+                  className={INPUT}
                 />
-                <label
-                  htmlFor="posOffshore"
-                  style={{ fontSize: "13px", cursor: "pointer" }}
-                >
-                  ตำแหน่งนี้เป็นสาย offshore (ลงแท่นกลางทะเล)
-                </label>
               </div>
 
-              {/* Responsibilities — เพิ่มใหม่ */}
+              {/* CV Responsibility */}
               <div>
-                <label style={labelStyle}>
+                <label className={LABEL}>
                   CV Responsibility{" "}
-                  <span style={{ color: "#6c757d", fontWeight: 400 }}>
+                  <span className="font-normal text-gray-500">
                     (แสดงในเรซูเม่ตอน "Generate CV Summary" — Allocation)
                   </span>
                 </label>
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "#6c757d",
-                    marginBottom: "8px",
-                  }}
-                >
-                  พิมพ์ 1 บรรทัด = 1 ข้อ ระบบจะขึ้นเลข 1. 2. 3. ... ให้อัตโนมัติ
-                  ตอนแสดงในเรซูเม่
+                <div className="mb-2 text-xs text-gray-500">
+                  แต่ละกล่อง = 1 ข้อ พิมพ์ยาวได้ตามสบาย ระบบจะขึ้นเลข 1. 2. 3.
+                  ... ให้อัตโนมัติตอนแสดงในเรซูเม่
                 </div>
-                <textarea
-                  rows={5}
-                  placeholder={
-                    "Prepare tools and equipment for that task as assigned by the supervisor.\nReport the performance to the supervisor.\nNotify the repair of equipment, tools about sand blasting - paint that is damaged\nStore and maintain cleanliness of the working area before and after work."
-                  }
-                  value={form.responsibilities}
-                  onChange={(e) =>
-                    setForm({ ...form, responsibilities: e.target.value })
-                  }
-                  style={{ ...inputStyle, resize: "vertical" }}
-                />
-                {responsibilityLines(form.responsibilities).length > 0 && (
-                  <div
-                    style={{
-                      marginTop: "10px",
-                      background: "#f8f9fa",
-                      border: "1px dashed #dee2e6",
-                      borderRadius: "8px",
-                      padding: "10px 14px",
-                      fontSize: "12px",
-                      color: "#495057",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        marginBottom: "6px",
-                        color: "#6c757d",
-                        textTransform: "uppercase",
-                        fontSize: "10px",
-                        letterSpacing: "0.4px",
+
+                {respItems.map((item, i) => (
+                  <div key={i} className="mb-2 flex items-start gap-2">
+                    <div className="min-w-[22px] pt-[9px] text-right text-xs font-semibold text-gray-500">
+                      {i + 1}.
+                    </div>
+                    <textarea
+                      rows={1}
+                      ref={autoGrow}
+                      placeholder="พิมพ์ข้อความ... (ยาวได้ ไม่ต้องกลัวตกบรรทัด)"
+                      value={item}
+                      onChange={(e) => {
+                        updateItem(i, e.target.value);
+                        autoGrow(e.target);
                       }}
+                      className={`${INPUT} min-h-[38px] flex-1 resize-none overflow-hidden`}
+                    />
+                    <button
+                      type="button"
+                      title="ลบข้อนี้"
+                      onClick={() => removeItem(i)}
+                      className="shrink-0 cursor-pointer rounded-md border-none bg-[#fff5f5] px-2.5 py-1.5 text-[13px] text-[#dc3545] hover:bg-red-100"
                     >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => setRespItems([...respItems, ""])}
+                  className="mb-3 mt-1 cursor-pointer rounded-md border-none bg-[#e7f1ff] px-3.5 py-1.5 text-xs font-semibold text-blue-600 hover:bg-[#d6e8ff]"
+                >
+                  + เพิ่มข้อ
+                </button>
+
+                {previewLines.length > 0 && (
+                  <div className="mt-1.5 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3.5 py-2.5 text-xs text-gray-700">
+                    <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.4px] text-gray-500">
                       Preview ในเรซูเม่
                     </div>
-                    {responsibilityLines(form.responsibilities).map(
-                      (line, i) => (
-                        <div key={i}>
-                          {i + 1}. {line}
-                        </div>
-                      ),
-                    )}
+                    {previewLines.map((line, i) => (
+                      <div key={i} className="break-words">
+                        {i + 1}. {line}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
             </div>
 
             {/* Footer */}
-            <div
-              style={{
-                padding: "16px 24px",
-                borderTop: "1px solid #dee2e6",
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "8px",
-              }}
-            >
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-gray-200 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
               <button
                 onClick={closeModal}
                 disabled={saving}
-                style={{
-                  padding: "8px 20px",
-                  fontSize: "13px",
-                  border: "1px solid #dee2e6",
-                  borderRadius: "8px",
-                  background: "#fff",
-                  cursor: "pointer",
-                }}
+                className="cursor-pointer rounded-lg border border-gray-200 bg-white px-5 py-2 text-[13px] hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                style={{
-                  padding: "8px 20px",
-                  fontSize: "13px",
-                  border: "none",
-                  borderRadius: "8px",
-                  background: "#0d6efd",
-                  color: "#fff",
-                  fontWeight: 600,
-                  cursor: saving ? "not-allowed" : "pointer",
-                  opacity: saving ? 0.7 : 1,
-                }}
+                className="cursor-pointer rounded-lg border-none bg-blue-600 px-5 py-2 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {saving ? "Saving..." : editing ? "Save Changes" : "Create"}
               </button>

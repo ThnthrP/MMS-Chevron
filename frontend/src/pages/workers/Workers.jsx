@@ -1,8 +1,85 @@
 import { useState, useEffect, useContext } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { AppContent } from "../../context/AppContext";
 import Select from "react-select";
+
+// ── badge: [tone, label] ต่อค่าสถานะ ──
+const TONE = {
+  ok: "bg-emerald-100 text-emerald-800",
+  danger: "bg-red-100 text-red-800",
+  info: "bg-blue-50 text-blue-700",
+  warn: "bg-amber-100 text-amber-800",
+  muted: "bg-gray-100 text-gray-500",
+};
+const STATUS_MAP = {
+  active: ["ok", "Active"],
+  inactive: ["danger", "Inactive"],
+};
+const AVAILABILITY_MAP = {
+  available: ["ok", "Available"],
+  unavailable: ["danger", "Unavailable"],
+};
+const MOBILIZATION_MAP = {
+  ready: ["ok", "Ready"],
+  on_site: ["info", "On Site"],
+  pending: ["warn", "Pending"],
+};
+
+function Badge({ map, value, fixedWidth = false }) {
+  const [tone, label] = map[(value || "").toLowerCase()] || [
+    "muted",
+    value || "-",
+  ];
+  return (
+    <span
+      className={`inline-block whitespace-nowrap rounded-md px-2.5 py-1 text-center text-xs font-semibold ${TONE[tone]} ${
+        fixedWidth ? "min-w-[90px]" : ""
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
+
+const TABLE_HEADERS = [
+  ["EMP CODE", "left"],
+  ["EMPLOYEE ID", "left"],
+  ["NAME", "left"],
+  ["POSITION", "left"],
+  ["DEPARTMENT", "left"],
+  ["STATUS", "center"],
+  ["AVAILABILITY", "center"],
+  ["MOBILIZATION", "center"],
+  ["ACTIONS", "center"],
+];
+
+const ICON_BTN =
+  "inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-none p-0 text-xs leading-none transition-all disabled:cursor-not-allowed";
+const LIFT_WHITE =
+  "bg-white shadow-[0_1px_3px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.08)] hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(0,0,0,0.18),0_2px_3px_rgba(0,0,0,0.1)]";
+const LIFT_RED =
+  "bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.15),0_1px_2px_rgba(0,0,0,0.06)] hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(220,53,69,0.25),0_2px_3px_rgba(0,0,0,0.08)]";
+const BTN_DISABLED = "bg-gray-100 opacity-50 shadow-none";
+const CARD = "rounded-[10px] border border-gray-200 bg-white";
+
+const customSelectStyles = {
+  control: (provided) => ({
+    ...provided,
+    borderColor: "#dee2e6",
+    borderRadius: "8px",
+    minHeight: "36px",
+    fontSize: "13px",
+    boxShadow: "none",
+    "&:hover": { borderColor: "#86b7fe" },
+  }),
+  option: (provided) => ({ ...provided, fontSize: "13px" }),
+  placeholder: (provided) => ({
+    ...provided,
+    fontSize: "13px",
+    color: "#6c757d",
+  }),
+};
 
 export default function Workers() {
   const [search, setSearch] = useState("");
@@ -14,10 +91,10 @@ export default function Workers() {
 
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(false);
-  const { backendUrl, userData } = useContext(AppContent);
-  const navigate = useNavigate();
+  const { backendUrl } = useContext(AppContent);
 
-  const canManageWorkers = ["admin", "hr"].includes(userData?.role?.name);
+  // สิทธิ์เข้าถึงหน้า /workers ถูกควบคุมที่ AppRouter.jsx (allowRoles) อยู่แล้ว
+  const canManageWorkers = true;
 
   const departments = [
     ...new Set(workers.map((w) => w.division).filter(Boolean)),
@@ -51,24 +128,21 @@ export default function Workers() {
     { value: "on_site", label: "On-Site" },
   ];
 
+  const q = search.toLowerCase();
   const filteredWorkers = workers
     .filter((worker) => {
       const matchSearch =
-        (worker.fullName || "").toLowerCase().includes(search.toLowerCase()) ||
-        (worker.empCode || "").toLowerCase().includes(search.toLowerCase());
-
+        (worker.fullName || "").toLowerCase().includes(q) ||
+        (worker.empCode || "").toLowerCase().includes(q) ||
+        (worker.empId || "").toLowerCase().includes(q) ||
+        (worker.position?.name || "").toLowerCase().includes(q); // ← ตาม placeholder ที่บอกว่าค้นตำแหน่งได้
       const matchStatus = !status || worker.status === status;
-
       const matchDepartment = !department || worker.division === department;
-
       const matchPosition = !position || worker.position?.name === position;
-
       const matchAvailability =
         !availability || worker.availabilityStatus === availability;
-
       const matchMobilization =
         !mobilization || worker.mobilizationStatus === mobilization;
-
       return (
         matchSearch &&
         matchStatus &&
@@ -89,69 +163,21 @@ export default function Workers() {
   const activeWorkers = workers.filter((w) => w.status === "active").length;
   const inactiveWorkers = workers.filter((w) => w.status !== "active").length;
 
-  const statusBadge = (bg, color, text) => (
-    <span
-      style={{
-        display: "inline-block",
-        minWidth: "90px",
-        textAlign: "center",
-        padding: "4px 10px",
-        borderRadius: "6px",
-        background: bg,
-        color,
-        fontSize: "12px",
-        fontWeight: 600,
-      }}
-    >
-      {text}
-    </span>
-  );
+  const hasFilter =
+    search || department || position || status || availability || mobilization;
 
-  const renderStatus = (status) => {
-    switch ((status || "").toLowerCase()) {
-      case "active":
-        return statusBadge("#d1e7dd", "#0f5132", "Active");
-
-      case "inactive":
-        return statusBadge("#f8d7da", "#842029", "Inactive");
-
-      default:
-        return statusBadge("#f1f3f5", "#6c757d", status || "-");
-    }
+  const clearFilters = () => {
+    setSearch("");
+    setDepartment("");
+    setPosition("");
+    setStatus("");
+    setAvailability("");
+    setMobilization("");
   };
 
-  const renderAvailability = (status) => {
-    switch ((status || "").toLowerCase()) {
-      case "available":
-        return statusBadge("#d1e7dd", "#0f5132", "Available");
-
-      case "unavailable":
-        return statusBadge("#f8d7da", "#842029", "Unavailable");
-
-      default:
-        return statusBadge("#f1f3f5", "#6c757d", status || "-");
-    }
-  };
-
-  const renderMobilization = (status) => {
-    switch ((status || "").toLowerCase()) {
-      case "ready":
-        return statusBadge("#d1e7dd", "#0f5132", "Ready");
-
-      case "on_site":
-        return statusBadge("#e8f4fd", "#0a58ca", "On Site");
-
-      case "pending":
-        return statusBadge("#fff3cd", "#664d03", "Pending");
-
-      default:
-        return statusBadge("#f1f3f5", "#6c757d", status || "-");
-    }
-  };
-
-  const loadWorkers = async () => {
+  const fetchWorkers = async ({ showLoading = false } = {}) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const res = await axios.get(`${backendUrl}/api/workers`, {
         withCredentials: true,
       });
@@ -159,43 +185,13 @@ export default function Workers() {
     } catch (error) {
       console.error(error);
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchWorkers = async () => {
-    try {
-      const res = await axios.get(`${backendUrl}/api/workers`, {
-        withCredentials: true,
-      });
-      setWorkers(res.data);
-    } catch (error) {
-      console.error(error);
+      if (showLoading) setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadWorkers();
-    fetchWorkers();
+    fetchWorkers({ showLoading: true });
   }, []);
-
-  const customSelectStyles = {
-    control: (provided) => ({
-      ...provided,
-      borderColor: "#dee2e6",
-      borderRadius: "8px",
-      minHeight: "36px",
-      fontSize: "13px",
-      boxShadow: "none",
-      "&:hover": { borderColor: "#86b7fe" },
-    }),
-    option: (provided) => ({ ...provided, fontSize: "13px" }),
-    placeholder: (provided) => ({
-      ...provided,
-      fontSize: "13px",
-      color: "#6c757d",
-    }),
-  };
 
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure you want to deactivate this worker?"))
@@ -211,101 +207,82 @@ export default function Workers() {
     }
   };
 
-  return (
-    <div className="container-fluid p-0">
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* Header Card */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "16px 24px",
-            marginBottom: "1.5rem",
-          }}
+  // ── ปุ่ม View / Edit / Delete — ใช้ทั้งตารางและการ์ด ──
+  const renderActions = (worker) => {
+    const inactive = isInactive(worker);
+    return (
+      <div className="flex justify-center gap-1.5">
+        <Link
+          to={`/workers/${worker.id}`}
+          title="ดูรายละเอียด"
+          className={`${ICON_BTN} ${LIFT_WHITE} no-underline`}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <span style={{ fontSize: "20px" }}>👷</span>
-              <span style={{ fontSize: "18px", fontWeight: 700 }}>Workers</span>
-              <span
-                style={{
-                  background: "#e9f5fb",
-                  color: "#0d6efd",
-                  borderRadius: "6px",
-                  padding: "2px 8px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                }}
-              >
+          👁
+        </Link>
+        {canManageWorkers && (
+          <>
+            <Link
+              to={`/workers/${worker.id}/edit`}
+              title="แก้ไข"
+              className={`${ICON_BTN} ${LIFT_WHITE} no-underline`}
+            >
+              ✏️
+            </Link>
+            <button
+              onClick={() => handleDelete(worker.id)}
+              disabled={inactive}
+              title={inactive ? "Inactive อยู่แล้ว" : "Deactivate พนักงานคนนี้"}
+              className={`${ICON_BTN} ${inactive ? BTN_DISABLED : LIFT_RED}`}
+            >
+              🗑
+            </button>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const isInactive = (w) => w.status === "inactive";
+  const dash = <span className="text-gray-400">—</span>;
+
+  const emptyText = loading
+    ? "Loading workers data..."
+    : "No matching records found.";
+
+  return (
+    // xl+: สูงเต็มจอ ตาราง scroll ในการ์ด / ต่ำกว่านั้น: สูงตามเนื้อหา
+    <div className="flex flex-col xl:h-[calc(100vh-108px)]">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1800px] flex-1 flex-col">
+        {/* Header Card */}
+        <div className={`${CARD} mb-4 px-4 py-4 sm:px-6`}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+              <span className="text-xl">👷</span>
+              <span className="text-lg font-bold">Workers</span>
+              <span className="rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600">
                 Phase 1
               </span>
-              <span style={{ color: "#6c757d", fontSize: "12px" }}>
+              <span className="basis-full text-xs text-gray-500 md:basis-auto">
                 Recruitment & Data Entry
               </span>
             </div>
             {canManageWorkers && (
-              <button
-                onClick={() => navigate("/workers/add")}
-                style={{
-                  background: "#0d6efd",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
+              <Link
+                to="/workers/add"
+                className="inline-block w-full shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-center text-[13px] font-semibold text-white no-underline hover:bg-blue-700 sm:w-auto"
               >
                 + Add Worker
-              </button>
+              </Link>
             )}
           </div>
         </div>
 
         {/* Search & Filter Card */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "14px 20px",
-            marginBottom: "1.5rem",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "10px",
-              alignItems: "center",
-            }}
-          >
-            {/* Search */}
-            <div
-              style={{
-                position: "relative",
-                flex: "1 1 220px",
-                minWidth: "180px",
-              }}
-            >
-              <span
-                style={{
-                  position: "absolute",
-                  left: "10px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  color: "#adb5bd",
-                  fontSize: "14px",
-                }}
-              >
+        <div className={`${CARD} mb-4 px-4 py-3.5 sm:px-5`}>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Search — มือถือเต็มแถว */}
+            <div className="relative min-w-[180px] flex-[1_1_100%] sm:flex-[1_1_220px]">
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">
                 🔍
               </span>
               <input
@@ -313,23 +290,12 @@ export default function Workers() {
                 placeholder="Search name, ID, or position..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                style={{
-                  width: "100%",
-                  paddingLeft: "34px",
-                  paddingRight: "12px",
-                  paddingTop: "7px",
-                  paddingBottom: "7px",
-                  fontSize: "13px",
-                  border: "1px solid #dee2e6",
-                  borderRadius: "8px",
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
+                className="box-border w-full rounded-lg border border-gray-200 py-[7px] pl-[34px] pr-3 text-[13px] outline-none focus:border-blue-400"
               />
             </div>
 
-            {/* Department */}
-            <div style={{ flex: "1 1 150px", minWidth: "130px" }}>
+            {/* Filters — มือถือ 2 ตัวต่อแถว */}
+            <div className="min-w-[130px] flex-[1_1_40%] sm:flex-[1_1_150px]">
               <Select
                 options={departmentOptions}
                 styles={customSelectStyles}
@@ -342,9 +308,7 @@ export default function Workers() {
                 noOptionsMessage={() => "No departments found"}
               />
             </div>
-
-            {/* Position */}
-            <div style={{ flex: "1 1 150px", minWidth: "130px" }}>
+            <div className="min-w-[130px] flex-[1_1_40%] sm:flex-[1_1_150px]">
               <Select
                 options={positionOptions}
                 styles={customSelectStyles}
@@ -357,9 +321,7 @@ export default function Workers() {
                 noOptionsMessage={() => "No positions found"}
               />
             </div>
-
-            {/* Status */}
-            <div style={{ flex: "1 1 120px", minWidth: "110px" }}>
+            <div className="min-w-[110px] flex-[1_1_40%] sm:flex-[1_1_120px]">
               <Select
                 options={statusOptions}
                 styles={customSelectStyles}
@@ -370,9 +332,7 @@ export default function Workers() {
                 isSearchable={false}
               />
             </div>
-
-            {/* Availability */}
-            <div style={{ flex: "1 1 130px", minWidth: "120px" }}>
+            <div className="min-w-[120px] flex-[1_1_40%] sm:flex-[1_1_130px]">
               <Select
                 options={availabilityOptions}
                 styles={customSelectStyles}
@@ -386,9 +346,7 @@ export default function Workers() {
                 isSearchable={false}
               />
             </div>
-
-            {/* Mobilization */}
-            <div style={{ flex: "1 1 130px", minWidth: "120px" }}>
+            <div className="min-w-[120px] flex-[1_1_40%] sm:flex-[1_1_130px]">
               <Select
                 options={mobilizationOptions}
                 styles={customSelectStyles}
@@ -403,34 +361,10 @@ export default function Workers() {
               />
             </div>
 
-            {/* Clear All */}
-            {(search ||
-              department ||
-              position ||
-              status ||
-              availability ||
-              mobilization) && (
+            {hasFilter && (
               <button
-                onClick={() => {
-                  setSearch("");
-                  setDepartment("");
-                  setPosition("");
-                  setStatus("");
-                  setAvailability("");
-                  setMobilization("");
-                }}
-                style={{
-                  flexShrink: 0,
-                  padding: "7px 14px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  border: "1px solid #f5c6cb",
-                  borderRadius: "8px",
-                  background: "#fff",
-                  color: "#dc3545",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
+                onClick={clearFilters}
+                className="shrink-0 cursor-pointer whitespace-nowrap rounded-lg border border-red-200 bg-white px-3.5 py-[7px] text-xs font-semibold text-red-600 hover:bg-red-50"
               >
                 ✕ Clear
               </button>
@@ -438,396 +372,194 @@ export default function Workers() {
           </div>
         </div>
 
-        {/* Summary Cards */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: "1rem",
-            marginBottom: "1.5rem",
-          }}
-        >
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              padding: "16px 20px",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "11px",
-                fontWeight: 600,
-                color: "#6c757d",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                marginBottom: "6px",
-              }}
-            >
-              Total Workers
+        {/* Workers Card */}
+        <div className={`${CARD} flex min-h-0 flex-1 flex-col overflow-hidden`}>
+          {/* Stats bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-2.5 text-[13px]">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span className="text-gray-500">
+                Total: <strong className="text-gray-900">{totalWorkers}</strong>
+              </span>
+              <span className="text-gray-500">
+                Active:{" "}
+                <strong className="text-[#198754]">{activeWorkers}</strong>
+              </span>
+              <span className="text-gray-500">
+                Inactive:{" "}
+                <strong className="text-gray-500">{inactiveWorkers}</strong>
+              </span>
             </div>
-            <div
-              style={{ fontSize: "24px", fontWeight: 700, color: "#212529" }}
-            >
-              {totalWorkers}
-            </div>
-          </div>
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              padding: "16px 20px",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "11px",
-                fontWeight: 600,
-                color: "#6c757d",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                marginBottom: "6px",
-              }}
-            >
-              Active Workers
-            </div>
-            <div
-              style={{ fontSize: "24px", fontWeight: 700, color: "#198754" }}
-            >
-              {activeWorkers}
-            </div>
-          </div>
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              padding: "16px 20px",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "11px",
-                fontWeight: 600,
-                color: "#6c757d",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                marginBottom: "6px",
-              }}
-            >
-              Inactive Workers
-            </div>
-            <div
-              style={{ fontSize: "24px", fontWeight: 700, color: "#6c757d" }}
-            >
-              {inactiveWorkers}
-            </div>
-          </div>
-        </div>
-
-        {/* Workers Table Card */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "10px 16px",
-              borderBottom: "1px solid #dee2e6",
-              display: "flex",
-              justifyContent: "flex-end",
-            }}
-          >
-            <span style={{ fontSize: "13px", color: "#6c757d" }}>
+            <span className="text-gray-500">
               {filteredWorkers.length} of {workers.length}
             </span>
           </div>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: "13px",
-            }}
-          >
-            <thead>
-              <tr style={{ borderBottom: "1px solid #dee2e6" }}>
-                <th
-                  style={{
-                    padding: "10px 16px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#6c757d",
-                    letterSpacing: "0.5px",
-                    textAlign: "left",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  EMP CODE
-                </th>
-                <th
-                  style={{
-                    padding: "10px 16px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#6c757d",
-                    letterSpacing: "0.5px",
-                    textAlign: "left",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  NAME
-                </th>
-                <th
-                  style={{
-                    padding: "10px 16px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#6c757d",
-                    letterSpacing: "0.5px",
-                    textAlign: "left",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  POSITION
-                </th>
-                <th
-                  style={{
-                    padding: "10px 16px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#6c757d",
-                    letterSpacing: "0.5px",
-                    textAlign: "left",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  DEPARTMENT
-                </th>
-                <th
-                  style={{
-                    padding: "10px 16px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#6c757d",
-                    letterSpacing: "0.5px",
-                    textAlign: "center",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  STATUS
-                </th>
-                <th
-                  style={{
-                    padding: "10px 16px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#6c757d",
-                    letterSpacing: "0.5px",
-                    textAlign: "center",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  AVAILABILITY
-                </th>
 
-                <th
-                  style={{
-                    padding: "10px 16px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#6c757d",
-                    letterSpacing: "0.5px",
-                    textAlign: "center",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  MOBILIZATION
-                </th>
-                <th
-                  style={{
-                    padding: "10px 16px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "#6c757d",
-                    letterSpacing: "0.5px",
-                    textAlign: "center",
-                    whiteSpace: "nowrap",
-                    width: "200px",
-                  }}
-                >
-                  ACTIONS
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td
-                    colSpan="8"
-                    style={{
-                      textAlign: "center",
-                      padding: "40px",
-                      color: "#6c757d",
-                    }}
-                  >
-                    Loading workers data...
-                  </td>
-                </tr>
-              ) : filteredWorkers.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan="8"
-                    style={{
-                      textAlign: "center",
-                      padding: "40px",
-                      color: "#6c757d",
-                    }}
-                  >
-                    No matching records found.
-                  </td>
-                </tr>
-              ) : (
-                filteredWorkers.map((worker, idx) => (
-                  <tr
+          {/* ── ต่ำกว่า xl: การ์ด (md: 2 คอลัมน์) ── */}
+          <div className="xl:hidden">
+            {loading || filteredWorkers.length === 0 ? (
+              <div className="p-10 text-center text-[13px] text-gray-500">
+                {emptyText}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2">
+                {filteredWorkers.map((worker) => (
+                  <div
                     key={worker.id}
-                    style={{
-                      borderBottom:
-                        idx < filteredWorkers.length - 1
-                          ? "1px solid #f1f3f5"
-                          : "none",
-                      transition: "background 0.15s",
-                    }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = "#f8f9fa")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = "#fff")
-                    }
+                    className="rounded-lg border border-gray-200 bg-white p-3"
                   >
-                    <td
-                      style={{
-                        padding: "11px 16px",
-                        fontWeight: 600,
-                        color: "#6c757d",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {worker.empCode}
-                    </td>
-                    <td style={{ padding: "11px 16px" }}>
-                      <span
-                        style={{
-                          color: "#0d6efd",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                        onClick={() => navigate(`/workers/${worker.id}`)}
-                      >
-                        {worker.fullName}
-                      </span>
-                    </td>
-                    <td style={{ padding: "11px 16px" }}>
-                      {worker.position?.name || "—"}
-                    </td>
-                    <td style={{ padding: "11px 16px", color: "#6c757d" }}>
-                      {worker.division || "—"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "11px 16px",
-                        textAlign: "center",
-                      }}
-                    >
-                      {renderStatus(worker.status)}
-                    </td>
-
-                    <td style={{ padding: "11px 16px", textAlign: "center" }}>
-                      {worker.status === "inactive" ? (
-                        <span style={{ color: "#adb5bd" }}>—</span>
-                      ) : (
-                        renderAvailability(worker.availabilityStatus)
-                      )}
-                    </td>
-
-                    <td style={{ padding: "11px 16px", textAlign: "center" }}>
-                      {worker.status === "inactive" ? (
-                        <span style={{ color: "#adb5bd" }}>—</span>
-                      ) : (
-                        renderMobilization(worker.mobilizationStatus)
-                      )}
-                    </td>
-                    <td style={{ padding: "11px 16px", textAlign: "center" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        {/* View - ทุก role ที่เข้าหน้านี้ได้ เห็น/กดได้เสมอ */}
-                        <button
-                          onClick={() => navigate(`/workers/${worker.id}`)}
-                          style={{
-                            background: "#fff",
-                            border: "1px solid #dee2e6",
-                            borderRadius: "6px",
-                            padding: "4px 8px",
-                            cursor: "pointer",
-                            fontSize: "12px",
-                            lineHeight: 1,
-                          }}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <Link
+                          to={`/workers/${worker.id}`}
+                          className="break-words text-[13px] font-semibold text-blue-600 no-underline hover:underline"
                         >
-                          👁
-                        </button>
-
-                        {/* Edit/Delete - เฉพาะ admin/hr */}
-                        {canManageWorkers && (
-                          <>
-                            <button
-                              onClick={() =>
-                                navigate(`/workers/${worker.id}/edit`)
-                              }
-                              style={{
-                                background: "#fff",
-                                border: "1px solid #dee2e6",
-                                borderRadius: "6px",
-                                padding: "4px 8px",
-                                cursor: "pointer",
-                                fontSize: "12px",
-                                lineHeight: 1,
-                              }}
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={() => handleDelete(worker.id)}
-                              style={{
-                                background: "#fff",
-                                border: "1px solid #f5c6cb",
-                                borderRadius: "6px",
-                                padding: "4px 8px",
-                                cursor: "pointer",
-                                fontSize: "12px",
-                                lineHeight: 1,
-                              }}
-                            >
-                              🗑
-                            </button>
-                          </>
-                        )}
+                          {worker.fullName}
+                        </Link>
+                        <div className="text-[11px] text-gray-500">
+                          <span className="font-semibold text-gray-700">
+                            {worker.empId || "—"}
+                          </span>
+                          <span className="text-gray-400">
+                            {" "}
+                            · #{worker.empCode}
+                          </span>
+                        </div>
                       </div>
+                      {renderActions(worker)}
+                    </div>
+
+                    <div className="mt-1.5 text-xs text-gray-700">
+                      {worker.position?.name || "—"}
+                      {worker.division && (
+                        <span className="text-gray-500">
+                          {" "}
+                          · {worker.division}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <Badge map={STATUS_MAP} value={worker.status} />
+                      {!isInactive(worker) && (
+                        <>
+                          <Badge
+                            map={AVAILABILITY_MAP}
+                            value={worker.availabilityStatus}
+                          />
+                          <Badge
+                            map={MOBILIZATION_MAP}
+                            value={worker.mobilizationStatus}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── xl+: ตาราง ── */}
+          <div className="hidden min-h-0 flex-1 overflow-auto xl:block">
+            <table className="w-full border-collapse text-[13px]">
+              <thead>
+                <tr>
+                  {TABLE_HEADERS.map(([h, align]) => (
+                    <th
+                      key={h}
+                      className={`sticky top-0 z-[1] whitespace-nowrap bg-white px-4 py-2.5 text-[11px] font-semibold tracking-[0.5px] text-gray-500 shadow-[inset_0_-1px_0_#dee2e6] ${
+                        align === "center" ? "text-center" : "text-left"
+                      } ${h === "ACTIONS" ? "w-[200px]" : ""}`}
+                    >
+                      {h === "EMP CODE" ? (
+                        <span title="เลขอ้างอิงพนักงานในระบบ เรียงตามลำดับที่สร้าง ไม่มีนัยสำคัญอื่น">
+                          {h}
+                        </span>
+                      ) : (
+                        h
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading || filteredWorkers.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={TABLE_HEADERS.length}
+                      className="p-10 text-center text-gray-500"
+                    >
+                      {emptyText}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filteredWorkers.map((worker, idx) => (
+                    <tr
+                      key={worker.id}
+                      className={`transition-colors duration-150 hover:bg-gray-50 ${
+                        idx < filteredWorkers.length - 1
+                          ? "border-b border-gray-100"
+                          : ""
+                      }`}
+                    >
+                      <td className="whitespace-nowrap px-4 py-[11px] text-gray-400">
+                        {worker.empCode}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-[11px] font-semibold text-gray-700">
+                        {worker.empId || "—"}
+                      </td>
+                      <td className="px-4 py-[11px]">
+                        <Link
+                          to={`/workers/${worker.id}`}
+                          className="font-semibold text-blue-600 no-underline hover:underline"
+                        >
+                          {worker.fullName}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-[11px]">
+                        {worker.position?.name || "—"}
+                      </td>
+                      <td className="px-4 py-[11px] text-gray-500">
+                        {worker.division || "—"}
+                      </td>
+                      <td className="px-4 py-[11px] text-center">
+                        <Badge
+                          map={STATUS_MAP}
+                          value={worker.status}
+                          fixedWidth
+                        />
+                      </td>
+                      <td className="px-4 py-[11px] text-center">
+                        {isInactive(worker) ? (
+                          dash
+                        ) : (
+                          <Badge
+                            map={AVAILABILITY_MAP}
+                            value={worker.availabilityStatus}
+                            fixedWidth
+                          />
+                        )}
+                      </td>
+                      <td className="px-4 py-[11px] text-center">
+                        {isInactive(worker) ? (
+                          dash
+                        ) : (
+                          <Badge
+                            map={MOBILIZATION_MAP}
+                            value={worker.mobilizationStatus}
+                            fixedWidth
+                          />
+                        )}
+                      </td>
+                      <td className="px-4 py-[11px] text-center">
+                        {renderActions(worker)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

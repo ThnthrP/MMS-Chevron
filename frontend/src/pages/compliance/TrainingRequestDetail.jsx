@@ -3,6 +3,19 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 
+const CARD = "rounded-[10px] border border-gray-200 bg-white";
+const HIDE_MOBILE = "hidden sm:table-cell";
+
+// ใช้รูปแบบเดียวกับหน้ารายการคำขอ (th-TH) — เดิมใช้ toLocaleString() เปล่า
+const fmtDateTime = (d) =>
+  new Date(d).toLocaleString("th-TH", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 export default function TrainingRequestDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -11,126 +24,115 @@ export default function TrainingRequestDetail() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     axios
       .get(`${backendUrl}/api/training-requests/${id}`, {
         withCredentials: true,
       })
       .then((res) => setData(res.data))
-      .catch((err) => console.error(err))
+      .catch((err) => {
+        console.error(err);
+        setData(null);
+      })
       .finally(() => setLoading(false));
   }, [id, backendUrl]);
 
-  if (loading) return <div className="p-4 text-muted">Loading...</div>;
-  if (!data) return <div className="p-4 text-muted">Request not found</div>;
+  const backButton = (
+    <button
+      onClick={() => navigate("/requests-history?type=training")}
+      className="mb-2 cursor-pointer border-none bg-transparent p-0 text-[13px] text-gray-500 hover:text-gray-700"
+    >
+      ← Back to Requests
+    </button>
+  );
+
+  if (loading || !data) {
+    return (
+      <div className="mx-auto w-full max-w-[1800px]">
+        {backButton}
+        <div className={`${CARD} p-10 text-center text-sm text-gray-500`}>
+          {loading ? "Loading..." : "Request not found"}
+        </div>
+      </div>
+    );
+  }
+
+  const totalPeople = new Set(
+    data.groups.flatMap((g) => g.employees.map((e) => e.empCode)),
+  ).size;
 
   return (
-    <div className="container-fluid p-0">
-      <div style={{ width: "100%" }}>
-        <button
-          onClick={() => navigate("/certifications")}
-          style={{
-            background: "none",
-            border: "none",
-            color: "#6c757d",
-            cursor: "pointer",
-            fontSize: "13px",
-            padding: 0,
-            marginBottom: "8px",
-          }}
-        >
-          ← Back to Certifications
-        </button>
+    <div className="mx-auto w-full min-w-0 max-w-[1800px]">
+      {backButton}
 
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "16px 24px",
-            marginBottom: "1.5rem",
-          }}
-        >
-          <div style={{ fontSize: "18px", fontWeight: 700 }}>
-            📢 คำขอ Training จาก MP
-          </div>
-          <div style={{ fontSize: "13px", color: "#6c757d", marginTop: "4px" }}>
-            {data.requestedByName ? `ขอโดย ${data.requestedByName} · ` : ""}
-            {new Date(data.createdAt).toLocaleString()}
-          </div>
+      {/* ════════ Header ════════ */}
+      <div className={`${CARD} mb-6 px-4 py-4 sm:px-6`}>
+        <div className="text-lg font-bold">📢 คำขอ Training จาก MP</div>
+        <div className="mt-1 text-[13px] text-gray-500">
+          {data.requestedByName ? `ขอโดย ${data.requestedByName} · ` : ""}
+          {fmtDateTime(data.createdAt)}
         </div>
-
-        {data.groups.map((g) => (
-          <div
-            key={g.trainingId}
-            style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              marginBottom: "1rem",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                padding: "12px 20px",
-                borderBottom: "1px solid #dee2e6",
-                fontWeight: 700,
-                fontSize: "14px",
-                background: "#f8f9fa",
-              }}
-            >
-              🎓 {g.trainingName}{" "}
-              <span style={{ color: "#6c757d", fontWeight: 400 }}>
-                ({g.employees.length} คน)
-              </span>
-            </div>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: "13px",
-              }}
-            >
-              <thead>
-                <tr style={{ background: "#fafafa" }}>
-                  {["WORKER", "POSITION", "CLIENT"].map((h) => (
-                    <th
-                      key={h}
-                      style={{
-                        padding: "8px 20px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        color: "#6c757d",
-                        textAlign: "left",
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {g.employees.map((e, i) => (
-                  <tr key={i} style={{ borderTop: "1px solid #f1f3f5" }}>
-                    <td style={{ padding: "10px 20px" }}>
-                      <div style={{ fontWeight: 600 }}>{e.fullName}</div>
-                      <div style={{ fontSize: "11px", color: "#6c757d" }}>
-                        {e.empCode}
-                      </div>
-                    </td>
-                    <td style={{ padding: "10px 20px" }}>
-                      {e.position || "—"}
-                    </td>
-                    <td style={{ padding: "10px 20px" }}>
-                      {e.clientName || "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
+        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-md bg-sky-50 px-2 py-0.5 font-semibold text-blue-600">
+            🎓 {data.groups.length} training
+          </span>
+          <span className="rounded-md bg-gray-100 px-2 py-0.5 font-semibold text-gray-600">
+            👤 {totalPeople} คน
+          </span>
+        </div>
       </div>
+
+      {/* ════════ กลุ่มตาม Training ════════ */}
+      {data.groups.map((g) => (
+        <div key={g.trainingId} className={`${CARD} mb-4 overflow-hidden`}>
+          <div className="border-b border-gray-200 bg-gray-50 px-4 py-3 text-sm font-bold sm:px-5">
+            🎓 {g.trainingName}{" "}
+            <span className="font-normal text-gray-500">
+              ({g.employees.length} คน)
+            </span>
+          </div>
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="bg-[#fafafa]">
+                <th className="px-4 py-2 text-left text-[11px] font-semibold text-gray-500 sm:px-5">
+                  WORKER
+                </th>
+                <th
+                  className={`${HIDE_MOBILE} px-5 py-2 text-left text-[11px] font-semibold text-gray-500`}
+                >
+                  POSITION
+                </th>
+                <th
+                  className={`${HIDE_MOBILE} px-5 py-2 text-left text-[11px] font-semibold text-gray-500`}
+                >
+                  CLIENT
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {g.employees.map((e, i) => (
+                <tr key={i} className="border-t border-gray-100">
+                  <td className="px-4 py-2.5 sm:px-5">
+                    <div className="font-semibold">{e.fullName}</div>
+                    <div className="text-[11px] text-gray-500">{e.empCode}</div>
+                    {/* มือถือ: ตำแหน่ง + client ต่อท้ายใต้ชื่อ */}
+                    <div className="mt-0.5 text-xs text-gray-500 sm:hidden">
+                      {e.position || "—"}
+                      {e.clientName && ` · ${e.clientName}`}
+                    </div>
+                  </td>
+                  <td className={`${HIDE_MOBILE} px-5 py-2.5`}>
+                    {e.position || "—"}
+                  </td>
+                  <td className={`${HIDE_MOBILE} px-5 py-2.5`}>
+                    {e.clientName || "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import ResetPassword from "./pages/auth/ResetPassword";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import AppRouter from "./routes/AppRouter";
+import WorkerAppRouter from "./routes/WorkerAppRouter"; // ← เพิ่ม
 
 const App = () => {
   const { isLoggedin, loading, userData } = useContext(AppContent);
@@ -44,6 +45,10 @@ const App = () => {
             </ProtectedRoute>
           }
         />
+
+        {/* Worker App — ต้องอยู่ก่อน "/*" เสมอ ไม่งั้น AppRouter (admin)
+            จะดักจับ /worker/* ไปก่อน เพราะ route แรกที่ match ชนะ */}
+        <Route path="/worker/*" element={<WorkerAppRouter />} />
 
         {/* Main App — จัดการ "/" และ path อื่นๆ ทั้งหมดผ่าน AppRouter */}
         <Route path="/*" element={<AppRouter />} />

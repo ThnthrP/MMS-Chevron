@@ -13,64 +13,65 @@ const cookieOptions = {
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
-// ================= REGISTER =================
-export const register = async (req, res) => {
-  const { name, email, password } = req.body;
+// // ================= REGISTER =================
+// export const register = async (req, res) => {
+//   const { name, email, password } = req.body;
 
-  if (!name || !email || !password) {
-    return res.json({
-      success: false,
-      message: "Missing Details",
-    });
-  }
+//   if (!name || !email || !password) {
+//     return res.json({
+//       success: false,
+//       message: "Missing Details",
+//     });
+//   }
 
-  try {
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
+//   try {
+//     const existingUser = await prisma.user.findUnique({
+//       where: { email },
+//     });
 
-    if (existingUser) {
-      return res.json({
-        success: false,
-        message: "User already exists",
-      });
-    }
+//     if (existingUser) {
+//       return res.json({
+//         success: false,
+//         message: "User already exists",
+//       });
+//     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+//     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const userRole = await prisma.role.findUnique({
-      where: {
-        name: "manpower",
-      },
-    });
+//     // ── แก้ตาม role rename: manpower → manpower_supply ──
+//     const userRole = await prisma.role.findUnique({
+//       where: {
+//         name: "manpower_supply",
+//       },
+//     });
 
-    if (!userRole) {
-      return res.json({
-        success: false,
-        message: "Default role not found",
-      });
-    }
+//     if (!userRole) {
+//       return res.json({
+//         success: false,
+//         message: "Default role not found",
+//       });
+//     }
 
-    await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-        roleId: userRole.id,
-      },
-    });
+//     await prisma.user.create({
+//       data: {
+//         name,
+//         email,
+//         password: hashedPassword,
+//         roleId: userRole.id,
+//       },
+//     });
 
-    return res.json({
-      success: true,
-      message: "User registered successfully",
-    });
-  } catch (error) {
-    return res.json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
+//     return res.json({
+//       success: true,
+//       message: "User registered successfully",
+//     });
+//   } catch (error) {
+//     return res.json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
 
 // ================= LOGIN =================
 export const login = async (req, res) => {

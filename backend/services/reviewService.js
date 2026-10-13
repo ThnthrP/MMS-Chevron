@@ -58,6 +58,7 @@ export async function getReviewDetail(projectId) {
       assignmentId: a.id,
       employeeId: e.id,
       empCode: e.empCode,
+      empId: e.empId,
       fullName: e.fullName,
       position: e.position?.name ?? null,
       platform: a.platform,

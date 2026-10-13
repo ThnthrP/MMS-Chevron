@@ -1,24 +1,18 @@
-import { useState, useEffect, useContext, useCallback } from "react";
+import { useState, useEffect, useContext, useCallback, useRef } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 
-// ตรงกับ enum TrainingSource ใน schema.prisma
-const SOURCE_OPTIONS = [
-  { value: "COMPANY", label: "Company" },
-  { value: "COMPANY_ELEARNING", label: "Company e-learning" },
-  { value: "TPTI", label: "TPTI" },
-  { value: "CONTRACTOR", label: "Contractor" },
-  { value: "PUBLIC", label: "Public" },
-];
-
+// ══════════════════════════════════════════════════════════
+// helpers
+// ══════════════════════════════════════════════════════════
 // รวม GlobalTraining + TrainingStandard (1 training = 1 standard) เป็นฟอร์มเดียว
 const emptyForm = {
   id: null,
   name: "",
   fullName: "",
   description: "",
-  standardId: null, // มีค่า = standard นี้มีอยู่แล้วใน DB (update) / null = ยังไม่มี (create ตอน save)
-  source: "PUBLIC",
+  standardId: null, // มีค่า = มี standard ใน DB แล้ว (update) / null = create ตอน save
+  sourceId: "",
   clientId: "",
   trainingHours: "",
   validityYears: "", // เก็บเป็น "ปี" ในฟอร์ม แปลงเป็น/จาก validityDays ตอนโหลด-บันทึก
@@ -35,31 +29,157 @@ const yearsToDays = (years) => {
   return Math.round(Number(years) * 365);
 };
 
+// ══════════════════════════════════════════════════════════
+// constants
+// ══════════════════════════════════════════════════════════
+const CARD = "rounded-[10px] border border-gray-200 bg-white";
+const LABEL = "mb-1.5 block text-xs font-semibold text-gray-500";
+const INPUT =
+  "box-border w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-blue-400 disabled:cursor-default disabled:bg-gray-50 disabled:text-gray-700";
+const BTN_PRIMARY =
+  "cursor-pointer rounded-lg border-none bg-blue-600 px-[18px] py-[9px] text-[13px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60";
+const BTN_DANGER =
+  "cursor-pointer rounded-lg border border-[#f5c6cb] bg-white px-3 py-1.5 text-xs font-semibold text-[#dc3545] hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60";
+const ICON_BTN =
+  "inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-none text-[13px] transition-all hover:-translate-y-px disabled:cursor-wait disabled:hover:translate-y-0";
+const ICON_VIEW = `${ICON_BTN} bg-white shadow-[0_1px_3px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.08)] hover:shadow-[0_3px_6px_rgba(0,0,0,0.2),0_2px_3px_rgba(0,0,0,0.1)]`;
+const ICON_EDIT = `${ICON_BTN} bg-[#e7f1ff] text-blue-600 shadow-[0_1px_3px_rgba(13,110,253,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(13,110,253,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
+const ICON_DELETE = `${ICON_BTN} bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(220,53,69,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
+const TH =
+  "sticky top-0 z-[1] bg-white px-4 py-2.5 text-[11px] font-semibold text-gray-500 shadow-[inset_0_-1px_0_#f1f3f5]";
+const DASH = <span className="text-gray-400">—</span>;
+
+// ══════════════════════════════════════════════════════════
+// small components (อยู่นอก component หลัก)
+// ══════════════════════════════════════════════════════════
+function MessageBanner({ msg }) {
+  if (!msg) return null;
+  const ok = msg.type === "ok";
+  return (
+    <div
+      className={`mb-4 rounded-lg border px-3.5 py-2.5 text-[13px] ${
+        ok
+          ? "border-[#badbcc] bg-[#d1e7dd] text-[#0f5132]"
+          : "border-[#f5c6cb] bg-[#f8d7da] text-[#842029]"
+      }`}
+    >
+      {ok ? "✅ " : "⚠ "}
+      {msg.text}
+    </div>
+  );
+}
+
+function ValidityCell({ standard }) {
+  if (!standard) return DASH;
+  if (standard.isNoExpiry) {
+    return (
+      <span className="whitespace-nowrap rounded bg-[#e7f1ff] px-2 py-px text-[11px] font-semibold text-blue-600">
+        No expiry
+      </span>
+    );
+  }
+  const years = daysToYears(standard.validityDays);
+  return years ? <span>{years}</span> : DASH;
+}
+
+function SetBadge({ isSet }) {
+  return isSet ? (
+    <span className="whitespace-nowrap rounded-md bg-[#d1e7dd] px-2.5 py-0.5 text-[11px] font-semibold text-[#0f5132]">
+      Set
+    </span>
+  ) : (
+    <span
+      className="whitespace-nowrap rounded-md bg-[#fff3cd] px-2.5 py-0.5 text-[11px] font-semibold text-[#664d03]"
+      title="ยังไม่ตั้งค่า standard"
+    >
+      Not set
+    </span>
+  );
+}
+
+function EmpCount({ count }) {
+  return count > 0 ? (
+    <span
+      className="font-bold text-blue-600"
+      title={`มีพนักงาน ${count} คนถือ cert นี้อยู่`}
+    >
+      {count}
+    </span>
+  ) : (
+    <span className="text-gray-400">0</span>
+  );
+}
+
+function ClientUsageCell({ usage }) {
+  if (!usage) return <span className="text-gray-300">—</span>;
+  return (
+    <span className="whitespace-nowrap font-semibold text-[#198754]">
+      ✓{usage.positionCount > 0 ? ` (${usage.positionCount})` : ""}
+    </span>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// main
+// ══════════════════════════════════════════════════════════
 export default function ManageTrainings() {
   const { backendUrl } = useContext(AppContent);
 
-  // ----- list state -----
+  // ----- list -----
   const [trainings, setTrainings] = useState([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [loadingList, setLoadingList] = useState(true);
   const [listMsg, setListMsg] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const firstLoadRef = useRef(true);
 
-  // ----- clients (สำหรับ dropdown source = COMPANY) -----
+  // ----- clients -----
   const [clients, setClients] = useState([]);
+  // ตารางแสดงเฉพาะคอลัมน์ Chevron (client อื่นยังไม่ได้ใช้งานจริง)
+  const visibleClients = clients.filter(
+    (c) => c.name.toUpperCase() === "CHEVRON",
+  );
 
-  // ----- edit panel state -----
-  const [selectedId, setSelectedId] = useState(null); // null = ปิด panel, "new" = สร้างใหม่
+  // ----- training sources -----
+  const [sources, setSources] = useState([]);
+  const [showSourceManager, setShowSourceManager] = useState(false);
+  const [newSourceName, setNewSourceName] = useState("");
+  const [newSourceRequiresClient, setNewSourceRequiresClient] = useState(false);
+  const [sourceMsg, setSourceMsg] = useState(null);
+  const [savingSource, setSavingSource] = useState(false);
+
+  // ----- panel -----
+  const [selectedId, setSelectedId] = useState(null); // null = ปิด, "new" = สร้างใหม่
+  const [mode, setMode] = useState("view"); // "view" | "edit"
   const [form, setForm] = useState(emptyForm);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [saving, setSaving] = useState(false);
   const [detailMsg, setDetailMsg] = useState(null);
 
-  // โหลด list trainings
+  // clientId -> clientTrainingId ของ training ที่เปิดอยู่
+  const [clientLinks, setClientLinks] = useState({});
+  const [linkingClientId, setLinkingClientId] = useState(null);
+
+  // ── ค้นหา: รอพิมพ์หยุด 300ms ค่อยยิง API (เดิมยิงทุกตัวอักษร) ──
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // ข้อความสำเร็จหายเองใน 3 วินาที
+  useEffect(() => {
+    if (listMsg?.type !== "ok") return;
+    const t = setTimeout(() => setListMsg(null), 3000);
+    return () => clearTimeout(t);
+  }, [listMsg]);
+
   const loadTrainings = useCallback(async () => {
     try {
-      setLoadingList(true);
+      // แสดง "Loading..." เฉพาะครั้งแรก — ตอนค้นหา/รีเฟรช ตารางเดิมค้างไว้ ไม่กะพริบ
+      if (firstLoadRef.current) setLoadingList(true);
       const res = await axios.get(`${backendUrl}/api/global-trainings`, {
-        params: { search: search || undefined },
+        params: { search: debouncedSearch || undefined },
         withCredentials: true,
       });
       setTrainings(res.data || []);
@@ -68,31 +188,86 @@ export default function ManageTrainings() {
       setListMsg({ type: "err", text: "โหลดรายการ training ไม่สำเร็จ" });
     } finally {
       setLoadingList(false);
+      firstLoadRef.current = false;
     }
-  }, [backendUrl, search]);
+  }, [backendUrl, debouncedSearch]);
 
   useEffect(() => {
     loadTrainings();
   }, [loadTrainings]);
 
-  // โหลด clients ครั้งเดียว (สำหรับ dropdown ตอน source = COMPANY)
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await axios.get(`${backendUrl}/api/clients`, {
+  const loadSources = useCallback(async () => {
+    try {
+      const res = await axios.get(
+        `${backendUrl}/api/global-trainings/sources`,
+        {
           withCredentials: true,
-        });
-        setClients(res.data || []);
-      } catch (err) {
-        console.error(err);
-        // ไม่ critical พอ ไม่ block หน้าหลัก แค่ dropdown client จะว่าง
-      }
-    })();
+        },
+      );
+      setSources(res.data || []);
+    } catch (err) {
+      console.error(err);
+    }
   }, [backendUrl]);
 
-  // เปิด edit panel ของ training ที่มีอยู่แล้ว — ดึง standard ตัวแรก (ตัวเดียว) มาเติมในฟอร์มเดียวกันเลย
-  const openTraining = async (id) => {
+  useEffect(() => {
+    loadSources();
+  }, [loadSources]);
+
+  useEffect(() => {
+    axios
+      .get(`${backendUrl}/api/clients`, { withCredentials: true })
+      .then((res) => setClients(res.data || []))
+      .catch((err) => console.error(err)); // ไม่ critical — แค่ dropdown client ว่าง
+  }, [backendUrl]);
+
+  // ── Sources ──
+  const handleAddSource = async () => {
+    if (!newSourceName.trim()) return;
+    try {
+      setSavingSource(true);
+      setSourceMsg(null);
+      await axios.post(
+        `${backendUrl}/api/global-trainings/sources`,
+        { name: newSourceName.trim(), requiresClient: newSourceRequiresClient },
+        { withCredentials: true },
+      );
+      setNewSourceName("");
+      setNewSourceRequiresClient(false);
+      await loadSources();
+      setSourceMsg({ type: "ok", text: "เพิ่ม source แล้ว" });
+    } catch (err) {
+      setSourceMsg({
+        type: "err",
+        text: err.response?.data?.message || "เพิ่ม source ไม่สำเร็จ",
+      });
+    } finally {
+      setSavingSource(false);
+    }
+  };
+
+  const handleDeleteSource = async (id, name) => {
+    if (!window.confirm(`ยืนยันลบ source "${name}" ?`)) return;
+    try {
+      setSourceMsg(null);
+      await axios.delete(`${backendUrl}/api/global-trainings/sources/${id}`, {
+        withCredentials: true,
+      });
+      setForm((f) => (f.sourceId === id ? { ...f, sourceId: "" } : f));
+      await loadSources();
+      setSourceMsg({ type: "ok", text: `ลบ "${name}" แล้ว` });
+    } catch (err) {
+      setSourceMsg({
+        type: "err",
+        text: err.response?.data?.message || "ลบไม่สำเร็จ",
+      });
+    }
+  };
+
+  // ── Panel open/close ──
+  const openTraining = async (id, targetMode = "view") => {
     setSelectedId(id);
+    setMode(targetMode);
     setDetailMsg(null);
     try {
       setLoadingDetail(true);
@@ -106,12 +281,17 @@ export default function ManageTrainings() {
         fullName: res.data.fullName || "",
         description: res.data.description || "",
         standardId: std?.id ?? null,
-        source: std?.source ?? "PUBLIC",
+        sourceId: std?.sourceId ?? "",
         clientId: std?.clientId ?? "",
         trainingHours: std?.trainingHours ?? "",
         validityYears: std?.isNoExpiry ? "" : daysToYears(std?.validityDays),
         isNoExpiry: !!std?.isNoExpiry,
       });
+      const map = {};
+      (res.data.clientTrainings || []).forEach((ct) => {
+        map[ct.contract.client.id] = ct.id;
+      });
+      setClientLinks(map);
     } catch (err) {
       console.error(err);
       setDetailMsg({ type: "err", text: "โหลดข้อมูล training ไม่สำเร็จ" });
@@ -120,29 +300,91 @@ export default function ManageTrainings() {
     }
   };
 
-  // เปิด panel สำหรับสร้าง training ใหม่
   const openNewTraining = () => {
     setSelectedId("new");
+    setMode("edit");
     setForm(emptyForm);
+    setClientLinks({});
     setDetailMsg(null);
   };
 
   const closePanel = () => {
     setSelectedId(null);
+    setMode("view");
     setForm(emptyForm);
+    setClientLinks({});
     setDetailMsg(null);
+    setShowSourceManager(false);
   };
 
-  // บันทึกทั้ง GlobalTraining + Standard พร้อมกันในปุ่มเดียว
+  // ── Client links ──
+  const toggleClientLink = async (client) => {
+    const contract = client.contracts?.[0];
+    if (!contract) {
+      setDetailMsg({
+        type: "err",
+        text: `${client.name} ยังไม่มี active contract — สร้าง contract ก่อน`,
+      });
+      return;
+    }
+    if (!form.standardId) {
+      setDetailMsg({
+        type: "err",
+        text: "กรุณาบันทึก Training Standard ก่อน ถึงจะผูกกับ client ได้",
+      });
+      return;
+    }
+
+    const existingClientTrainingId = clientLinks[client.id];
+    setLinkingClientId(client.id);
+    setDetailMsg(null);
+
+    try {
+      if (existingClientTrainingId) {
+        await axios.delete(
+          `${backendUrl}/api/client-trainings/${existingClientTrainingId}`,
+          { withCredentials: true },
+        );
+        setClientLinks((m) => {
+          const next = { ...m };
+          delete next[client.id];
+          return next;
+        });
+      } else {
+        const res = await axios.post(
+          `${backendUrl}/api/contracts/${contract.id}/client-trainings`,
+          { globalTrainingId: form.id, trainingStandardId: form.standardId },
+          { withCredentials: true },
+        );
+        setClientLinks((m) => ({ ...m, [client.id]: res.data.id }));
+      }
+      loadTrainings();
+    } catch (err) {
+      setDetailMsg({
+        type: "err",
+        text: err.response?.data?.message || "อัปเดตการผูก client ไม่สำเร็จ",
+      });
+    } finally {
+      setLinkingClientId(null);
+    }
+  };
+
+  const selectedSource = sources.find((s) => s.id === form.sourceId) || null;
+
+  // ── Save (GlobalTraining + Standard ในปุ่มเดียว) ──
   const handleSave = async () => {
     if (!form.name.trim()) {
       setDetailMsg({ type: "err", text: "กรุณากรอกชื่อ training (name)" });
       return;
     }
-    if (form.source === "COMPANY" && !form.clientId) {
+    if (!form.sourceId) {
+      setDetailMsg({ type: "err", text: "กรุณาเลือก source" });
+      return;
+    }
+    if (selectedSource?.requiresClient && !form.clientId) {
       setDetailMsg({
         type: "err",
-        text: "source = Company ต้องเลือก client ด้วย",
+        text: `source "${selectedSource.name}" ต้องเลือก client ด้วย`,
       });
       return;
     }
@@ -151,7 +393,6 @@ export default function ManageTrainings() {
       setSaving(true);
       setDetailMsg(null);
 
-      // 1) save GlobalTraining ก่อน (create หรือ update)
       const trainingPayload = {
         name: form.name.trim(),
         fullName: form.fullName.trim() || null,
@@ -174,10 +415,9 @@ export default function ManageTrainings() {
         );
       }
 
-      // 2) save Standard (create ถ้ายังไม่มี / update ถ้ามีแล้ว)
       const standardPayload = {
-        source: form.source,
-        clientId: form.source === "COMPANY" ? form.clientId : null,
+        sourceId: form.sourceId,
+        clientId: selectedSource?.requiresClient ? form.clientId : null,
         trainingHours:
           form.trainingHours === "" ? null : Number(form.trainingHours),
         validityDays: form.isNoExpiry ? null : yearsToDays(form.validityYears),
@@ -198,9 +438,11 @@ export default function ManageTrainings() {
         );
       }
 
-      setDetailMsg({ type: "ok", text: "บันทึกสำเร็จ" });
       loadTrainings();
-      await openTraining(trainingId); // reload ฟอร์มให้ตรงกับข้อมูลล่าสุด (ได้ standardId ใหม่ถ้าเพิ่งสร้าง)
+      // กลับไป view mode กันแก้พลาดซ้ำ — openTraining ล้างข้อความก่อน
+      // จึงต้องตั้งข้อความ "บันทึกสำเร็จ" หลังจากนั้น (เดิมตั้งก่อน เลยไม่เคยโชว์)
+      await openTraining(trainingId, "view");
+      setDetailMsg({ type: "ok", text: "บันทึกสำเร็จ" });
     } catch (err) {
       setDetailMsg({
         type: "err",
@@ -211,7 +453,6 @@ export default function ManageTrainings() {
     }
   };
 
-  // ลบ standard เดี่ยว (ถ้ามี) — ใช้ตอนอยากเปลี่ยนใจไม่ผูก standard กับ training นี้แล้ว
   const handleDeleteStandard = async () => {
     if (!form.standardId) return;
     if (!window.confirm("ยืนยันลบ training standard นี้?")) return;
@@ -223,7 +464,7 @@ export default function ManageTrainings() {
       setForm((f) => ({
         ...f,
         standardId: null,
-        source: "PUBLIC",
+        sourceId: "",
         clientId: "",
         trainingHours: "",
         validityYears: "",
@@ -241,212 +482,242 @@ export default function ManageTrainings() {
     }
   };
 
-  // ลบ GlobalTraining ทั้งตัว — guard ถ้ายังมี standard ผูกอยู่
-  const handleDeleteTraining = async () => {
-    if (form.standardId) {
-      setDetailMsg({
-        type: "err",
-        text: "ลบไม่ได้ — มี training standard ผูกอยู่ กรุณาลบ standard ก่อน",
-      });
-      return;
-    }
-    if (!window.confirm(`ยืนยันลบ training "${form.name}" ?`)) return;
+  // ── ลบ training (ใช้ร่วมกันทั้งปุ่มในตารางและใน panel) ──
+  // ถ้ามี standard ผูกอยู่ ลบ standard ให้ก่อน แล้วค่อยลบ training
+  const deleteTraining = async ({ id, name, standardId, empCount = 0 }) => {
+    const confirmMsg =
+      (empCount > 0
+        ? `⚠ มีพนักงาน ${empCount} คนที่ถือ cert "${name}" อยู่ในระบบ\n\n`
+        : "") +
+      (standardId !== false
+        ? `ยืนยันลบ "${name}" ?\n(จะลบ training standard ที่ผูกอยู่ด้วย)`
+        : `ยืนยันลบ "${name}" ?`);
+    if (!window.confirm(confirmMsg)) return;
+
     try {
-      await axios.delete(`${backendUrl}/api/global-trainings/${form.id}`, {
+      setDeletingId(id);
+      setListMsg(null);
+
+      // standardId: string = รู้ id แล้ว / null|undefined = ไม่รู้ ต้องถาม backend / false = ไม่มีแน่ๆ
+      let stdId = standardId;
+      if (stdId === undefined) {
+        const detail = await axios.get(
+          `${backendUrl}/api/global-trainings/${id}`,
+          {
+            withCredentials: true,
+          },
+        );
+        stdId = (detail.data.trainingStandards || [])[0]?.id ?? null;
+      }
+      if (stdId) {
+        await axios.delete(
+          `${backendUrl}/api/global-trainings/${id}/standards/${stdId}`,
+          { withCredentials: true },
+        );
+      }
+
+      await axios.delete(`${backendUrl}/api/global-trainings/${id}`, {
         withCredentials: true,
       });
-      closePanel();
+
+      if (selectedId === id) closePanel();
       loadTrainings();
+      setListMsg({ type: "ok", text: `ลบ "${name}" แล้ว` });
     } catch (err) {
-      setDetailMsg({
-        type: "err",
-        text:
-          err.response?.data?.message ||
-          "ลบไม่สำเร็จ — training นี้อาจถูกใช้งานอยู่ในระบบ (employee training / candidate gap)",
-      });
+      const text =
+        err.response?.data?.message ||
+        `ลบ "${name}" ไม่สำเร็จ — อาจถูกใช้งานอยู่ในระบบ (employee training / candidate gap / training matrix)`;
+      if (selectedId === id) setDetailMsg({ type: "err", text });
+      else setListMsg({ type: "err", text });
+    } finally {
+      setDeletingId(null);
     }
   };
 
-  // ----- shared styles -----
-  const cardStyle = {
-    background: "#fff",
-    border: "1px solid #dee2e6",
-    borderRadius: "10px",
-  };
-  const labelStyle = {
-    fontSize: "12px",
-    fontWeight: 600,
-    color: "#6c757d",
-    marginBottom: "6px",
-    display: "block",
-  };
-  const inputStyle = {
-    width: "100%",
-    padding: "8px 12px",
-    fontSize: "13px",
-    border: "1px solid #dee2e6",
-    borderRadius: "8px",
-    outline: "none",
-    boxSizing: "border-box",
-    background: "#fff",
-  };
-  const btnPrimary = {
-    background: "#0d6efd",
-    color: "#fff",
-    border: "none",
-    borderRadius: "8px",
-    padding: "9px 18px",
-    fontSize: "13px",
-    fontWeight: 600,
-    cursor: "pointer",
-  };
-  const btnGhost = {
-    background: "#fff",
-    color: "#495057",
-    border: "1px solid #dee2e6",
-    borderRadius: "8px",
-    padding: "8px 14px",
-    fontSize: "13px",
-    fontWeight: 600,
-    cursor: "pointer",
-  };
-  const btnDanger = {
-    background: "#fff",
-    color: "#dc3545",
-    border: "1px solid #f5c6cb",
-    borderRadius: "8px",
-    padding: "6px 12px",
-    fontSize: "12px",
-    fontWeight: 600,
-    cursor: "pointer",
-  };
+  const quickDeleteTraining = (t) =>
+    deleteTraining({
+      id: t.id,
+      name: t.name,
+      standardId: (t._count?.trainingStandards ?? 0) > 0 ? undefined : false,
+      empCount: t._count?.employeeTrainings ?? 0,
+    });
 
-  const MessageBanner = ({ msg }) =>
-    !msg ? null : (
-      <div
-        style={{
-          background: msg.type === "ok" ? "#d1e7dd" : "#f8d7da",
-          color: msg.type === "ok" ? "#0f5132" : "#842029",
-          border: `1px solid ${msg.type === "ok" ? "#badbcc" : "#f5c6cb"}`,
-          borderRadius: "8px",
-          padding: "10px 14px",
-          fontSize: "13px",
-          marginBottom: "1rem",
-        }}
-      >
-        {msg.type === "ok" ? "✅ " : "⚠ "}
-        {msg.text}
-      </div>
-    );
+  const panelDeleteTraining = () => {
+    const listItem = trainings.find((t) => t.id === form.id);
+    deleteTraining({
+      id: form.id,
+      name: form.name,
+      standardId: form.standardId || false,
+      empCount: listItem?._count?.employeeTrainings ?? 0,
+    });
+  };
 
   const panelOpen = selectedId !== null;
+  const isEditing = mode === "edit";
+
+  const renderActions = (t) => (
+    <div className="inline-flex gap-1.5">
+      <button
+        title="View"
+        className={ICON_VIEW}
+        onClick={() => openTraining(t.id, "view")}
+      >
+        👁
+      </button>
+      <button
+        title="Edit"
+        className={ICON_EDIT}
+        onClick={() => openTraining(t.id, "edit")}
+      >
+        ✏️
+      </button>
+      <button
+        title="Delete"
+        className={ICON_DELETE}
+        onClick={() => quickDeleteTraining(t)}
+        disabled={deletingId === t.id}
+      >
+        {deletingId === t.id ? "…" : "🗑"}
+      </button>
+    </div>
+  );
 
   return (
-    <div className="container-fluid p-0">
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* Header */}
-        <div
-          style={{ ...cardStyle, padding: "16px 24px", marginBottom: "1rem" }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "20px" }}>🎓</span>
-            <span style={{ fontSize: "18px", fontWeight: 700 }}>
-              Manage Trainings
-            </span>
-            <span style={{ color: "#6c757d", fontSize: "12px" }}>
-              จัดการ training กลาง (ชั่วโมงอบรม/อายุ cert/source) — 1 training
-              ต่อ 1 standard
-            </span>
+    <div className="mx-auto w-full min-w-0 max-w-[1800px]">
+      {/* ════════ Header ════════ */}
+      <div className={`${CARD} mb-4 px-4 py-4 sm:px-6`}>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <span className="text-xl">🎓</span>
+          <span className="text-lg font-bold">Manage Trainings</span>
+          <span className="basis-full text-xs text-gray-500 lg:basis-auto">
+            จัดการ training กลาง (ชั่วโมงอบรม/อายุ cert/source) — 1 training ต่อ
+            1 standard
+          </span>
+        </div>
+      </div>
+
+      <MessageBanner msg={listMsg} />
+
+      {/* ════════ List ════════ */}
+      <div className={`${CARD} overflow-hidden`}>
+        <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              placeholder="🔍 ค้นหา training..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={`${INPUT} sm:w-[260px]`}
+            />
+            {!loadingList && (
+              <span className="shrink-0 text-xs text-gray-500">
+                {trainings.length} รายการ
+              </span>
+            )}
           </div>
+          <button className={BTN_PRIMARY} onClick={openNewTraining}>
+            + Add Training
+          </button>
         </div>
 
-        <MessageBanner msg={listMsg} />
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: panelOpen ? "1fr 1fr" : "1fr",
-            gap: "1rem",
-            alignItems: "start",
-          }}
-        >
-          {/* ---------- LIST VIEW ---------- */}
-          <div style={cardStyle}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-                padding: "14px 20px",
-                borderBottom: "1px solid #f1f3f5",
-                flexWrap: "wrap",
-              }}
-            >
-              <input
-                type="text"
-                placeholder="ค้นหา training..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ ...inputStyle, width: "240px" }}
-              />
-              <button style={btnPrimary} onClick={openNewTraining}>
-                + Add Training
-              </button>
+        {loadingList ? (
+          <div className="p-10 text-center text-gray-500">Loading...</div>
+        ) : trainings.length === 0 ? (
+          <div className="p-10 text-center text-[13px] text-gray-500">
+            {debouncedSearch ? `ไม่พบ "${debouncedSearch}"` : "ไม่พบ training"}
+          </div>
+        ) : (
+          <>
+            {/* ── ต่ำกว่า lg: การ์ด ── */}
+            <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2 lg:hidden">
+              {trainings.map((t) => (
+                <div
+                  key={t.id}
+                  className="rounded-lg border border-gray-200 bg-white p-3 text-[13px]"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="break-words font-semibold">{t.name}</div>
+                      {t.fullName && t.fullName !== t.name && (
+                        <div className="text-[11px] text-gray-500">
+                          {t.fullName}
+                        </div>
+                      )}
+                    </div>
+                    {renderActions(t)}
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                    <SetBadge isSet={(t._count?.trainingStandards ?? 0) > 0} />
+                    <span>{t.standard?.sourceName || "—"}</span>
+                    <span>
+                      Validity: <ValidityCell standard={t.standard} />
+                    </span>
+                    {t.standard?.trainingHours != null && (
+                      <span>{t.standard.trainingHours} ชม.</span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-gray-100 pt-2 text-xs text-gray-500">
+                    <span>
+                      พนักงานที่มี cert:{" "}
+                      <EmpCount count={t._count?.employeeTrainings ?? 0} />
+                    </span>
+                    {visibleClients.map((c) => (
+                      <span key={c.id}>
+                        {c.name}:{" "}
+                        <ClientUsageCell
+                          usage={t.clientUsage?.find((u) => u.name === c.name)}
+                        />
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
 
-            {loadingList ? (
-              <div
-                style={{
-                  padding: "40px",
-                  textAlign: "center",
-                  color: "#6c757d",
-                }}
-              >
-                Loading...
-              </div>
-            ) : trainings.length === 0 ? (
-              <div
-                style={{
-                  padding: "40px",
-                  textAlign: "center",
-                  color: "#6c757d",
-                  fontSize: "13px",
-                }}
-              >
-                ไม่พบ training
-              </div>
-            ) : (
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: "13px",
-                }}
-              >
+            {/* ── lg+: ตาราง ── */}
+            <div className="hidden max-h-[70vh] overflow-auto lg:block">
+              <table className="w-full border-collapse text-[13px]">
                 <thead>
-                  <tr style={{ borderBottom: "1px solid #f1f3f5" }}>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 20px",
-                        fontSize: "11px",
-                        color: "#6c757d",
-                      }}
-                    >
-                      NAME
+                  <tr>
+                    <th className={`${TH} min-w-[280px] px-5 text-left`}>
+                      GLOBAL TRAINING (ชื่อกลาง)
+                    </th>
+                    <th className={`${TH} whitespace-nowrap text-left`}>
+                      SOURCE
+                    </th>
+                    <th className={`${TH} whitespace-nowrap text-center`}>
+                      TRAINING HOURS
+                    </th>
+                    <th className={`${TH} whitespace-nowrap text-center`}>
+                      VALIDITY (ปี)
                     </th>
                     <th
-                      style={{
-                        padding: "10px 20px",
-                        fontSize: "11px",
-                        color: "#6c757d",
-                        width: "80px",
-                        textAlign: "right",
-                        whiteSpace: "nowrap", // ← เพิ่มบรรทัดนี้
-                      }}
+                      className={`${TH} w-[90px] whitespace-nowrap px-5 text-center`}
                     >
                       SET UP?
+                    </th>
+                    <th
+                      className={`${TH} max-w-[90px] text-center leading-snug`}
+                      title="จำนวนพนักงานที่มี certificate/training นี้อยู่ในระบบ (isLatest เท่านั้น) — เช็คก่อนลบหรือย้าย training"
+                    >
+                      พนักงานที่มี CERT
+                      <br />
+                      (คน)
+                    </th>
+                    {visibleClients.map((c) => (
+                      <th
+                        key={c.id}
+                        className={`${TH} whitespace-nowrap px-2 text-center text-[10px] leading-snug`}
+                      >
+                        {c.name.toUpperCase()}
+                        <br />
+                        <span className="text-[9px] font-bold">(ตำแหน่ง)</span>
+                      </th>
+                    ))}
+                    <th
+                      className={`${TH} w-[140px] whitespace-nowrap px-5 text-right`}
+                    >
+                      ACTIONS
                     </th>
                   </tr>
                 </thead>
@@ -454,301 +725,441 @@ export default function ManageTrainings() {
                   {trainings.map((t) => (
                     <tr
                       key={t.id}
-                      onClick={() => openTraining(t.id)}
-                      style={{
-                        borderBottom: "1px solid #f8f9fa",
-                        cursor: "pointer",
-                        background: selectedId === t.id ? "#fcfdff" : "#fff",
-                      }}
+                      className={`border-b border-gray-50 hover:bg-gray-50 ${
+                        selectedId === t.id ? "bg-[#fcfdff]" : ""
+                      }`}
                     >
-                      <td style={{ padding: "10px 20px" }}>
-                        <div style={{ fontWeight: 600 }}>{t.name}</div>
+                      <td className="px-5 py-2.5">
+                        <div className="font-semibold">{t.name}</div>
                         {t.fullName && t.fullName !== t.name && (
-                          <div style={{ color: "#adb5bd", fontSize: "11px" }}>
+                          <div className="text-[11px] text-gray-500">
                             {t.fullName}
                           </div>
                         )}
                       </td>
-                      <td style={{ padding: "10px 20px", textAlign: "right" }}>
-                        {(t._count?.trainingStandards ?? 0) > 0 ? (
-                          <span style={{ color: "#198754", fontWeight: 600 }}>
-                            ✓
-                          </span>
-                        ) : (
-                          <span
-                            style={{
-                              color: "#dc3545",
-                              fontWeight: 600,
-                              fontSize: "11px",
-                            }}
-                            title="ยังไม่ตั้งค่า standard"
-                          >
-                            —
-                          </span>
-                        )}
+                      <td className="whitespace-nowrap px-4 py-2.5">
+                        {t.standard ? t.standard.sourceName : DASH}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {t.standard?.trainingHours ?? DASH}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <ValidityCell standard={t.standard} />
+                      </td>
+                      <td className="px-5 py-2.5 text-center">
+                        <SetBadge
+                          isSet={(t._count?.trainingStandards ?? 0) > 0}
+                        />
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <EmpCount count={t._count?.employeeTrainings ?? 0} />
+                      </td>
+                      {visibleClients.map((c) => (
+                        <td key={c.id} className="px-2 py-2.5 text-center">
+                          <ClientUsageCell
+                            usage={t.clientUsage?.find(
+                              (u) => u.name === c.name,
+                            )}
+                          />
+                        </td>
+                      ))}
+                      <td className="px-5 py-2.5 text-right">
+                        {renderActions(t)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
+            </div>
+          </>
+        )}
+      </div>
 
-          {/* ---------- EDIT PANEL (Training + Standard รวมเป็นฟอร์มเดียว) ---------- */}
-          {panelOpen && (
-            <div style={cardStyle}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "14px 20px",
-                  borderBottom: "1px solid #f1f3f5",
-                }}
-              >
-                <span style={{ fontWeight: 700, fontSize: "14px" }}>
-                  {selectedId === "new" ? "Add Training" : "Edit Training"}
-                </span>
+      {/* ════════ Edit / View Panel ════════ */}
+      {panelOpen && (
+        <div
+          // view mode: คลิกพื้นหลังปิดได้ / edit mode: ไม่ปิด กันข้อมูลที่พิมพ์หาย
+          onClick={() => !isEditing && closePanel()}
+          className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 p-3 sm:p-5"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[90vh] w-full max-w-[560px] flex-col overflow-hidden rounded-[10px] bg-white"
+          >
+            {/* Header */}
+            <div className="flex shrink-0 items-center justify-between gap-3 bg-[#1e3a5f] px-4 py-4 text-white sm:px-6">
+              <span className="text-base font-semibold">
+                🎓{" "}
+                {selectedId === "new"
+                  ? "Add Training"
+                  : isEditing
+                    ? "Edit Training"
+                    : "View Training"}
+              </span>
+              <div className="flex items-center gap-3.5">
+                {!isEditing && selectedId !== "new" && (
+                  <button
+                    onClick={() => {
+                      setMode("edit");
+                      setDetailMsg(null);
+                    }}
+                    className="cursor-pointer rounded-md border border-white/30 bg-white/15 px-3 py-[5px] text-xs font-semibold text-white hover:bg-white/25"
+                  >
+                    ✏️ Edit
+                  </button>
+                )}
                 <button
                   onClick={closePanel}
-                  style={{ ...btnGhost, padding: "4px 10px" }}
+                  className="cursor-pointer border-none bg-transparent text-xl leading-none text-white"
                 >
                   ✕
                 </button>
               </div>
+            </div>
 
-              <div style={{ padding: "20px" }}>
-                <MessageBanner msg={detailMsg} />
+            {/* Body */}
+            <div className="overflow-y-auto p-4 sm:p-6">
+              <MessageBanner msg={detailMsg} />
 
-                {loadingDetail ? (
-                  <div
-                    style={{
-                      padding: "20px",
-                      textAlign: "center",
-                      color: "#6c757d",
-                    }}
-                  >
-                    Loading...
+              {loadingDetail ? (
+                <div className="p-5 text-center text-gray-500">Loading...</div>
+              ) : (
+                <>
+                  {/* --- GlobalTraining --- */}
+                  <div className="mb-3.5">
+                    <label className={LABEL}>
+                      GLOBAL TRAINING (ชื่อกลาง) *
+                    </label>
+                    <input
+                      className={INPUT}
+                      value={form.name}
+                      disabled={!isEditing}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, name: e.target.value }))
+                      }
+                      placeholder="เช่น Basic Rigging"
+                    />
                   </div>
-                ) : (
-                  <>
-                    {/* --- GlobalTraining fields --- */}
-                    <div style={{ marginBottom: "14px" }}>
-                      <label style={labelStyle}>NAME *</label>
-                      <input
-                        style={inputStyle}
-                        value={form.name}
-                        onChange={(e) =>
-                          setForm((f) => ({ ...f, name: e.target.value }))
-                        }
-                        placeholder="เช่น Basic Rigging"
-                      />
-                    </div>
-                    <div style={{ marginBottom: "14px" }}>
-                      <label style={labelStyle}>FULL NAME (สำหรับแสดงผล)</label>
-                      <input
-                        style={inputStyle}
-                        value={form.fullName}
-                        onChange={(e) =>
-                          setForm((f) => ({ ...f, fullName: e.target.value }))
-                        }
-                        placeholder="ชื่อเต็มจาก Excel (ถ้ามี)"
-                      />
-                    </div>
-                    <div style={{ marginBottom: "18px" }}>
-                      <label style={labelStyle}>DESCRIPTION</label>
-                      <textarea
-                        style={{
-                          ...inputStyle,
-                          minHeight: "60px",
-                          resize: "vertical",
-                        }}
-                        value={form.description}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            description: e.target.value,
-                          }))
-                        }
-                      />
+                  <div className="mb-3.5">
+                    <label className={LABEL}>
+                      ชื่อที่ HR ใช้ในไฟล์ (ถ้าต่างจากชื่อกลาง)
+                    </label>
+                    <input
+                      className={INPUT}
+                      value={form.fullName}
+                      disabled={!isEditing}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, fullName: e.target.value }))
+                      }
+                      placeholder="เช่น ชื่อที่เขียนใน Excel ของ Chevron/Erawan"
+                    />
+                  </div>
+                  <div className="mb-[18px]">
+                    <label className={LABEL}>DESCRIPTION</label>
+                    <textarea
+                      className={`${INPUT} min-h-[60px] resize-y`}
+                      value={form.description}
+                      disabled={!isEditing}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, description: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  {/* --- Standard --- */}
+                  <div className="mb-5 border-t border-gray-100 pt-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <span className="text-[13px] font-bold">
+                        Training Standard
+                      </span>
+                      {isEditing && form.standardId && (
+                        <button
+                          className={`${BTN_DANGER} px-2.5 py-1`}
+                          onClick={handleDeleteStandard}
+                        >
+                          Remove Standard
+                        </button>
+                      )}
                     </div>
 
-                    {/* --- Standard fields — โชว์เลยไม่ต้องกด Edit --- */}
-                    <div
-                      style={{
-                        borderTop: "1px solid #f1f3f5",
-                        paddingTop: "16px",
-                        marginBottom: "20px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          marginBottom: "12px",
-                        }}
-                      >
-                        <span style={{ fontWeight: 700, fontSize: "13px" }}>
-                          Training Standard
-                        </span>
-                        {form.standardId && (
+                    <div className="mb-2">
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <label className={`${LABEL} mb-0`}>SOURCE</label>
+                        {isEditing && (
                           <button
-                            style={{ ...btnDanger, padding: "4px 10px" }}
-                            onClick={handleDeleteStandard}
+                            type="button"
+                            onClick={() => setShowSourceManager((v) => !v)}
+                            className="cursor-pointer border-none bg-transparent p-0 text-[11px] font-semibold text-blue-600 hover:underline"
                           >
-                            Remove Standard
+                            {showSourceManager ? "✕ ปิด" : "⚙ Manage sources"}
                           </button>
                         )}
                       </div>
+                      <select
+                        className={INPUT}
+                        value={form.sourceId}
+                        disabled={!isEditing}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            sourceId: e.target.value,
+                            clientId: "",
+                          }))
+                        }
+                      >
+                        <option value="">— เลือก source —</option>
+                        {sources.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                      <div style={{ marginBottom: "12px" }}>
-                        <label style={labelStyle}>SOURCE</label>
+                    {/* Source manager — เพิ่ม/ลบ source ได้เอง */}
+                    {isEditing && showSourceManager && (
+                      <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        <MessageBanner msg={sourceMsg} />
+
+                        {sources.length > 0 && (
+                          <div className="mb-2.5 max-h-[140px] overflow-y-auto">
+                            {sources.map((s) => (
+                              <div
+                                key={s.id}
+                                className="flex items-center justify-between gap-2 border-b border-gray-100 px-2 py-[5px] text-xs"
+                              >
+                                <span className="min-w-0">
+                                  {s.name}
+                                  {s.requiresClient && (
+                                    <span className="ml-1.5 text-[10px] text-gray-500">
+                                      (ต้องเลือก client)
+                                    </span>
+                                  )}
+                                  {s._count?.trainingStandards > 0 && (
+                                    <span className="ml-1.5 text-[10px] text-gray-400">
+                                      — ใช้อยู่ {s._count.trainingStandards}{" "}
+                                      training
+                                    </span>
+                                  )}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleDeleteSource(s.id, s.name)
+                                  }
+                                  title="ลบ source นี้"
+                                  className="shrink-0 cursor-pointer border-none bg-transparent px-1.5 py-0.5 text-xs text-[#dc3545]"
+                                >
+                                  🗑
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            type="text"
+                            placeholder="ชื่อ source ใหม่ เช่น Safety"
+                            value={newSourceName}
+                            onChange={(e) => setNewSourceName(e.target.value)}
+                            onKeyDown={(e) =>
+                              e.key === "Enter" && handleAddSource()
+                            }
+                            className={`${INPUT} min-w-[160px] flex-1`}
+                          />
+                          <label
+                            className="flex cursor-pointer items-center gap-1 whitespace-nowrap text-[11px] text-gray-700"
+                            title="ติ๊กถ้า source นี้ต้องผูกกับ client เฉพาะเจาะจง (เช่น standard ภายในของ client ใดๆ)"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={newSourceRequiresClient}
+                              onChange={(e) =>
+                                setNewSourceRequiresClient(e.target.checked)
+                              }
+                            />
+                            ผูก client
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleAddSource}
+                            disabled={savingSource || !newSourceName.trim()}
+                            className={`${BTN_PRIMARY} px-3.5 py-2`}
+                          >
+                            + Add
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedSource?.requiresClient && (
+                      <div className="mb-3">
+                        <label className={LABEL}>CLIENT *</label>
                         <select
-                          style={inputStyle}
-                          value={form.source}
+                          className={INPUT}
+                          value={form.clientId}
+                          disabled={!isEditing}
                           onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              source: e.target.value,
-                              clientId:
-                                e.target.value === "COMPANY" ? f.clientId : "",
-                            }))
+                            setForm((f) => ({ ...f, clientId: e.target.value }))
                           }
                         >
-                          {SOURCE_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
+                          <option value="">— เลือก client —</option>
+                          {clients.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
                             </option>
                           ))}
                         </select>
                       </div>
+                    )}
 
-                      {form.source === "COMPANY" && (
-                        <div style={{ marginBottom: "12px" }}>
-                          <label style={labelStyle}>CLIENT *</label>
-                          <select
-                            style={inputStyle}
-                            value={form.clientId}
-                            onChange={(e) =>
-                              setForm((f) => ({
-                                ...f,
-                                clientId: e.target.value,
-                              }))
-                            }
-                          >
-                            <option value="">— เลือก client —</option>
-                            {clients.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "12px",
-                          marginBottom: "12px",
-                        }}
-                      >
-                        <div style={{ flex: 1 }}>
-                          <label style={labelStyle}>TRAINING HOURS</label>
-                          <input
-                            type="number"
-                            min="0"
-                            style={inputStyle}
-                            value={form.trainingHours}
-                            onChange={(e) =>
-                              setForm((f) => ({
-                                ...f,
-                                trainingHours: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <label style={labelStyle}>VALIDITY (YEARS)</label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.5"
-                            disabled={form.isNoExpiry}
-                            style={{
-                              ...inputStyle,
-                              background: form.isNoExpiry ? "#f1f3f5" : "#fff",
-                            }}
-                            value={form.validityYears}
-                            onChange={(e) =>
-                              setForm((f) => ({
-                                ...f,
-                                validityYears: e.target.value,
-                              }))
-                            }
-                            placeholder="เช่น 3 หรือ 0.5 (=6 เดือน)"
-                          />
-                        </div>
-                      </div>
-
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          fontSize: "12px",
-                          color: "#495057",
-                          cursor: "pointer",
-                        }}
-                      >
+                    <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className={LABEL}>TRAINING HOURS</label>
                         <input
-                          type="checkbox"
-                          checked={form.isNoExpiry}
+                          type="number"
+                          min="0"
+                          className={INPUT}
+                          value={form.trainingHours}
+                          disabled={!isEditing}
                           onChange={(e) =>
                             setForm((f) => ({
                               ...f,
-                              isNoExpiry: e.target.checked,
-                              validityYears: e.target.checked
-                                ? ""
-                                : f.validityYears,
+                              trainingHours: e.target.value,
                             }))
                           }
                         />
-                        No expiry (cert ไม่มีวันหมดอายุ)
-                      </label>
+                      </div>
+                      <div>
+                        <label className={LABEL}>VALIDITY (YEARS)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          disabled={!isEditing || form.isNoExpiry}
+                          className={INPUT}
+                          value={form.validityYears}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              validityYears: e.target.value,
+                            }))
+                          }
+                          placeholder="เช่น 3 หรือ 0.5 (=6 เดือน)"
+                        />
+                      </div>
                     </div>
 
-                    {/* --- Actions --- */}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                      }}
+                    <label
+                      className={`flex items-center gap-2 text-xs text-gray-700 ${
+                        isEditing ? "cursor-pointer" : "cursor-default"
+                      }`}
                     >
-                      <button
-                        style={btnPrimary}
-                        onClick={handleSave}
-                        disabled={saving}
-                      >
-                        {saving ? "Saving..." : "Save"}
-                      </button>
+                      <input
+                        type="checkbox"
+                        checked={form.isNoExpiry}
+                        disabled={!isEditing}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            isNoExpiry: e.target.checked,
+                            validityYears: e.target.checked
+                              ? ""
+                              : f.validityYears,
+                          }))
+                        }
+                      />
+                      No expiry (cert ไม่มีวันหมดอายุ)
+                    </label>
+                  </div>
+
+                  {/* --- Client usage --- */}
+                  <div className="mb-5 border-t border-gray-100 pt-4">
+                    <span className="mb-1.5 block text-[13px] font-bold">
+                      ใช้กับ Client ไหนบ้าง
+                    </span>
+                    {!form.standardId && (
+                      <div className="mb-2.5 text-[11px] text-[#dc3545]">
+                        บันทึก Training Standard ก่อน ถึงจะเลือก client ได้
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-3.5">
+                      {clients.map((c) => {
+                        const hasContract = !!c.contracts?.[0];
+                        const disabled =
+                          !isEditing ||
+                          !form.standardId ||
+                          !hasContract ||
+                          linkingClientId === c.id;
+                        return (
+                          <label
+                            key={c.id}
+                            title={
+                              !hasContract
+                                ? `${c.name} ยังไม่มี active contract`
+                                : undefined
+                            }
+                            className={`flex items-center gap-1.5 text-[13px] ${
+                              hasContract ? "text-gray-900" : "text-gray-400"
+                            } ${disabled ? "cursor-default" : "cursor-pointer"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!!clientLinks[c.id]}
+                              disabled={disabled}
+                              onChange={() => toggleClientLink(c)}
+                            />
+                            {c.name}
+                            {linkingClientId === c.id && " …"}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* --- Actions (edit mode) --- */}
+                  {isEditing && (
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <div className="flex gap-2">
+                        <button
+                          className={BTN_PRIMARY}
+                          onClick={handleSave}
+                          disabled={saving}
+                        >
+                          {saving ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          onClick={() =>
+                            selectedId === "new"
+                              ? closePanel()
+                              : openTraining(form.id, "view")
+                          }
+                          disabled={saving}
+                          className="cursor-pointer rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-[13px] font-semibold text-gray-700 hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                       {selectedId !== "new" && (
                         <button
-                          style={btnDanger}
-                          onClick={handleDeleteTraining}
+                          className={BTN_DANGER}
+                          onClick={panelDeleteTraining}
+                          disabled={deletingId === form.id}
                         >
-                          Delete Training
+                          {deletingId === form.id
+                            ? "Deleting…"
+                            : "Delete Training"}
                         </button>
                       )}
                     </div>
-                  </>
-                )}
-              </div>
+                  )}
+                </>
+              )}
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

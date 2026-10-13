@@ -1,3 +1,15 @@
 node_modules/
 .env
 training_record_from_hr/
+backup/*.sql
+backup_before_merge.sql
+backup_before_workplace_prod.sql
+*.sql
+!backend/prisma/migrations/**/*.sql
+dist/
+
+master_project_register/*.xlsx
+pe_tracking/*.xlsx
+backend/scripts/chevron/*.xlsx
+backend/uploads/
+~$*

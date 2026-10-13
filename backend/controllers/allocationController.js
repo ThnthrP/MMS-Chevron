@@ -24,10 +24,12 @@ export async function getProjectDetail(req, res) {
 // GET /api/allocation/workers?positionId=&requestId=&contractId=
 export async function findWorkers(req, res) {
   try {
-    const { positionId, requestId, contractId, employeeIds } = req.query;
+    const { positionId, matrixPositionId, requestId, contractId, employeeIds } =
+      req.query;
     const parsedIds = employeeIds ? employeeIds.split(",") : undefined;
     const workers = await service.findWorkers({
       positionId,
+      matrixPositionId,
       requestId,
       contractId,
       employeeIds: parsedIds,
@@ -60,8 +62,8 @@ export async function addToShortlist(req, res) {
     const result = await service.addToShortlist({ requestId, employeeIds });
     res.status(201).json(result);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
+    if (!error.status) console.error(error);
+    res.status(error.status || 500).json({ message: error.message });
   }
 }
 

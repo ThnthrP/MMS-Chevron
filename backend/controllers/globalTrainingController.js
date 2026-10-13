@@ -1,5 +1,47 @@
 import * as service from "../services/globalTrainingService.js";
 
+// ── Training Sources ──
+
+// GET /api/global-trainings/sources
+export async function listSources(req, res) {
+  try {
+    const data = await service.listTrainingSources();
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+// POST /api/global-trainings/sources
+// body: { name, requiresClient }
+export async function createSource(req, res) {
+  try {
+    const { name, requiresClient } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: "name is required" });
+    }
+    const data = await service.createTrainingSource({ name, requiresClient });
+    res.status(201).json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(error.status || 500).json({ message: error.message });
+  }
+}
+
+// DELETE /api/global-trainings/sources/:id
+export async function removeSource(req, res) {
+  try {
+    await service.deleteTrainingSource(req.params.id);
+    res.json({ message: "Deleted" });
+  } catch (error) {
+    console.error(error);
+    res.status(error.status || 500).json({ message: error.message });
+  }
+}
+
+// ── Global Trainings ──
+
 // GET /api/global-trainings?search=...
 export async function list(req, res) {
   try {
@@ -84,16 +126,16 @@ export async function remove(req, res) {
 }
 
 // POST /api/global-trainings/:id/standards
-// body: { source, clientId, trainingHours, validityDays, isNoExpiry }
+// body: { sourceId, clientId, trainingHours, validityDays, isNoExpiry }
 export async function createStandard(req, res) {
   try {
-    const { source, clientId, trainingHours, validityDays, isNoExpiry } =
+    const { sourceId, clientId, trainingHours, validityDays, isNoExpiry } =
       req.body;
-    if (!source) {
-      return res.status(400).json({ message: "source is required" });
+    if (!sourceId) {
+      return res.status(400).json({ message: "sourceId is required" });
     }
     const data = await service.createTrainingStandard(req.params.id, {
-      source,
+      sourceId,
       clientId,
       trainingHours,
       validityDays,
@@ -109,13 +151,13 @@ export async function createStandard(req, res) {
 // PUT /api/global-trainings/:id/standards/:standardId
 export async function updateStandard(req, res) {
   try {
-    const { source, clientId, trainingHours, validityDays, isNoExpiry } =
+    const { sourceId, clientId, trainingHours, validityDays, isNoExpiry } =
       req.body;
-    if (!source) {
-      return res.status(400).json({ message: "source is required" });
+    if (!sourceId) {
+      return res.status(400).json({ message: "sourceId is required" });
     }
     const data = await service.updateTrainingStandard(req.params.standardId, {
-      source,
+      sourceId,
       clientId,
       trainingHours,
       validityDays,

@@ -1,95 +1,64 @@
 import React, { useContext, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { AppContent } from "../../context/AppContext";
+import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import { toast } from "react-toastify";
-import experteamLogo from "../../assets/experteam_logo.png";
-import { Eye, EyeOff } from "lucide-react"; // ← เพิ่ม import ไอคอน
+import { AppContent } from "../../context/AppContext";
+import {
+  AuthCard,
+  PasswordInput,
+  AUTH_INPUT,
+  AUTH_BTN,
+} from "../../components/auth/AuthCard";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const Login = () => {
   const navigate = useNavigate();
-
   const { backendUrl, setIsLoggedin, getUserData } = useContext(AppContent);
 
-  const [state, setState] = useState("Login");
-
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false); // ← เพิ่ม state
-
   const [loading, setLoading] = useState(false);
 
   const onSubmitHandler = async (e) => {
+    e.preventDefault();
+    if (loading) return;
+
+    const cleanEmail = email.trim();
+    if (!EMAIL_RE.test(cleanEmail)) {
+      toast.error("รูปแบบอีเมลไม่ถูกต้อง");
+      return;
+    }
+
     try {
-      e.preventDefault();
-
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-      if (!emailRegex.test(email)) {
-        return toast.error("Invalid email format");
-      }
-
       setLoading(true);
-
+      // คงไว้ตามเดิม — ส่วนอื่นของระบบ (เช่น getUserData) อาจพึ่งค่านี้อยู่
       axios.defaults.withCredentials = true;
-
-      let data;
-
-      // =====================================================
-      // SIGN UP
-      // =====================================================
-
-      if (state === "Sign Up") {
-        const registerRes = await axios.post(
-          backendUrl + "/api/auth/register",
-          {
-            name,
-            email,
-            password,
-          },
-        );
-
-        data = registerRes.data;
-
-        if (data.success) {
-          const loginRes = await axios.post(backendUrl + "/api/auth/login", {
-            email,
-            password,
-          });
-
-          data = loginRes.data;
-        }
-      }
-
-      // =====================================================
-      // LOGIN
-      // =====================================================
-      else {
-        const loginRes = await axios.post(backendUrl + "/api/auth/login", {
-          email,
-          password,
-        });
-
-        data = loginRes.data;
-      }
+      const { data } = await axios.post(
+        `${backendUrl}/api/auth/login`,
+        { email: cleanEmail, password },
+        { withCredentials: true },
+      );
 
       if (!data.success) {
-        return toast.error(data.message);
+        toast.error(data.message || "อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+        return;
       }
 
       setIsLoggedin(true);
-
       const user = await getUserData();
-
       if (!user) {
-        return toast.error("Cannot fetch user data");
+        toast.error(
+          "เข้าสู่ระบบแล้ว แต่โหลดข้อมูลผู้ใช้ไม่สำเร็จ — ลองรีเฟรชหน้า",
+        );
+        return;
       }
-
       navigate("/");
     } catch (error) {
       toast.error(
-        error.response?.data?.message || error.message || "Login failed",
+        error.response?.data?.message ||
+          error.message ||
+          "เข้าสู่ระบบไม่สำเร็จ",
       );
     } finally {
       setLoading(false);
@@ -97,105 +66,47 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
-      {" "}
-      <div className="w-full max-w-md bg-white shadow-xl rounded-xl p-8">
-        {" "}
-        <div className="flex flex-col items-center mb-6">
-          {" "}
-          <img src={experteamLogo} alt="logo" className="w-14 mb-2" />
-          <h1 className="text-xl font-semibold text-gray-800">
-            Manpower Management{" "}
-          </h1>
-          <p className="text-sm text-gray-500">System</p>
+    <AuthCard title="เข้าสู่ระบบ" subtitle="กรุณาเข้าสู่ระบบเพื่อใช้งาน">
+      <form onSubmit={onSubmitHandler} className="space-y-4" noValidate>
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          type="email"
+          name="email"
+          placeholder="อีเมล"
+          autoComplete="username"
+          autoFocus
+          required
+          className={AUTH_INPUT}
+        />
+
+        <PasswordInput
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          name="password"
+          placeholder="รหัสผ่าน"
+          autoComplete="current-password"
+          required
+        />
+
+        <div className="text-right">
+          <Link
+            to="/reset-password"
+            className="text-sm text-blue-600 no-underline hover:underline"
+          >
+            ลืมรหัสผ่าน?
+          </Link>
         </div>
-        <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">
-          {state === "Sign Up" ? "สร้างบัญชี" : "เข้าสู่ระบบ"}
-        </h2>
-        <p className="text-center text-sm text-gray-500 mb-6">
-          {state === "Sign Up"
-            ? "กรอกข้อมูลเพื่อสมัครใช้งาน"
-            : "กรุณาเข้าสู่ระบบเพื่อใช้งาน"}
-        </p>
-        <form onSubmit={onSubmitHandler} className="space-y-4">
-          {state === "Sign Up" && (
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              type="text"
-              placeholder="ชื่อ-นามสกุล"
-              className="w-full border border-gray-300 rounded-md px-4 py-2"
-              required
-            />
-          )}
 
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
-            placeholder="อีเมล"
-            className="w-full border border-gray-300 rounded-md px-4 py-2"
-            required
-          />
-
-          {/* Password field พร้อมปุ่มลูกตา */}
-          <div className="relative">
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type={showPassword ? "text" : "password"}
-              placeholder="รหัสผ่าน"
-              className="w-full border border-gray-300 rounded-md px-4 py-2 pr-10"
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((prev) => !prev)}
-              tabIndex={-1}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-            </button>
-          </div>
-
-          <div className="text-right">
-            <span
-              onClick={() => navigate("/reset-password")}
-              className="text-sm text-blue-500 cursor-pointer hover:underline"
-            >
-              ลืมรหัสผ่าน?
-            </span>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading
-              ? "กำลังดำเนินการ..."
-              : state === "Sign Up"
-                ? "สมัครสมาชิก"
-                : "เข้าสู่ระบบ"}
-          </button>
-        </form>
-        <p className="text-center text-sm text-gray-500 mt-6">
-          {state === "Sign Up" ? "มีบัญชีแล้ว?" : "ยังไม่มีบัญชี?"}{" "}
-          <span
-            onClick={() => {
-              setState(state === "Sign Up" ? "Login" : "Sign Up");
-
-              setName("");
-              setEmail("");
-              setPassword("");
-            }}
-            className="text-blue-600 cursor-pointer hover:underline"
-          >
-            {state === "Sign Up" ? "เข้าสู่ระบบ" : "สมัครสมาชิก"}
-          </span>
-        </p>
-      </div>
-    </div>
+        <button
+          type="submit"
+          disabled={loading || !email || !password}
+          className={AUTH_BTN}
+        >
+          {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
+        </button>
+      </form>
+    </AuthCard>
   );
 };
 

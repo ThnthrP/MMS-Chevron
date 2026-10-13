@@ -1,9 +1,6 @@
 // ============================================================
 // utils/expiryStatus.js
 // Shared expiry-bucket + follow-up calculation.
-// Single source of truth for "how many days left → what bucket"
-// so training certs, medical checks, and PE-exam follow-ups
-// never drift into inconsistent thresholds across the codebase.
 // ============================================================
 
 /**
@@ -11,18 +8,19 @@
  * (and anything else with a plain expiryDate + no special lead time).
  *
  * @param {Date|string|null} expiryDate
- * @param {{ criticalDays?: number, warningDays?: number }} [opts]
- * @returns {"expired"|"critical"|"warning"|"valid"}
+ * @param {{ criticalDays?: number, warningDays?: number, upcomingDays?: number }} [opts]
+ * @returns {"expired"|"critical"|"warning"|"upcoming"|"valid"}
  */
 export function getExpiryBucket(expiryDate, opts = {}) {
-  const { criticalDays = 30, warningDays = 60 } = opts;
-  if (!expiryDate) return "valid"; // no expiry = permanent = valid
+  const { criticalDays = 30, warningDays = 90, upcomingDays = 120 } = opts;
+  if (!expiryDate) return "valid";
   const daysLeft = Math.ceil(
     (new Date(expiryDate).getTime() - Date.now()) / 86400000,
   );
   if (daysLeft < 0) return "expired";
   if (daysLeft < criticalDays) return "critical";
   if (daysLeft <= warningDays) return "warning";
+  if (daysLeft <= upcomingDays) return "upcoming";
   return "valid";
 }
 
@@ -34,13 +32,18 @@ export function getExpiryBucket(expiryDate, opts = {}) {
  *   K14+364 < TODAY()          → "หมดอายุ" (expired)
  *   K14+365-TODAY() <= 30      → "ใกล้หมดอายุ 1 เดือน" (critical)
  *   K14+365-TODAY() <= 90      → "ใกล้หมด 3 เดือน" (warning)
+ *   K14+365-TODAY() <= 120     → "แจ้งเตือนล่วงหน้า" (upcoming)
  *   else                       → "ยังไม่หมด" (valid)
  *
  * @param {Date|string|null} expiryDate
- * @returns {"expired"|"critical"|"warning"|"valid"}
+ * @returns {"expired"|"critical"|"warning"|"upcoming"|"valid"}
  */
 export function getMedicalExpiryBucket(expiryDate) {
-  return getExpiryBucket(expiryDate, { criticalDays: 30, warningDays: 90 });
+  return getExpiryBucket(expiryDate, {
+    criticalDays: 30,
+    warningDays: 90,
+    upcomingDays: 120,
+  });
 }
 
 // Thai labels matching each bucket, split by context since the Excel
@@ -50,12 +53,14 @@ export const EXPIRY_LABEL_TH = {
     expired: "หมดอายุ",
     critical: "ใกล้หมดอายุ",
     warning: "ใกล้หมดอายุ",
+    upcoming: "แจ้งเตือนล่วงหน้า",
     valid: "ยังไม่หมด",
   },
   medical: {
     expired: "หมดอายุ",
     critical: "ใกล้หมดอายุ 1 เดือน",
     warning: "ใกล้หมด 3 เดือน",
+    upcoming: "แจ้งเตือนล่วงหน้า (3-4 เดือน)",
     valid: "ยังไม่หมด",
   },
 };

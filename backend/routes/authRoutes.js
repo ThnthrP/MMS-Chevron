@@ -1,7 +1,6 @@
 import express from "express";
 
 import {
-  register,
   login,
   logout,
   isAuthenticated,
@@ -17,7 +16,6 @@ const authRouter = express.Router();
 // Authentication
 // =====================================================
 
-authRouter.post("/register", register);
 authRouter.post("/login", login);
 authRouter.post("/logout", logout);
 

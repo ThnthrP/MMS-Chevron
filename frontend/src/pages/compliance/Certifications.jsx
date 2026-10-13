@@ -1,33 +1,142 @@
-import { useState, useEffect, useContext, useCallback } from "react";
+import { useState, useEffect, useContext, useCallback, useRef } from "react";
 import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 
-export default function Certifications() {
-  const { backendUrl, userData } = useContext(AppContent);
+// ══════════════════════════════════════════════════════════
+// constants
+// ══════════════════════════════════════════════════════════
+const CARD = "rounded-[10px] border border-gray-200 bg-white";
+const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const CHECKBOX = "h-[15px] w-[15px] cursor-pointer";
 
-  const canRequestTraining = ["admin", "manpower"].includes(
-    userData?.role?.name,
+const BUCKET_BADGE = {
+  expired: ["bg-[#f8d7da] text-[#842029]", "🔴 Expired"],
+  critical: ["bg-[#f8d7da] text-[#842029]", "🔥 Critical"],
+  warning: ["bg-[#fff3cd] text-[#664d03]", "🟡 Warning"],
+  upcoming: ["bg-[#eef2ff] text-[#4f46e5]", "🔵 Upcoming"],
+  valid: ["bg-[#d1e7dd] text-[#0f5132]", "✅ Valid"],
+  missing: ["bg-gray-200 text-gray-700", "— Missing"],
+};
+
+const STAT_CARDS = [
+  {
+    key: "expired",
+    icon: "🔴",
+    label: "Expired",
+    text: "text-[#dc3545]",
+    ring: "ring-[#dc3545]",
+  },
+  {
+    key: "critical",
+    icon: "🔥",
+    label: "Critical (<30 days)",
+    text: "text-[#cc8400]",
+    ring: "ring-[#cc8400]",
+  },
+  {
+    key: "warning",
+    icon: "🟡",
+    label: "Warning (30-90 days)",
+    text: "text-[#0aa2c0]",
+    ring: "ring-[#0aa2c0]",
+  },
+  {
+    key: "upcoming",
+    icon: "🔵",
+    label: "Upcoming (90-120 days)",
+    text: "text-[#4f46e5]",
+    ring: "ring-[#4f46e5]",
+  },
+  {
+    key: "valid",
+    icon: "✅",
+    label: "Valid",
+    text: "text-[#198754]",
+    ring: "ring-[#198754]",
+  },
+  {
+    key: "missing",
+    icon: "⚪",
+    label: "Missing (ยังไม่มี cert)",
+    text: "text-gray-500",
+    ring: "ring-gray-500",
+  },
+];
+
+const TABLE_HEADERS = [
+  "WORKER",
+  "POSITION",
+  "STATUS",
+  "ISSUED DATE",
+  "EXPIRY DATE",
+];
+
+// react-select ใช้ styles API ของไลบรารี
+const customSelectStyles = {
+  control: (base) => ({
+    ...base,
+    minHeight: "36px",
+    fontSize: "13px",
+    borderColor: "#dee2e6",
+    boxShadow: "none",
+    "&:hover": { borderColor: "#86b7fe" },
+  }),
+  option: (base) => ({ ...base, fontSize: "13px" }),
+  singleValue: (base) => ({ ...base, fontSize: "13px" }),
+  placeholder: (base) => ({ ...base, fontSize: "13px", color: "#6c757d" }),
+};
+
+// ══════════════════════════════════════════════════════════
+// small components
+// ══════════════════════════════════════════════════════════
+function BucketBadge({ bucket }) {
+  const entry = BUCKET_BADGE[bucket];
+  if (!entry) return <span>—</span>;
+  const [cls, label] = entry;
+  return (
+    <span
+      className={`inline-block whitespace-nowrap rounded-md px-2 py-[3px] text-[11px] font-semibold ${cls}`}
+    >
+      {label}
+    </span>
   );
+}
+
+function CertDate({ hasRecord, value, emptyLabel }) {
+  if (!hasRecord) return <span className="text-gray-400">N/A</span>;
+  if (value) return new Date(value).toLocaleDateString();
+  return emptyLabel;
+}
+
+// ══════════════════════════════════════════════════════════
+// main
+// ══════════════════════════════════════════════════════════
+export default function Certifications() {
+  const { backendUrl } = useContext(AppContent);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // สิทธิ์ถูกคุมที่ AppRouter แล้ว
+  const canRequestTraining = true;
 
   const [trainingOptions, setTrainingOptions] = useState([]);
   const [selectedTraining, setSelectedTraining] = useState(null);
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
 
-  // ── เลือก worker เพื่อขอ training ──
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [workerFilter, setWorkerFilter] = useState(""); // employeeId
+  const [positionFilter, setPositionFilter] = useState("");
+
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
   const [requesting, setRequesting] = useState(false);
 
-  // ในฟังก์ชัน component
-  const [searchParams] = useSearchParams();
-
-  // เพิ่ม state ใหม่
+  // คนที่ถูกระบุมาจากลิงก์คำขอ Training (?empIds=...)
   const [highlightedIds, setHighlightedIds] = useState([]);
+  const hasScrolledRef = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -67,13 +176,16 @@ export default function Certifications() {
     [backendUrl],
   );
 
+  // เปลี่ยน training → โหลดใหม่ + reset selection/filter
   useEffect(() => {
     if (selectedTraining) loadCertification(selectedTraining.value);
     else setData(null);
-    setSelectedEmployeeIds([]); // reset selection ทุกครั้งที่เปลี่ยน training
+    setSelectedEmployeeIds([]);
+    setWorkerFilter("");
+    setPositionFilter("");
   }, [selectedTraining, loadCertification]);
 
-  // แก้ useEffect เดิมที่อ่าน trainingId ให้อ่าน empIds ด้วย
+  // อ่าน ?trainingId=...&empIds=... จาก URL
   useEffect(() => {
     const trainingId = searchParams.get("trainingId");
     const empIds = searchParams.get("empIds");
@@ -81,80 +193,50 @@ export default function Certifications() {
       const match = trainingOptions.find((o) => o.value === trainingId);
       if (match) setSelectedTraining(match);
     }
-    if (empIds) {
-      setHighlightedIds(empIds.split(","));
-    }
+    if (empIds) setHighlightedIds(empIds.split(","));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trainingOptions, searchParams]);
 
-  const badge = (bg, color, text) => (
-    <span
-      style={{
-        background: bg,
-        color,
-        borderRadius: "6px",
-        padding: "3px 8px",
-        fontSize: "11px",
-        fontWeight: 600,
-      }}
-    >
-      {text}
-    </span>
-  );
-
   const filteredWorkers = (data?.workers || []).filter((w) => {
-    const matchSearch =
-      w.empCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      w.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      w.position?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchStatus =
-      statusFilter === "all" ? true : w.bucket === statusFilter;
-    return matchSearch && matchStatus;
+    const matchWorker = !workerFilter || w.employeeId === workerFilter;
+    const matchPosition = !positionFilter || w.position === positionFilter;
+    const matchStatus = statusFilter === "all" || w.bucket === statusFilter;
+    return matchWorker && matchPosition && matchStatus;
   });
 
+  // เลื่อนไปแถวที่ highlight — ครั้งเดียวหลังโหลดข้อมูลเสร็จ
+  // (เดิมเลื่อนทุกครั้งที่ render เช่นติ๊ก checkbox แล้วหน้าเด้งกลับไปแถวแรก)
   useEffect(() => {
-    if (highlightedIds.length > 0 && filteredWorkers.length > 0) {
-      const el = document.getElementById(`worker-row-${highlightedIds[0]}`);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (hasScrolledRef.current || highlightedIds.length === 0 || !data) return;
+    // การ์ด (มือถือ) และตาราง (lg+) render คู่กัน แต่ซ่อนอันหนึ่งด้วย CSS
+    // จึงเลือกเฉพาะตัวที่มองเห็นอยู่ (offsetParent !== null)
+    const el = [
+      ...document.querySelectorAll(`[data-worker-row="${highlightedIds[0]}"]`),
+    ].find((node) => node.offsetParent !== null);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      hasScrolledRef.current = true;
     }
-  }, [highlightedIds, filteredWorkers]);
+  }, [highlightedIds, data]);
 
-  const bucketBadge = (bucket) => {
-    switch (bucket) {
-      case "expired":
-        return badge("#f8d7da", "#842029", "🔴 Expired");
-      case "critical":
-        return badge("#f8d7da", "#842029", "🔥 Critical");
-      case "warning":
-        return badge("#fff3cd", "#664d03", "🟡 Warning");
-      case "valid":
-        return badge("#d1e7dd", "#0f5132", "✅ Valid");
-      case "missing":
-        return badge("#e9ecef", "#495057", "— Missing");
-      default:
-        return "—";
-    }
-  };
-
-  const toggleEmployee = (employeeId) => {
+  const toggleEmployee = (employeeId) =>
     setSelectedEmployeeIds((prev) =>
       prev.includes(employeeId)
         ? prev.filter((id) => id !== employeeId)
         : [...prev, employeeId],
     );
-  };
 
   const allFilteredSelected =
     filteredWorkers.length > 0 &&
     filteredWorkers.every((w) => selectedEmployeeIds.includes(w.employeeId));
 
   const toggleAllFiltered = () => {
+    const ids = filteredWorkers.map((w) => w.employeeId);
     if (allFilteredSelected) {
-      const ids = new Set(filteredWorkers.map((w) => w.employeeId));
-      setSelectedEmployeeIds((prev) => prev.filter((id) => !ids.has(id)));
+      const idSet = new Set(ids);
+      setSelectedEmployeeIds((prev) => prev.filter((id) => !idSet.has(id)));
     } else {
-      setSelectedEmployeeIds((prev) => [
-        ...new Set([...prev, ...filteredWorkers.map((w) => w.employeeId)]),
-      ]);
+      setSelectedEmployeeIds((prev) => [...new Set([...prev, ...ids])]);
     }
   };
 
@@ -163,10 +245,13 @@ export default function Certifications() {
     try {
       setRequesting(true);
       await axios.post(
-        `${backendUrl}/api/compliance/request-training`,
+        `${backendUrl}/api/training-requests`,
         {
-          trainingId: selectedTraining.value,
-          employeeIds: selectedEmployeeIds,
+          items: selectedEmployeeIds.map((employeeId) => ({
+            employeeId,
+            globalTrainingId: selectedTraining.value,
+            clientName: null, // หน้านี้เลือกจาก training โดยตรง
+          })),
         },
         { withCredentials: true },
       );
@@ -182,361 +267,319 @@ export default function Certifications() {
     }
   };
 
+  const clearFilters = () => {
+    setWorkerFilter("");
+    setPositionFilter("");
+    setStatusFilter("all");
+  };
+  const hasFilter = workerFilter || positionFilter || statusFilter !== "all";
+
+  const workerOptions = [
+    { value: "", label: "All Workers" },
+    ...(data?.workers || [])
+      .slice()
+      .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || ""))
+      .map((w) => ({
+        value: w.employeeId,
+        label: w.empId ? `${w.empId} : ${w.fullName}` : w.fullName,
+      })),
+  ];
+
+  const positionOptions = [
+    { value: "", label: "All Positions" },
+    ...[
+      ...new Set((data?.workers || []).map((w) => w.position).filter(Boolean)),
+    ]
+      .sort((a, b) => a.localeCompare(b))
+      .map((p) => ({ value: p, label: p })),
+  ];
+
+  const rowBg = (w) =>
+    highlightedIds.includes(w.employeeId)
+      ? "bg-[#fff3cd]"
+      : selectedEmployeeIds.includes(w.employeeId)
+        ? "bg-[#fffbe6]"
+        : "bg-white";
+
+  const noExpiry = (
+    <span className="font-medium text-[#198754]">ไม่มีวันหมดอายุ</span>
+  );
+  const dash = <span className="text-gray-400">—</span>;
+
+  const placeholderBox = (text) => (
+    <div className={`${CARD} p-10 text-center text-gray-500 sm:p-[60px]`}>
+      {text}
+    </div>
+  );
+
   return (
-    <div className="container-fluid p-0">
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* Header */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "16px 24px",
-            marginBottom: "1.5rem",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "20px" }}>📋</span>
-            <span style={{ fontSize: "18px", fontWeight: 700 }}>
-              Certifications
-            </span>
+    <div className="mx-auto w-full min-w-0 max-w-[1800px]">
+      {/* ════════ Header ════════ */}
+      <div
+        className={`${CARD} mb-4 flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6`}
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl">📋</span>
+            <span className="text-lg font-bold">Certifications</span>
           </div>
-          <div style={{ fontSize: "13px", color: "#6c757d", marginTop: "4px" }}>
+          <div className="mt-1 text-[13px] text-gray-500">
             เลือก training เพื่อดูสถานะของ worker แต่ละคนสำหรับ cert นั้น
           </div>
         </div>
-
-        {/* Filter card */}
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "12px 16px",
-            marginBottom: "1.5rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            flexWrap: "wrap",
-          }}
+        <button
+          onClick={() => navigate("/certifications/bulk-add")}
+          className="w-full shrink-0 cursor-pointer whitespace-nowrap rounded-lg border-none bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-blue-700 sm:w-auto"
         >
-          <div
-            style={{ minWidth: "220px", flex: "1 1 220px", maxWidth: "320px" }}
-          >
+          + Bulk Add Certification
+        </button>
+      </div>
+
+      {/* ════════ Filters ════════ */}
+      <div className={`${CARD} mb-4 px-4 py-3.5`}>
+        <div className="mb-3 text-[13px] font-bold text-gray-900">
+          🔍 Search &amp; Filter
+        </div>
+        <div className="flex flex-wrap gap-3 sm:gap-4">
+          <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[320px] sm:flex-[1_1_220px]">
+            <label className={FILTER_LABEL}>Training / Certification</label>
             <Select
               options={trainingOptions}
               value={selectedTraining}
               onChange={setSelectedTraining}
               placeholder="เลือก training / certification..."
               isClearable
-              styles={{
-                control: (base) => ({
-                  ...base,
-                  minHeight: "36px",
-                  fontSize: "13px",
-                  borderColor: "#dee2e6",
-                }),
-                option: (base) => ({ ...base, fontSize: "13px" }),
-                singleValue: (base) => ({ ...base, fontSize: "13px" }),
-                placeholder: (base) => ({ ...base, fontSize: "13px" }),
-              }}
+              styles={customSelectStyles}
             />
           </div>
 
           {selectedTraining && (
             <>
-              <div
-                style={{
-                  position: "relative",
-                  flex: "1 1 220px",
-                  maxWidth: "380px",
-                }}
-              >
-                <span
-                  style={{
-                    position: "absolute",
-                    left: "10px",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "#adb5bd",
-                    fontSize: "14px",
-                  }}
-                >
-                  🔍
-                </span>
-                <input
-                  type="text"
-                  placeholder="Search name, ID, or position..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{
-                    width: "100%",
-                    paddingLeft: "34px",
-                    paddingRight: "12px",
-                    paddingTop: "7px",
-                    paddingBottom: "7px",
-                    fontSize: "13px",
-                    border: "1px solid #dee2e6",
-                    borderRadius: "8px",
-                    outline: "none",
-                  }}
+              <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[340px] sm:flex-[1_1_240px]">
+                <label className={FILTER_LABEL}>
+                  Worker (Employee ID / Name)
+                </label>
+                <Select
+                  options={workerOptions}
+                  value={
+                    workerOptions.find((o) => o.value === workerFilter) || null
+                  }
+                  onChange={(o) => setWorkerFilter(o ? o.value : "")}
+                  placeholder="🔍 ค้นหาด้วย ID หรือชื่อ..."
+                  isClearable
+                  styles={customSelectStyles}
+                  noOptionsMessage={() => "ไม่พบ worker"}
                 />
               </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                style={{
-                  width: "210px",
-                  padding: "7px 12px",
-                  fontSize: "13px",
-                  border: "1px solid #dee2e6",
-                  borderRadius: "8px",
-                  outline: "none",
-                  background: "#fff",
-                }}
-              >
-                <option value="all">All Status</option>
-                <option value="expired">🔴 Expired</option>
-                <option value="critical">🔥 Critical (&lt;30 days)</option>
-                <option value="warning">🟡 Warning (30-60 days)</option>
-                <option value="valid">✅ Valid</option>
-                <option value="missing">⚪ Missing</option>
-              </select>
-              {(statusFilter !== "all" || searchTerm) && (
-                <button
-                  onClick={() => {
-                    setStatusFilter("all");
-                    setSearchTerm("");
-                  }}
-                  style={{
-                    padding: "7px 14px",
-                    fontSize: "13px",
-                    border: "1px solid #dc3545",
-                    borderRadius: "8px",
-                    background: "#fff",
-                    color: "#dc3545",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
+
+              <div className="min-w-[160px] flex-[1_1_45%] sm:max-w-[280px] sm:flex-[1_1_200px]">
+                <label className={FILTER_LABEL}>Position</label>
+                <Select
+                  options={positionOptions}
+                  value={
+                    positionOptions.find((o) => o.value === positionFilter) ||
+                    null
+                  }
+                  onChange={(o) => setPositionFilter(o ? o.value : "")}
+                  placeholder="Position..."
+                  isClearable
+                  styles={customSelectStyles}
+                  noOptionsMessage={() => "ไม่พบตำแหน่ง"}
+                />
+              </div>
+
+              <div className="min-w-[160px] flex-[1_1_45%] sm:flex-[0_1_210px]">
+                <label className={FILTER_LABEL}>Status</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="box-border h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] outline-none focus:border-blue-400"
                 >
-                  ✕ Clear
-                </button>
+                  <option value="all">All Status</option>
+                  <option value="expired">🔴 Expired</option>
+                  <option value="critical">🔥 Critical (&lt;30 days)</option>
+                  <option value="warning">🟡 Warning (30-90 days)</option>
+                  <option value="upcoming">🔵 Upcoming (90-120 days)</option>
+                  <option value="valid">✅ Valid</option>
+                  <option value="missing">⚪ Missing</option>
+                </select>
+              </div>
+
+              {hasFilter && (
+                <div className="flex items-end">
+                  <button
+                    onClick={clearFilters}
+                    className="h-9 cursor-pointer whitespace-nowrap rounded-lg border border-[#dc3545] bg-white px-3.5 text-[13px] text-[#dc3545] hover:bg-red-50"
+                  >
+                    ✕ Clear
+                  </button>
+                </div>
               )}
             </>
           )}
         </div>
+      </div>
 
-        {!selectedTraining ? (
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              padding: "60px",
-              textAlign: "center",
-              color: "#6c757d",
-            }}
-          >
-            เลือก training ด้านบนเพื่อดูรายการ
-          </div>
-        ) : loading ? (
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              padding: "60px",
-              textAlign: "center",
-              color: "#6c757d",
-            }}
-          >
-            Loading...
-          </div>
-        ) : data ? (
-          <>
-            {/* Stats cards */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, 1fr)",
-                gap: "1rem",
-                marginBottom: "1.5rem",
-              }}
-            >
-              {[
-                {
-                  icon: "🔴",
-                  value: data.stats.expired,
-                  label: "Expired",
-                  key: "expired",
-                  color: "#dc3545",
-                },
-                {
-                  icon: "🔥",
-                  value: data.stats.critical,
-                  label: "Critical (<30 days)",
-                  key: "critical",
-                  color: "#cc8400",
-                },
-                {
-                  icon: "🟡",
-                  value: data.stats.warning,
-                  label: "Warning (30-60 days)",
-                  key: "warning",
-                  color: "#0aa2c0",
-                },
-                {
-                  icon: "✅",
-                  value: data.stats.valid,
-                  label: "Valid",
-                  key: "valid",
-                  color: "#198754",
-                },
-                {
-                  icon: "⚪",
-                  value: data.stats.missing,
-                  label: "Missing (ยังไม่มี cert)",
-                  key: "missing",
-                  color: "#6c757d",
-                },
-              ].map((c) => (
+      {!selectedTraining ? (
+        placeholderBox("เลือก training ด้านบนเพื่อดูรายการ")
+      ) : loading ? (
+        placeholderBox("Loading...")
+      ) : data ? (
+        <>
+          {/* ════════ Stats — คลิกเพื่อกรอง ════════ */}
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-6">
+            {STAT_CARDS.map((c) => {
+              const active = statusFilter === c.key;
+              return (
                 <div
                   key={c.key}
-                  onClick={() =>
-                    setStatusFilter(statusFilter === c.key ? "all" : c.key)
-                  }
-                  style={{
-                    background: "#fff",
-                    border:
-                      statusFilter === c.key
-                        ? `2px solid ${c.color}`
-                        : "1px solid #dee2e6",
-                    borderRadius: "10px",
-                    padding: "16px 20px",
-                    cursor: "pointer",
-                  }}
+                  onClick={() => setStatusFilter(active ? "all" : c.key)}
+                  className={`${CARD} cursor-pointer px-3.5 py-2.5 transition-shadow hover:shadow-md ${
+                    active ? `ring-2 ${c.ring}` : ""
+                  }`}
                 >
-                  <div
-                    style={{
-                      fontSize: "28px",
-                      fontWeight: 700,
-                      color: c.color,
-                    }}
-                  >
-                    {c.value}
+                  <div className={`text-xl font-bold ${c.text}`}>
+                    {data.stats[c.key] ?? 0}
                   </div>
-                  <div style={{ fontSize: "12px", color: "#6c757d" }}>
+                  <div className="text-xs text-gray-500">
                     {c.icon} {c.label}
                   </div>
                 </div>
-              ))}
+              );
+            })}
+          </div>
+
+          {/* ════════ Request Training bar ════════ */}
+          {canRequestTraining && selectedEmployeeIds.length > 0 && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-[#ffe69c] bg-[#fff3cd] px-4 py-3">
+              <span className="text-[13px] text-[#664d03]">
+                เลือกไว้ <strong>{selectedEmployeeIds.length}</strong> คน สำหรับ
+                training นี้
+              </span>
+              <button
+                onClick={handleRequestTraining}
+                disabled={requesting}
+                className="cursor-pointer rounded-lg border-none bg-[#664d03] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#523e02] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {requesting ? "กำลังส่ง..." : "📢 แจ้ง HR ให้จัด Training"}
+              </button>
+            </div>
+          )}
+
+          {highlightedIds.length > 0 && (
+            <div className="mb-4 rounded-[10px] border border-[#b6e0f5] bg-sky-50 px-4 py-2.5 text-[13px] text-[#0a5a8a]">
+              📌 มาจากคำขอ Training ล่าสุด —
+              เน้นแถวสีเหลืองด้านล่างคือคนที่ถูกระบุใน request นี้ (
+              {highlightedIds.length} คน)
+            </div>
+          )}
+
+          {/* ════════ Worker list ════════ */}
+          <div className={`${CARD} overflow-hidden`}>
+            {/* ── ต่ำกว่า lg: การ์ด ── */}
+            <div className="lg:hidden">
+              <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-2.5 text-[13px]">
+                {canRequestTraining ? (
+                  <label className="flex cursor-pointer items-center gap-2 text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={toggleAllFiltered}
+                      className={CHECKBOX}
+                    />
+                    เลือกทั้งหมด
+                  </label>
+                ) : (
+                  <span />
+                )}
+                <span className="text-xs text-gray-500">
+                  {filteredWorkers.length} คน
+                </span>
+              </div>
+
+              {filteredWorkers.length === 0 ? (
+                <div className="p-10 text-center text-[13px] text-gray-500">
+                  ไม่พบ worker ตามเงื่อนไขที่เลือก
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2">
+                  {filteredWorkers.map((w) => (
+                    <label
+                      key={w.employeeId}
+                      data-worker-row={w.employeeId}
+                      className={`flex cursor-pointer gap-3 rounded-lg border border-gray-200 p-3 text-[13px] ${rowBg(w)}`}
+                    >
+                      {canRequestTraining && (
+                        <input
+                          type="checkbox"
+                          checked={selectedEmployeeIds.includes(w.employeeId)}
+                          onChange={() => toggleEmployee(w.employeeId)}
+                          className={`${CHECKBOX} mt-0.5 shrink-0`}
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-semibold">{w.fullName}</div>
+                            <div className="text-[11px] text-gray-500">
+                              {w.empId}
+                            </div>
+                          </div>
+                          <BucketBadge bucket={w.bucket} />
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {w.position || "—"}
+                          {w.department && (
+                            <span className="text-gray-400">
+                              {" "}
+                              · {w.department}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
+                          <span>
+                            Issued:{" "}
+                            <CertDate
+                              hasRecord={w.hasRecord}
+                              value={w.completedDate}
+                              emptyLabel={dash}
+                            />
+                          </span>
+                          <span>
+                            Expiry:{" "}
+                            <CertDate
+                              hasRecord={w.hasRecord}
+                              value={w.expiryDate}
+                              emptyLabel={noExpiry}
+                            />
+                          </span>
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Request Training bar — โผล่เมื่อเลือกคนไว้ */}
-            {canRequestTraining && selectedEmployeeIds.length > 0 && (
-              <div
-                style={{
-                  background: "#fff3cd",
-                  border: "1px solid #ffe69c",
-                  borderRadius: "10px",
-                  padding: "12px 16px",
-                  marginBottom: "1rem",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  flexWrap: "wrap",
-                  gap: "8px",
-                }}
-              >
-                <span style={{ fontSize: "13px", color: "#664d03" }}>
-                  เลือกไว้ <strong>{selectedEmployeeIds.length}</strong> คน
-                  สำหรับ training นี้
-                </span>
-                <button
-                  onClick={handleRequestTraining}
-                  disabled={requesting}
-                  style={{
-                    background: "#664d03",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "8px 16px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: requesting ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {requesting ? "กำลังส่ง..." : "📢 แจ้ง HR ให้จัด Training"}
-                </button>
-              </div>
-            )}
-
-            {highlightedIds.length > 0 && (
-              <div
-                style={{
-                  background: "#e9f5fb",
-                  border: "1px solid #b6e0f5",
-                  borderRadius: "10px",
-                  padding: "10px 16px",
-                  marginBottom: "1rem",
-                  fontSize: "13px",
-                  color: "#0a5a8a",
-                }}
-              >
-                📌 มาจากคำขอ Training ล่าสุด —
-                เน้นแถวสีเหลืองด้านล่างคือคนที่ถูกระบุใน request นี้ (
-                {highlightedIds.length} คน)
-              </div>
-            )}
-
-            {/* Worker list */}
-            <div
-              style={{
-                background: "#fff",
-                border: "1px solid #dee2e6",
-                borderRadius: "10px",
-                overflow: "hidden",
-              }}
-            >
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: "13px",
-                }}
-              >
+            {/* ── lg+: ตาราง ── */}
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="w-full border-collapse text-[13px]">
                 <thead>
-                  <tr style={{ borderBottom: "1px solid #dee2e6" }}>
+                  <tr className="border-b border-gray-200">
                     {canRequestTraining && (
-                      <th style={{ padding: "10px 14px", width: "36px" }}>
+                      <th className="w-9 px-3.5 py-2.5">
                         <input
                           type="checkbox"
                           checked={allFilteredSelected}
                           onChange={toggleAllFiltered}
-                          style={{
-                            width: "15px",
-                            height: "15px",
-                            cursor: "pointer",
-                          }}
+                          className={CHECKBOX}
                         />
                       </th>
                     )}
-                    {[
-                      "WORKER",
-                      "POSITION",
-                      "STATUS",
-                      "ISSUED DATE",
-                      "EXPIRY DATE",
-                    ].map((h) => (
+                    {TABLE_HEADERS.map((h) => (
                       <th
                         key={h}
-                        style={{
-                          padding: "10px 14px",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          color: "#6c757d",
-                          textAlign: "left",
-                        }}
+                        className="whitespace-nowrap px-3.5 py-2.5 text-left text-[11px] font-semibold text-gray-500"
                       >
                         {h}
                       </th>
@@ -544,87 +587,78 @@ export default function Certifications() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredWorkers.map((w) => {
-                    const checked = selectedEmployeeIds.includes(w.employeeId);
-                    return (
+                  {filteredWorkers.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={
+                          TABLE_HEADERS.length + (canRequestTraining ? 1 : 0)
+                        }
+                        className="p-10 text-center text-gray-500"
+                      >
+                        ไม่พบ worker ตามเงื่อนไขที่เลือก
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredWorkers.map((w) => (
                       <tr
                         key={w.employeeId}
-                        id={`worker-row-${w.employeeId}`}
-                        style={{
-                          borderBottom: "1px solid #f1f3f5",
-                          background: highlightedIds.includes(w.employeeId)
-                            ? "#fff3cd" // ← highlight คนที่ถูกขอ
-                            : checked
-                              ? "#fffbe6"
-                              : "#fff",
-                        }}
+                        data-worker-row={w.employeeId}
+                        className={`border-b border-gray-100 ${rowBg(w)}`}
                       >
                         {canRequestTraining && (
-                          <td style={{ padding: "12px 14px" }}>
+                          <td className="px-3.5 py-3">
                             <input
                               type="checkbox"
-                              checked={checked}
+                              checked={selectedEmployeeIds.includes(
+                                w.employeeId,
+                              )}
                               onChange={() => toggleEmployee(w.employeeId)}
-                              style={{
-                                width: "15px",
-                                height: "15px",
-                                cursor: "pointer",
-                              }}
+                              className={CHECKBOX}
                             />
                           </td>
                         )}
-                        <td style={{ padding: "12px 14px" }}>
-                          <div style={{ fontWeight: 600 }}>{w.fullName}</div>
-                          <div style={{ fontSize: "11px", color: "#6c757d" }}>
-                            {w.empCode}
+                        <td className="px-3.5 py-3">
+                          <div className="font-semibold">{w.fullName}</div>
+                          <div className="text-[11px] text-gray-500">
+                            {w.empId}
                           </div>
                         </td>
-                        <td style={{ padding: "12px 14px", color: "#6c757d" }}>
+                        <td className="px-3.5 py-3 text-gray-500">
                           <div>{w.position || "—"}</div>
                           {w.department && (
-                            <div
-                              style={{
-                                fontSize: "11px",
-                                color: "#adb5bd",
-                                marginTop: "2px",
-                              }}
-                            >
+                            <div className="mt-0.5 text-[11px] text-gray-400">
                               {w.department}
                             </div>
                           )}
                         </td>
-                        <td style={{ padding: "12px 14px" }}>
-                          {bucketBadge(w.bucket)}
+                        <td className="px-3.5 py-3">
+                          <BucketBadge bucket={w.bucket} />
                         </td>
-                        <td style={{ padding: "12px 14px", color: "#6c757d" }}>
-                          {!w.hasRecord ? (
-                            <span style={{ color: "#adb5bd" }}>N/A</span>
-                          ) : w.completedDate ? (
-                            new Date(w.completedDate).toLocaleDateString()
-                          ) : (
-                            <span style={{ color: "#adb5bd" }}>—</span>
-                          )}
+                        <td className="whitespace-nowrap px-3.5 py-3 text-gray-500">
+                          <CertDate
+                            hasRecord={w.hasRecord}
+                            value={w.completedDate}
+                            emptyLabel={dash}
+                          />
                         </td>
-                        <td style={{ padding: "12px 14px", color: "#6c757d" }}>
-                          {!w.hasRecord ? (
-                            <span style={{ color: "#adb5bd" }}>N/A</span>
-                          ) : w.expiryDate ? (
-                            new Date(w.expiryDate).toLocaleDateString()
-                          ) : (
-                            <span style={{ color: "#198754", fontWeight: 500 }}>
-                              ไม่มีวันหมดอายุ
-                            </span>
-                          )}
+                        <td className="whitespace-nowrap px-3.5 py-3 text-gray-500">
+                          <CertDate
+                            hasRecord={w.hasRecord}
+                            value={w.expiryDate}
+                            emptyLabel={noExpiry}
+                          />
                         </td>
                       </tr>
-                    );
-                  })}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
-          </>
-        ) : null}
-      </div>
+          </div>
+        </>
+      ) : (
+        placeholderBox("โหลดข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง")
+      )}
     </div>
   );
 }

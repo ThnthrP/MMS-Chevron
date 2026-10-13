@@ -4,31 +4,735 @@ import Select from "react-select";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
-import { createPortal } from "react-dom";
-import ExcelJS from "exceljs";
-import { saveAs } from "file-saver";
+import {
+  PrintModal,
+  ResumePage,
+  SkillMatrixTable,
+  exportSkillMatrixExcel,
+  fmtShort,
+  calcAge,
+  EXCEL_BTN,
+} from "../../components/print/PrintDocs";
 
 // อายุเกษียณ (ปรับได้ตามนโยบายบริษัท)
 const RETIREMENT_AGE = 60;
 
-// ── roster maps ──
-const HEALTH_MAP = {
-  low: { label: "ต่ำ", bg: "#d1e7dd", color: "#0f5132" },
-  medium: { label: "ปานกลาง", bg: "#fff3cd", color: "#664d03" },
-  high: { label: "สูง", bg: "#f8d7da", color: "#842029" },
-};
 const SSE_LABEL = { new_sse: "NEW SSE", sse1: "SSE1", sse2: "SSE2" };
 
-const GENDER_LABEL = { male: "Male", female: "Female", other: "Other" };
+const MEDICAL_STATUS_LABEL = {
+  passed: "Fit",
+  pending: "Pending",
+  failed: "Unfit",
+  not_required: "Fit w/ Restriction",
+};
 
-export default function Allocation() {
-  const { backendUrl, userData } = useContext(AppContent);
-  const navigate = useNavigate();
+const EMP_TYPES = [
+  ["permanent", "Permanent"],
+  ["nonpermanent", "Non-Permanent"],
+  ["new_sse", "New SSE"],
+  ["all", "All"],
+];
+const SORTS = [
+  ["dayoff", "Rest Days"],
+  ["match", "% Match"],
+];
 
-  const canManageAllocation = ["admin", "manpower"].includes(
-    userData?.role?.name,
+// เหตุผลขออนุมัติ PE — "other" ต้องพิมพ์เอง
+const EXCEPTION_REASONS = [
+  ["no_full_match", "ไม่มีคนที่ครบ 100% ว่างในช่วงนี้"],
+  ["experienced", "มีประสบการณ์ในตำแหน่งนี้"],
+  ["training_booked", "HR นัดอบรม training ที่ขาดแล้ว"],
+  ["other", "อื่นๆ"],
+];
+
+// ══════════════════════════════════════════════════════════
+// Tailwind class ที่ใช้ซ้ำ
+// ══════════════════════════════════════════════════════════
+const CARD = "overflow-hidden rounded-[10px] border border-gray-200 bg-white";
+const CARD_HEAD =
+  "border-b border-gray-200 px-4 py-2.5 text-sm font-bold sm:px-5";
+const CARD_BODY = "px-4 py-3.5 sm:px-5";
+const LABEL =
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
+// z-index กำหนดแยกต่อหัวคอลัมน์ใน WorkerTable (หัวที่ตรึงซ้ายต้องอยู่บนสุด)
+const TH =
+  "sticky top-0 bg-white px-3 py-2.5 text-[11px] font-semibold tracking-[0.5px] text-gray-500 shadow-[inset_0_-1px_0_#dee2e6]";
+const TD = "px-3 py-3 align-middle";
+// ตรึง checkbox + NAME ไว้ซ้ายเวลาเลื่อนตารางแนวนอน
+// bg-inherit = ใช้สีพื้นของแถว (รวมสีตอน hover / ตอนเลือก) กันข้อความคอลัมน์อื่นลอดข้างใต้
+// เส้นแบ่งใช้ ::after เพราะ border ของตารางแบบ border-collapse ไม่เลื่อนตาม sticky
+const STICKY_CHECK = "sticky left-0 z-[2] bg-inherit";
+const NAME_DIVIDER =
+  "after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-gray-200 after:content-['']";
+const STICKY_NAME = `sticky left-9 z-[2] bg-inherit ${NAME_DIVIDER}`;
+const MODAL_HEAD =
+  "flex shrink-0 items-center justify-between gap-3 px-4 py-3.5 text-white sm:px-6";
+const MODAL_FOOT =
+  "flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-4 py-3.5 sm:px-6";
+const CLOSE_X =
+  "shrink-0 cursor-pointer border-none bg-transparent text-xl leading-none text-white";
+const BTN_OUTLINE =
+  "cursor-pointer rounded-lg border border-gray-200 bg-white px-5 py-2 text-[13px] hover:bg-gray-50";
+const BTN_GREEN =
+  "cursor-pointer rounded-lg border-none bg-[#198754] font-semibold text-white hover:bg-[#157347] disabled:cursor-not-allowed disabled:opacity-60";
+const LINK_TEXT =
+  "cursor-pointer border-none bg-transparent p-0 font-semibold text-blue-600 hover:underline";
+const EXPORT_BTN =
+  "flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border-none bg-white py-[9px] text-[13px] font-semibold text-blue-600 shadow-[0_1px_3px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.08)] transition-all hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(0,0,0,0.18),0_2px_3px_rgba(0,0,0,0.1)] disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400 disabled:shadow-none disabled:hover:translate-y-0";
+const DASH = <span className="text-gray-400">—</span>;
+
+// ── สี badge ──
+const TONE = {
+  green: "bg-[#d1e7dd] text-[#0f5132]",
+  yellow: "bg-[#fff3cd] text-[#664d03]",
+  orange: "bg-[#ffe0b2] text-[#8a4b00]",
+  red: "bg-[#f8d7da] text-[#842029]",
+  darkRed: "bg-[#f5c2c7] text-[#58151c]",
+  blue: "bg-[#cfe2ff] text-[#084298]",
+  gray: "bg-gray-100 text-gray-500",
+  grayDark: "bg-gray-100 text-gray-700",
+};
+
+// ── react-select (ใช้ styles API ของไลบรารี — ใส่ className ตรงๆ ไม่ได้) ──
+const SELECT_PORTAL = {
+  menuPortalTarget: typeof document !== "undefined" ? document.body : null,
+  menuPosition: "fixed",
+};
+
+const customSelectStyles = {
+  control: (b) => ({
+    ...b,
+    borderColor: "#dee2e6",
+    borderRadius: "8px",
+    minHeight: "36px",
+    fontSize: "13px",
+    boxShadow: "none",
+    "&:hover": { borderColor: "#86b7fe" },
+  }),
+  option: (b) => ({ ...b, fontSize: "13px" }),
+  placeholder: (b) => ({ ...b, fontSize: "13px", color: "#6c757d" }),
+  menuPortal: (b) => ({ ...b, zIndex: 9999 }),
+  singleValue: (b) => ({
+    ...b,
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+    overflow: "visible",
+    lineHeight: "1.3",
+  }),
+  valueContainer: (b) => ({ ...b, padding: "6px 8px" }),
+};
+
+const projectSelectStyles = {
+  ...customSelectStyles,
+  menu: (b) => ({ ...b, minWidth: "min(560px, calc(100vw - 40px))" }),
+  menuList: (b) => ({ ...b, maxHeight: "360px" }),
+};
+
+const quickSelectStyles = {
+  control: (b) => ({
+    ...b,
+    minHeight: "38px",
+    fontSize: "13px",
+    borderColor: "#dee2e6",
+    boxShadow: "none",
+    "&:hover": { borderColor: "#86b7fe" },
+  }),
+  option: (b) => ({ ...b, fontSize: "13px" }),
+  placeholder: (b) => ({ ...b, fontSize: "13px", color: "#6c757d" }),
+  multiValue: (b) => ({ ...b, background: "#e7f1ff" }),
+  multiValueLabel: (b) => ({
+    ...b,
+    color: "#0d6efd",
+    fontSize: "12px",
+    fontWeight: 600,
+  }),
+  menuPortal: (b) => ({ ...b, zIndex: 9999 }),
+};
+
+// ══════════════════════════════════════════════════════════
+// helpers
+// ══════════════════════════════════════════════════════════
+const healthRiskDisplay = (raw) => {
+  const n = (raw || "").toLowerCase();
+  if (n.includes("significant"))
+    return { label: "Significant", tone: "darkRed" };
+  if (n.includes("moderate")) return { label: "Moderate", tone: "yellow" };
+  if (n.includes("high")) return { label: "High", tone: "red" };
+  if (n.includes("low")) return { label: "Low", tone: "green" };
+  if (n.includes("pending")) return { label: "Pending", tone: "gray" };
+  return { label: raw, tone: "grayDark" };
+};
+
+const getRetirementInfo = (birthDate) => {
+  if (!birthDate) return null;
+  const dob = new Date(birthDate);
+  if (isNaN(dob.getTime())) return null;
+  const now = new Date();
+  const retireDate = new Date(dob);
+  retireDate.setFullYear(dob.getFullYear() + RETIREMENT_AGE);
+  let monthsLeft =
+    (retireDate.getFullYear() - now.getFullYear()) * 12 +
+    (retireDate.getMonth() - now.getMonth());
+  if (now.getDate() > retireDate.getDate()) monthsLeft -= 1;
+  if (monthsLeft <= 0) return { label: "⚠ Over retirement age", tone: "red" };
+  if (monthsLeft <= 6)
+    return { label: `⚠ Retires in ${monthsLeft} mo`, tone: "orange" };
+  if (monthsLeft <= 12)
+    return { label: `⚠ Retires in ${monthsLeft} mo`, tone: "yellow" };
+  return null;
+};
+
+const daysUntil = (d) =>
+  Math.ceil((new Date(d).getTime() - Date.now()) / 86400000);
+
+const fmtBanDate = (d) => new Date(d).toLocaleDateString("en-GB");
+
+const matchColor = (pct) =>
+  pct === 100
+    ? "text-[#198754]"
+    : pct >= 70
+      ? "text-[#cc8400]"
+      : "text-[#dc3545]";
+
+const workerLabel = (w) =>
+  w.empId ? `${w.empId} : ${w.fullName}` : w.fullName;
+
+// ══════════════════════════════════════════════════════════
+// small components (อยู่นอก Allocation — ไม่ถูกสร้างใหม่ทุก render)
+// ══════════════════════════════════════════════════════════
+function Pill({ tone, title, className = "", children }) {
+  return (
+    <span
+      title={title}
+      className={`whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ${TONE[tone]} ${className}`}
+    >
+      {children}
+    </span>
   );
+}
 
+function MiniTag({ tone, title, children }) {
+  return (
+    <span
+      title={title}
+      className={`inline-block rounded px-[5px] text-[10px] font-bold ${TONE[tone]}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+// รหัสพนักงาน + ตำแหน่งปัจจุบัน (แสดงตำแหน่งเฉพาะกรณีไม่ตรงกับ position request)
+function EmpMeta({ emp, requestPositionId }) {
+  const otherPosition =
+    emp?.position?.name && emp.positionId !== requestPositionId
+      ? emp.position.name
+      : null;
+  return (
+    <div className="text-[11px] text-gray-500">
+      {emp?.empId || "—"}
+      {otherPosition && (
+        <span
+          className="text-[#b45309]"
+          title="ตำแหน่งปัจจุบันของพนักงานไม่ตรงกับ position request"
+        >
+          {" "}
+          · ตำแหน่งปัจจุบัน {otherPosition}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// หนึ่งคนในกล่องสถานะ PE: "รหัส ชื่อ %" บรรทัดเดียว
+// ตำแหน่งที่ไม่ตรง / เหตุผลที่ไม่อนุมัติ ขึ้นบรรทัดล่างเฉพาะกรณีที่มี
+function PeRow({ emp, requestPositionId, pct, note }) {
+  const otherPosition =
+    emp?.position?.name && emp.positionId !== requestPositionId
+      ? emp.position.name
+      : null;
+  return (
+    <div className="mt-1">
+      <div className="flex flex-wrap items-baseline gap-x-1.5 text-[13px]">
+        <span className="text-[11px] text-gray-500">{emp?.empId || "—"}</span>
+        <span className="font-semibold text-gray-900">{emp?.fullName}</span>
+        {pct != null && (
+          <span className="text-[11px] font-semibold text-[#cc8400]">
+            {pct}%
+          </span>
+        )}
+      </div>
+      {otherPosition && (
+        <div
+          className="text-[11px] text-[#b45309]"
+          title="ตำแหน่งปัจจุบันของพนักงานไม่ตรงกับ position request"
+        >
+          ตำแหน่งปัจจุบัน {otherPosition}
+        </div>
+      )}
+      {note && <div className="break-words text-[11px]">เหตุผล: {note}</div>}
+    </div>
+  );
+}
+
+// ── modal กลางจอ (Health Note / Eligibility / ตะกร้า) ──
+function Modal({ onClose, maxW, z = "z-[999999]", children }) {
+  return (
+    <div
+      className={`fixed inset-0 ${z} flex items-center justify-center bg-black/50 p-3 sm:p-5`}
+      onClick={onClose}
+    >
+      <div
+        className={`flex max-h-[85vh] w-full ${maxW} flex-col overflow-hidden rounded-[10px] bg-white`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ModalHeader({ title, onClose, bg = "bg-[#1e3a5f]" }) {
+  return (
+    <div className={`${MODAL_HEAD} ${bg}`}>
+      <span className="min-w-0 text-base font-semibold">{title}</span>
+      <button
+        type="button"
+        onClick={onClose}
+        title="ปิด (Esc)"
+        className={CLOSE_X}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+// ── ช่องเลือกแบบปุ่มกลุ่ม (Type / Sort by) ──
+function ButtonGroup({ label, options, value, onChange, activeClass }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs text-gray-500">{label}</span>
+      {options.map(([key, text]) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          className={`cursor-pointer rounded-md border px-3 py-[5px] text-xs font-semibold ${
+            value === key
+              ? activeClass
+              : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// ตาราง Worker — ใช้ร่วมกันทั้งตารางหลัก และตาราง "ค้นหา Worker คนใดก็ได้"
+// ══════════════════════════════════════════════════════════
+// % MATCH / REST DAYS อยู่ต่อจากชื่อ — เป็นตัวตัดสินว่าเลือกได้ไหม และใช้เรียงลำดับ
+// (จอเล็กไม่ต้องเลื่อนไปขวาเพื่อกด "ขออนุมัติ PE")
+const COLUMNS = [
+  ["NAME", "text-left", "w-[26%]"],
+  ["% MATCH", "text-center", "w-[17%]"],
+  ["REST DAYS", "text-center", "w-[13%]"],
+  ["RETIREMENT", "text-center", "w-[13%]"],
+  ["HEALTH RISK", "text-left", "w-[15%]"],
+  ["MEDICAL", "text-left", "w-[16%]"],
+];
+
+function WorkerTable({ leadHeader, children }) {
+  return (
+    <div className="max-h-[560px] overflow-auto">
+      <table className="w-full min-w-[760px] table-fixed border-collapse text-[13px]">
+        <colgroup>
+          <col className="w-9" />
+          {COLUMNS.map(([h, , w]) => (
+            <col key={h} className={w} />
+          ))}
+        </colgroup>
+        <thead>
+          <tr>
+            <th className={`${TH} left-0 z-[3]`}>{leadHeader}</th>
+            {COLUMNS.map(([h, align]) => (
+              <th
+                key={h}
+                className={`${TH} ${align} ${
+                  h === "NAME" ? `left-9 z-[3] ${NAME_DIVIDER}` : "z-[1]"
+                }`}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function EmptyRow({ children }) {
+  return (
+    <tr>
+      <td colSpan={7} className="p-10 text-center text-[13px] text-gray-500">
+        {children}
+      </td>
+    </tr>
+  );
+}
+
+function NameCell({ w, info, dim, onViewGap }) {
+  return (
+    <td className={`${TD} ${STICKY_NAME}`}>
+      {/* opacity ใส่ที่เนื้อหา ไม่ใส่ที่ td — td ที่ตรึงไว้ต้องทึบ */}
+      <div className={dim ? "opacity-60" : ""}>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewGap();
+            }}
+            title="คลิกดู eligibility"
+            className="cursor-pointer border-none bg-transparent p-0 text-left font-semibold text-gray-900 hover:text-blue-600"
+          >
+            {w.fullName}
+          </button>
+          {info?.isPermanent && (
+            <MiniTag tone="green" title="Permanent worker">
+              PERM
+            </MiniTag>
+          )}
+          {info?.sseLevel && SSE_LABEL[info.sseLevel] && (
+            <MiniTag
+              tone={info.sseCompleted ? "blue" : "yellow"}
+              title={info.sseCompleted ? "SSE Completed" : "SSE not completed"}
+            >
+              {SSE_LABEL[info.sseLevel]}
+              {info.sseCompleted ? " ✓" : ""}
+            </MiniTag>
+          )}
+        </div>
+        <div className="text-[11px] text-gray-500">
+          {w.empId}
+          {w.position?.name ? ` · ${w.position.name}` : ""}
+        </div>
+        {info?.activeBan && (
+          <div className="mt-1">
+            <MiniTag tone="red" title={info.activeBan.reason || "Banned"}>
+              🚫 Banned until {fmtBanDate(info.activeBan.bannedUntil)}
+            </MiniTag>
+          </div>
+        )}
+      </div>
+    </td>
+  );
+}
+
+function RetirementCell({ birthDate }) {
+  const retire = getRetirementInfo(birthDate);
+  const age = calcAge(birthDate);
+  return (
+    <td className={`${TD} whitespace-nowrap text-center`}>
+      {retire ? (
+        <Pill
+          tone={retire.tone}
+          title={age !== null ? `อายุ ${age} ปี` : undefined}
+        >
+          {retire.label}
+        </Pill>
+      ) : age !== null ? (
+        <span
+          className="text-[11px] text-gray-500"
+          title={`อายุ ${age} ปี · เกษียณตอน ${RETIREMENT_AGE} (ยังเหลือ >12 เดือน)`}
+        >
+          อายุ {age}
+        </span>
+      ) : (
+        <span className="text-gray-400" title="ไม่มีข้อมูลวันเกิด (birthDate)">
+          —
+        </span>
+      )}
+    </td>
+  );
+}
+
+function HealthCell({ info, onOpenNote }) {
+  const health = info?.healthRisk ? healthRiskDisplay(info.healthRisk) : null;
+  const note = info?.latestExamNote || info?.healthNote || null;
+  return (
+    <td className={TD}>
+      {health || note ? (
+        <div className="flex max-w-[120px] flex-col gap-0.5">
+          {health && (
+            <Pill tone={health.tone} className="self-start">
+              {health.label}
+            </Pill>
+          )}
+          {note && (
+            <button
+              type="button"
+              title={note}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenNote(note);
+              }}
+              className="max-w-[120px] cursor-pointer truncate border-none bg-transparent p-0 text-left text-[10px] text-gray-500 underline decoration-dotted"
+            >
+              📄 {note}
+            </button>
+          )}
+        </div>
+      ) : (
+        DASH
+      )}
+    </td>
+  );
+}
+
+// ── Medical: badge "ใบด่วนแค่ไหน" + ผลตรวจจริง + ลิงก์แจ้ง HR ──
+function MedicalCell({ expiry, status, canRequest, inCart, onToggleRequest }) {
+  const requestLink = (reason) =>
+    canRequest && (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleRequest(reason);
+        }}
+        title="แจ้ง HR ให้จัด Medical Check-up"
+        className={`mt-0.5 cursor-pointer border-none bg-transparent p-0 text-left text-[10px] font-semibold ${
+          inCart ? "text-[#664d03]" : "text-blue-600 hover:underline"
+        }`}
+      >
+        {inCart ? "☑ อยู่ในคำขอแล้ว" : "📨 แจ้ง HR"}
+      </button>
+    );
+
+  // Unfit ต้องขึ้นเสมอ ไม่ว่าใบจะยังไม่หมดอายุก็ตาม (ตรวจแล้วไม่ผ่านจริง)
+  if (status === "failed") {
+    return (
+      <td className={TD}>
+        <div className="flex flex-col items-start gap-0.5">
+          <Pill tone="red">Unfit</Pill>
+          {expiry && (
+            <span className="text-[10px] text-gray-500">
+              Exp {fmtShort(expiry)}
+            </span>
+          )}
+        </div>
+      </td>
+    );
+  }
+
+  const valid = expiry && !isNaN(new Date(expiry).getTime());
+
+  // ไม่มีใบตรวจ — ให้แจ้ง HR ได้ (เดิมขึ้นแค่ "—" กดแจ้งไม่ได้)
+  if (!valid) {
+    return (
+      <td className={TD}>
+        <div className="flex flex-col items-start gap-0.5">
+          <span className="text-[11px] text-gray-400">ไม่มีข้อมูล</span>
+          {requestLink("no_record")}
+        </div>
+      </td>
+    );
+  }
+
+  const days = daysUntil(expiry);
+  const [label, tone] =
+    days < 0
+      ? ["Overdue", "red"]
+      : days <= 30
+        ? ["Due soon", "yellow"]
+        : ["Valid", "green"];
+  const statusText = MEDICAL_STATUS_LABEL[status] || null;
+
+  return (
+    <td className={TD}>
+      <div className="flex flex-col items-start gap-0.5">
+        <Pill tone={tone}>{label}</Pill>
+        {statusText && (
+          <span className="text-[10px] font-semibold text-gray-700">
+            {statusText}
+          </span>
+        )}
+        <span className="text-[10px] text-gray-500">
+          Exp {fmtShort(expiry)}
+        </span>
+        {days <= 30 && requestLink(days < 0 ? "overdue" : "due_soon")}
+      </div>
+    </td>
+  );
+}
+
+function DayOffCell({ dayOff, platform }) {
+  let content;
+  if (dayOff === null || dayOff === undefined) {
+    content = DASH;
+  } else if (dayOff < 0) {
+    content = (
+      <span
+        className="font-semibold text-[#dc3545]"
+        title={`ยังไม่ถึง D-MOB อีก ${Math.abs(dayOff)} วัน (ยังอยู่บนแท่น)`}
+      >
+        {dayOff}d
+      </span>
+    );
+  } else {
+    const color =
+      dayOff > 30
+        ? "text-[#198754]"
+        : dayOff >= 15
+          ? "text-blue-600"
+          : "text-gray-500";
+    content = (
+      <span
+        className={`font-semibold ${color}`}
+        title={`พักมาแล้ว ${dayOff} วัน (พ้น D-MOB)`}
+      >
+        {dayOff}d off
+      </span>
+    );
+  }
+  return (
+    <td
+      className={`${TD} whitespace-nowrap text-center`}
+      title={platform ? `แท่นล่าสุด: ${platform}` : ""}
+    >
+      {content}
+    </td>
+  );
+}
+
+function ExceptionStatus({ exception, onRequest }) {
+  const status = exception?.status;
+  if (status === "pending")
+    return (
+      <span
+        className="text-[10px] font-semibold text-[#b08900]"
+        title="ส่งคำขอแล้ว รอ PE พิจารณา"
+      >
+        ⏳ รอ PE อนุมัติ
+      </span>
+    );
+  if (status === "approved")
+    return (
+      <span
+        className="text-[10px] font-semibold text-[#198754]"
+        title={
+          exception.decisionNote || "PE อนุมัติแล้ว — อยู่ในหน้า Mobilization"
+        }
+      >
+        ✓ PE อนุมัติแล้ว
+      </span>
+    );
+  return (
+    <>
+      {status === "rejected" ? (
+        <span
+          className="text-[10px] font-semibold text-[#dc3545]"
+          title={exception.decisionNote || ""}
+        >
+          ✕ PE ไม่อนุมัติ
+        </span>
+      ) : (
+        <span className="text-[10px] font-semibold text-[#dc3545]">
+          ต้องครบ 100%
+        </span>
+      )}
+      {onRequest && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRequest();
+          }}
+          className="cursor-pointer rounded-md border border-[#cc8400] bg-[#fff8e1] px-2 py-[2px] text-[10px] font-semibold text-[#8a5a00] hover:bg-[#fff3cd]"
+        >
+          {status === "rejected" ? "ขออนุมัติใหม่" : "ขออนุมัติ PE"}
+        </button>
+      )}
+    </>
+  );
+}
+
+// state: "need_request" | "loading" | "none" | "ready"
+function MatchCell({
+  state = "ready",
+  pct,
+  missing,
+  onViewGap,
+  exception,
+  onRequestException,
+}) {
+  let content;
+  if (state === "need_request") {
+    content = (
+      <span className="text-[10px] text-gray-400">เลือก position ก่อน</span>
+    );
+  } else if (state === "loading") {
+    content = <span className="text-gray-400">...</span>;
+  } else if (state === "none") {
+    content = DASH;
+  } else if (pct === null || pct === undefined) {
+    content = (
+      <span
+        title="ยังไม่มี Training Matrix สำหรับตำแหน่งนี้ + Client นี้ — ไปที่ Manage Positions → Matrix Editor เพื่อเพิ่ม"
+        className="cursor-help text-[11px] font-semibold text-[#b08900]"
+      >
+        ⚠ No Matrix
+      </span>
+    );
+  } else {
+    content = (
+      <div className="flex flex-col items-center gap-0.5">
+        <span
+          className={`text-[13px] font-bold ${matchColor(pct)}`}
+          title={missing?.join(", ")}
+        >
+          {pct}% Match
+        </span>
+        {pct !== 100 && (
+          <ExceptionStatus
+            exception={exception}
+            onRequest={onRequestException}
+          />
+        )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onViewGap();
+          }}
+          className={`${LINK_TEXT} text-[11px]`}
+        >
+          🔍 ดู Gap →
+        </button>
+      </div>
+    );
+  }
+  return (
+    <td className={`${TD} whitespace-nowrap px-2 text-center`}>{content}</td>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// main
+// ══════════════════════════════════════════════════════════
+export default function Allocation() {
+  const { backendUrl } = useContext(AppContent);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const canManageAllocation = true;
+
+  // ── Project / Request ──
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useStickyState(
     "alloc_projectId",
@@ -40,19 +744,38 @@ export default function Allocation() {
     "",
   );
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [positionFilterId, setPositionFilterId] = useStickyState(
+    "alloc_positionFilterId",
+    "",
+  );
+  const [allPositions, setAllPositions] = useState([]);
+
+  // ── Matching workers ──
   const [workers, setWorkers] = useState([]);
   const [selectedWorkerIds, setSelectedWorkerIds] = useState([]);
   const [loadingWorkers, setLoadingWorkers] = useState(false);
-  const [shortlist, setShortlist] = useState([]);
-  const [loadingShortlist, setLoadingShortlist] = useState(false);
-  const [eligibilityModal, setEligibilityModal] = useState(null);
-  const [eligibilityLoading, setEligibilityLoading] = useState(false);
-  const [activeClientTab, setActiveClientTab] = useState(0);
-  const [completedExpanded, setCompletedExpanded] = useState({});
-  const [approvedExpanded, setApprovedExpanded] = useState({});
   const [workerSearch, setWorkerSearch] = useState("");
   const [sortBy, setSortBy] = useStickyState("alloc_sortBy", "dayoff");
   const [empType, setEmpType] = useStickyState("alloc_empType", "permanent");
+  const [addingShortlist, setAddingShortlist] = useState(false);
+  const findReqIdRef = useRef(0);
+
+  // ── Quick search (ค้นหา Worker คนใดก็ได้) ──
+  const [allWorkers, setAllWorkers] = useState([]);
+  const [quickSearchOpen, setQuickSearchOpen] = useState(false);
+  const [quickPickedWorkers, setQuickPickedWorkers] = useState([]);
+  const [quickMatchResults, setQuickMatchResults] = useState({});
+  const [loadingQuickMatch, setLoadingQuickMatch] = useState(false);
+
+  // ── Shortlist ──
+  const [shortlist, setShortlist] = useState([]);
+  const [loadingShortlist, setLoadingShortlist] = useState(false);
+  const [approvedExpanded, setApprovedExpanded] = useState({});
+
+  // ── Modals ──
+  const [eligibilityModal, setEligibilityModal] = useState(null);
+  const [eligibilityLoading, setEligibilityLoading] = useState(false);
+  const [activeClientTab, setActiveClientTab] = useState(0);
   const [healthNoteModal, setHealthNoteModal] = useState(null);
   const [cvModal, setCvModal] = useState(null);
   const [cvLoading, setCvLoading] = useState(false);
@@ -61,65 +784,24 @@ export default function Allocation() {
   const [skillMatrixModal, setSkillMatrixModal] = useState(null);
   const [skillMatrixLoading, setSkillMatrixLoading] = useState(false);
 
-  const [quickMatchResults, setQuickMatchResults] = useState({});
-  const [loadingQuickMatch, setLoadingQuickMatch] = useState(false);
-  const [quickPickedWorkers, setQuickPickedWorkers] = useState([]); // worker objects ที่เลือกจาก quick search (คงอยู่แม้ลบคำค้นหา)
+  // ── Training cart ──
+  const [trainingCart, setTrainingCart] = useState([]);
+  const [sendingCart, setSendingCart] = useState(false);
+  const [cartReviewOpen, setCartReviewOpen] = useState(false);
 
-  const [searchParams] = useSearchParams();
+  // ── Medical cart ──
+  const [medicalCart, setMedicalCart] = useState([]);
+  const [sendingMedicalCart, setSendingMedicalCart] = useState(false);
+  const [medicalCartReviewOpen, setMedicalCartReviewOpen] = useState(false);
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
-
-  useEffect(() => {
-    const pid = searchParams.get("projectId");
-    if (pid) {
-      setSelectedProjectId(pid);
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (!selectedProjectId) {
-      setSelectedProject(null);
-      return;
-    }
-    const proj = projects.find((p) => p.id === selectedProjectId);
-    setSelectedProject(proj || null);
-    if (proj) {
-      fetchShortlist(selectedProjectId);
-      if (selectedRequestId && !selectedRequest) {
-        const req = proj.requests?.find((r) => r.id === selectedRequestId);
-        if (req) setSelectedRequest(req);
-      }
-    }
-  }, [selectedProjectId, projects]);
-
-  // ── ตั้งชื่อไฟล์ PDF ตอน Print/Save ให้ตรงกับประเภทเอกสาร ──
-  useEffect(() => {
-    const originalTitle = document.title;
-
-    if (cvModal) {
-      document.title = `CV_Summary_${cvModal.project?.name || "Project"}`;
-    } else if (rosterModal) {
-      document.title = `Roster_MOB-DMOB_${rosterModal.project?.name || "Project"}`;
-    } else if (skillMatrixModal) {
-      document.title = `Skill_Matrix_${skillMatrixModal.project?.name || "Project"}`;
-    }
-
-    return () => {
-      document.title = originalTitle;
-    };
-  }, [cvModal, rosterModal, skillMatrixModal]);
-
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (restoredRef.current) return;
-    if (selectedProject && selectedRequest) {
-      restoredRef.current = true;
-      handleFindWorkers();
-    }
-  }, [selectedProject, selectedRequest]);
-
+  const [exceptions, setExceptions] = useState({}); // { [employeeId]: { status, decisionNote, ... } }
+  const [exceptionModal, setExceptionModal] = useState(null); // worker object
+  const [exceptionReasonType, setExceptionReasonType] = useState(""); // key ใน EXCEPTION_REASONS
+  const [exceptionReason, setExceptionReason] = useState(""); // รายละเอียด / ข้อความกรณี "อื่นๆ"
+  const [sendingException, setSendingException] = useState(false);
+  // ===========================================================
+  // Fetch
+  // ===========================================================
   const fetchProjects = async () => {
     try {
       const res = await axios.get(`${backendUrl}/api/allocation/projects`, {
@@ -146,513 +828,249 @@ export default function Allocation() {
     }
   };
 
-  const handleFindWorkers = async () => {
-    if (!selectedRequest) return;
+  const fetchExceptions = async (requestId) => {
+    if (!requestId) {
+      setExceptions({});
+      return;
+    }
+    try {
+      const res = await axios.get(
+        `${backendUrl}/api/match-exceptions/request/${requestId}`,
+        { withCredentials: true },
+      );
+      setExceptions(Object.fromEntries(res.data.map((e) => [e.employeeId, e])));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleFindWorkers = async (
+    requestOverride,
+    projectOverride,
+    positionIdOverride,
+  ) => {
+    const req = requestOverride ?? selectedRequest;
+    const proj = projectOverride ?? selectedProject;
+    const posId = positionIdOverride ?? req?.position?.id;
+    if (!req) return;
+    // กันผลเก่ามาทับผลใหม่ เวลาเปลี่ยนตำแหน่งเร็วๆ ติดกัน
+    const reqId = ++findReqIdRef.current;
     try {
       setLoadingWorkers(true);
       setSelectedWorkerIds([]);
       const res = await axios.get(`${backendUrl}/api/allocation/workers`, {
         withCredentials: true,
         params: {
-          positionId: selectedRequest.position?.id,
-          requestId: selectedRequest.id,
-          contractId: selectedProject?.contractId,
+          positionId: posId,
+          matrixPositionId: req.position?.id,
+          requestId: req.id,
+          contractId: proj?.contractId,
         },
       });
-      setWorkers(res.data);
+      if (reqId === findReqIdRef.current) setWorkers(res.data);
     } catch (error) {
       console.error(error);
     } finally {
-      setLoadingWorkers(false);
+      if (reqId === findReqIdRef.current) setLoadingWorkers(false);
     }
   };
 
-  const toggleWorker = (id) => {
-    setSelectedWorkerIds((prev) =>
-      prev.includes(id) ? prev.filter((w) => w !== id) : [...prev, id],
-    );
-  };
+  useEffect(() => {
+    fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // ── toggle worker จาก quick search (เก็บ object เต็มไว้ ไม่ใช่แค่ id เพื่อให้แสดงผลได้แม้ค้นหาใหม่/ลบคำค้นหา ──
-  const toggleQuickWorker = (w) => {
-    setSelectedWorkerIds((prev) =>
-      prev.includes(w.id) ? prev.filter((id) => id !== w.id) : [...prev, w.id],
-    );
-    setQuickPickedWorkers((prev) => {
-      const exists = prev.some((p) => p.id === w.id);
-      if (exists) return prev.filter((p) => p.id !== w.id);
-      return [...prev, w];
-    });
-  };
+  useEffect(() => {
+    fetchExceptions(selectedRequest?.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRequest?.id]);
 
+  useEffect(() => {
+    axios
+      .get(`${backendUrl}/api/positions/manage`, { withCredentials: true })
+      .then((res) => setAllPositions(res.data || []))
+      .catch(() =>
+        axios
+          .get(`${backendUrl}/api/positions`, { withCredentials: true })
+          .then((res) => setAllPositions(res.data || []))
+          .catch((err) => console.error(err)),
+      );
+    axios
+      .get(`${backendUrl}/api/workers`, { withCredentials: true })
+      .then((res) => setAllWorkers(res.data || []))
+      .catch((err) => console.error(err));
+  }, [backendUrl]);
+
+  useEffect(() => {
+    const pid = searchParams.get("projectId");
+    if (pid) setSelectedProjectId(pid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setSelectedProject(null);
+      return;
+    }
+    const proj = projects.find((p) => p.id === selectedProjectId);
+    setSelectedProject(proj || null);
+    if (proj) {
+      fetchShortlist(selectedProjectId);
+      if (selectedRequestId && !selectedRequest) {
+        const req = proj.requests?.find((r) => r.id === selectedRequestId);
+        if (req) setSelectedRequest(req);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId, projects]);
+
+  // โหลด worker อัตโนมัติครั้งแรก เมื่อ restore project/request จาก localStorage ได้
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    if (selectedProject && selectedRequest) {
+      restoredRef.current = true;
+      const posId = positionFilterId || selectedRequest.position?.id;
+      if (!positionFilterId)
+        setPositionFilterId(selectedRequest.position?.id || "");
+      handleFindWorkers(selectedRequest, selectedProject, posId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject, selectedRequest]);
+
+  // % Match ของคนที่เลือกจาก quick search
+  useEffect(() => {
+    const employeeIds = quickPickedWorkers.map((w) => w.id);
+    if (!selectedRequest || employeeIds.length === 0) {
+      setQuickMatchResults({});
+      return;
+    }
+    let ignore = false;
+    setLoadingQuickMatch(true);
+    axios
+      .get(`${backendUrl}/api/allocation/workers`, {
+        withCredentials: true,
+        params: {
+          positionId: selectedRequest.position?.id,
+          requestId: selectedRequest.id,
+          contractId: selectedProject?.contractId,
+          employeeIds: employeeIds.join(","),
+        },
+      })
+      .then((res) => {
+        if (ignore) return;
+        const map = {};
+        res.data.forEach((w) => (map[w.id] = w));
+        setQuickMatchResults(map);
+      })
+      .catch((err) => console.error(err))
+      .finally(() => {
+        if (!ignore) setLoadingQuickMatch(false);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [backendUrl, quickPickedWorkers, selectedRequest, selectedProject]);
+
+  // ชื่อไฟล์ตอน Save PDF
+  useEffect(() => {
+    const originalTitle = document.title;
+    if (cvModal) {
+      document.title = `CV_Summary_${cvModal.project?.name || "Project"}`;
+    } else if (rosterModal) {
+      document.title = `Roster_MOB-DMOB_${rosterModal.project?.name || "Project"}`;
+    } else if (skillMatrixModal) {
+      document.title = `Skill_Matrix_${skillMatrixModal.project?.name || "Project"}`;
+    }
+    return () => {
+      document.title = originalTitle;
+    };
+  }, [cvModal, rosterModal, skillMatrixModal]);
+
+  // Esc ปิด modal บนสุดทีละตัว (modal พิมพ์เอกสารจัดการ Esc เองใน PrintModal)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (exceptionModal && !sendingException) setExceptionModal(null);
+      else if (medicalCartReviewOpen) setMedicalCartReviewOpen(false);
+      else if (cartReviewOpen) setCartReviewOpen(false);
+      else if (healthNoteModal) setHealthNoteModal(null);
+      else if (eligibilityModal) setEligibilityModal(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    medicalCartReviewOpen,
+    cartReviewOpen,
+    healthNoteModal,
+    eligibilityModal,
+    exceptionModal,
+    sendingException,
+  ]);
+
+  // ===========================================================
+  // Derived
+  // ===========================================================
   const permCount = workers.filter((w) => w.isPermanent).length;
+  const newSseCount = workers.filter((w) => w.sseLevel === "new_sse").length;
 
-  // ← ใหม่: เลือกได้เฉพาะคนที่ % Match = 100 เท่านั้น
-  const isWorkerSelectable = (w) => w.matchPct === 100;
+  const isWorkerSelectable = (w) =>
+    !w.activeBan &&
+    (w.matchPct === 100 || exceptions[w.id]?.status === "approved");
 
   const displayedWorkers = [...workers]
     .filter((w) => {
-      if (empType === "permanent" && !w.isPermanent) return false;
-      if (empType === "nonpermanent" && w.isPermanent) return false;
+      if (
+        empType === "permanent" &&
+        (!w.isPermanent || w.sseLevel === "new_sse")
+      )
+        return false;
+      if (
+        empType === "nonpermanent" &&
+        (w.isPermanent || w.sseLevel === "new_sse")
+      )
+        return false;
+      if (empType === "new_sse" && w.sseLevel !== "new_sse") return false;
       const q = workerSearch.trim().toLowerCase();
       if (!q) return true;
       return (
-        (w.fullName || "").toLowerCase().includes(q) ||
-        (w.empCode || "").toLowerCase().includes(q)
+        String(w.fullName || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(w.empCode || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(w.empId || "")
+          .toLowerCase()
+          .includes(q)
       );
     })
     .sort((a, b) => {
       if (!!a.isPermanent !== !!b.isPermanent) return a.isPermanent ? -1 : 1;
-      if (sortBy === "dayoff") {
-        const av = a.dayOff ?? -Infinity;
-        const bv = b.dayOff ?? -Infinity;
-        return bv - av;
-      }
+      if (sortBy === "dayoff")
+        return (b.dayOff ?? -Infinity) - (a.dayOff ?? -Infinity);
       return (b.matchPct ?? -1) - (a.matchPct ?? -1);
     });
 
-  // ใหม่
   const selectableDisplayedWorkers =
     displayedWorkers.filter(isWorkerSelectable);
-
   const allDisplayedSelected =
     selectableDisplayedWorkers.length > 0 &&
     selectableDisplayedWorkers.every((w) => selectedWorkerIds.includes(w.id));
-
-  const toggleAll = () => {
-    if (allDisplayedSelected) {
-      const ids = new Set(selectableDisplayedWorkers.map((w) => w.id));
-      setSelectedWorkerIds((prev) => prev.filter((id) => !ids.has(id)));
-    } else {
-      setSelectedWorkerIds((prev) => [
-        ...new Set([...prev, ...selectableDisplayedWorkers.map((w) => w.id)]),
-      ]);
-    }
-  };
-
-  const handleAddToShortlist = async () => {
-    if (!selectedRequest?.id || selectedWorkerIds.length === 0) return;
-    try {
-      await axios.post(
-        `${backendUrl}/api/allocation/shortlist`,
-        { requestId: selectedRequest.id, employeeIds: selectedWorkerIds },
-        { withCredentials: true },
-      );
-      setSelectedWorkerIds([]);
-      setQuickPickedWorkers([]); // ← เพิ่มใหม่ เคลียร์ตาราง preview ด้วย
-      fetchShortlist(selectedProjectId);
-      handleFindWorkers();
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const handleApprove = async (candidateIds, requestId) => {
-    if (!candidateIds?.length) return;
-    try {
-      await axios.put(
-        `${backendUrl}/api/allocation/approve`,
-        { candidateIds, requestId },
-        { withCredentials: true },
-      );
-      fetchShortlist(selectedProjectId);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const handleUnapprove = async (candidateIds, requestId) => {
-    if (!candidateIds?.length) return;
-    try {
-      await axios.put(
-        `${backendUrl}/api/allocation/unapprove`,
-        { candidateIds, requestId },
-        { withCredentials: true },
-      );
-      fetchShortlist(selectedProjectId);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const handleRemoveFromShortlist = async (candidateId) => {
-    try {
-      await axios.delete(
-        `${backendUrl}/api/allocation/candidate/${candidateId}`,
-        { withCredentials: true },
-      );
-      fetchShortlist(selectedProjectId);
-      if (selectedRequest) handleFindWorkers();
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const handleGenerateCv = async () => {
-    if (!selectedProjectId || totalShortlisted === 0) return;
-    try {
-      setCvLoading(true);
-      const res = await axios.get(
-        `${backendUrl}/api/allocation/cv-summary/${selectedProjectId}`,
-        { withCredentials: true },
-      );
-      setCvModal(res.data);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setCvLoading(false);
-    }
-  };
-
-  const handleGenerateRoster = async () => {
-    if (!selectedProjectId || totalShortlisted === 0) return;
-    try {
-      setRosterLoading(true);
-      const res = await axios.get(
-        `${backendUrl}/api/allocation/roster/${selectedProjectId}`,
-        { withCredentials: true },
-      );
-      const rowsWithEditable = res.data.rows.map((r) => ({
-        ...r,
-        from: r.from ?? "",
-        remark: r.remark ?? "",
-      }));
-      setRosterModal({ ...res.data, rows: rowsWithEditable });
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setRosterLoading(false);
-    }
-  };
-
-  const handleGenerateSkillMatrix = async () => {
-    if (!selectedProjectId || totalShortlisted === 0) return;
-    try {
-      setSkillMatrixLoading(true);
-      const res = await axios.get(
-        `${backendUrl}/api/allocation/skill-matrix/${selectedProjectId}`,
-        { withCredentials: true },
-      );
-      setSkillMatrixModal(res.data);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setSkillMatrixLoading(false);
-    }
-  };
-
-  const handleExportSkillMatrixExcel = async () => {
-    if (!skillMatrixModal) return;
-
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet("Skill Matrix");
-
-    const trainings = skillMatrixModal.trainings;
-    const rows = skillMatrixModal.rows;
-
-    // ── หัวเรื่อง ──
-    ws.mergeCells(1, 1, 1, 2 + trainings.length);
-    const titleCell = ws.getCell(1, 1);
-    titleCell.value = `${skillMatrixModal.project?.name ?? ""} — ${skillMatrixModal.project?.client ?? ""}`;
-    titleCell.font = { bold: true, size: 14, color: { argb: "FF198754" } };
-
-    const headerRowIndex = 3;
-
-    // ── หัวตาราง: Name, Position, แล้วตามด้วย training (หมุนเฉียง) ──
-    ws.getCell(headerRowIndex, 1).value = "Name";
-    ws.getCell(headerRowIndex, 2).value = "Position";
-    trainings.forEach((tr, i) => {
-      const cell = ws.getCell(headerRowIndex, 3 + i);
-      cell.value = tr.name;
-      cell.alignment = {
-        textRotation: 45,
-        vertical: "bottom",
-        horizontal: "left",
-      };
-      cell.font = { bold: true, size: 9 };
-    });
-
-    ws.getRow(headerRowIndex).height = 110;
-    ws.getColumn(1).width = 22;
-    ws.getColumn(2).width = 26;
-    for (let i = 0; i < trainings.length; i++) {
-      ws.getColumn(3 + i).width = 5;
-    }
-
-    // ── border + สีพื้นหลังหัวตาราง ──
-    for (let c = 1; c <= 2 + trainings.length; c++) {
-      const cell = ws.getCell(headerRowIndex, c);
-      cell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FFF1F3F5" },
-      };
-      cell.border = {
-        top: { style: "thin" },
-        bottom: { style: "thin" },
-        left: { style: "thin" },
-        right: { style: "thin" },
-      };
-    }
-
-    // ── ข้อมูลแต่ละแถว ──
-    rows.forEach((r, ri) => {
-      const rowIndex = headerRowIndex + 1 + ri;
-      ws.getCell(rowIndex, 1).value = r.fullName;
-      ws.getCell(rowIndex, 1).font = { bold: true };
-      ws.getCell(rowIndex, 2).value = r.position;
-
-      r.cells.forEach((cell, ci) => {
-        const excelCell = ws.getCell(rowIndex, 3 + ci);
-        excelCell.value = skillCellLabel(cell);
-        excelCell.alignment = { horizontal: "center" };
-        excelCell.font = {
-          size: 9,
-          color:
-            cell.status === "overdue"
-              ? { argb: "FFDC3545" }
-              : { argb: "FF212529" },
-        };
-      });
-
-      for (let c = 1; c <= 2 + trainings.length; c++) {
-        ws.getCell(rowIndex, c).border = {
-          top: { style: "thin", color: { argb: "FFDEE2E6" } },
-          bottom: { style: "thin", color: { argb: "FFDEE2E6" } },
-          left: { style: "thin", color: { argb: "FFDEE2E6" } },
-          right: { style: "thin", color: { argb: "FFDEE2E6" } },
-        };
-      }
-    });
-
-    // ── freeze แถวหัว + คอลัมน์ Name/Position ──
-    ws.views = [{ state: "frozen", xSplit: 2, ySplit: headerRowIndex }];
-
-    const buffer = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type: "application/octet-stream",
-    });
-    saveAs(
-      blob,
-      `SkillMatrix_${skillMatrixModal.project?.name || "export"}.xlsx`,
-    );
-  };
-
-  const updateRosterField = (employeeId, field, value) => {
-    setRosterModal((prev) => ({
-      ...prev,
-      rows: prev.rows.map((r) =>
-        r.employeeId === employeeId ? { ...r, [field]: value } : r,
-      ),
-    }));
-  };
-
-  const fmtShort = (d) =>
-    d
-      ? new Date(d).toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })
-      : "—";
-
-  // เหมือน fmtShort แต่ไม่มี dash ระหว่างวัน-เดือน-ปี (ให้ตรงกับสไตล์เรซูเม่จริง เช่น "3-May-1983")
-  const fmtResumeDate = (d) => {
-    if (!d) return "—";
-    const dt = new Date(d);
-    if (isNaN(dt.getTime())) return "—";
-    const day = dt.getDate();
-    const month = dt.toLocaleDateString("en-GB", { month: "long" });
-    const year = dt.getFullYear();
-    return `${day}-${month}-${year}`;
-  };
-
-  const calcAge = (birthDate) => {
-    if (!birthDate) return null;
-    const b = new Date(birthDate);
-    if (isNaN(b.getTime())) return null;
-    return Math.floor((Date.now() - b.getTime()) / (365.25 * 86400000));
-  };
-
-  const skillCellLabel = (cell) => {
-    if (!cell.completedDate && !cell.expiryDate && !cell.status) return "N/A";
-    if (cell.status === "if_required") return "if required";
-    if (cell.status === "overdue") return "Over Due";
-    if (cell.expiryDate) return fmtShort(cell.expiryDate);
-    if (cell.completedDate) return fmtShort(cell.completedDate);
-    return "Pending";
-  };
-
-  const handleViewEligibility = async (worker) => {
-    try {
-      setEligibilityLoading(true);
-      setActiveClientTab(0);
-      setCompletedExpanded({});
-      const res = await axios.get(
-        `${backendUrl}/api/allocation/eligibility/${worker.id}`,
-        {
-          withCredentials: true,
-          params: selectedRequest
-            ? {
-                positionId: selectedRequest.position?.id,
-                contractId: selectedProject?.contractId,
-              }
-            : undefined,
-        },
-      );
-      setEligibilityModal(res.data);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setEligibilityLoading(false);
-    }
-  };
-
-  const getMobilizationBadge = (s) => {
-    if (s === "ready")
-      return { bg: "#d1e7dd", color: "#0f5132", label: "Ready" };
-    if (s === "on_site")
-      return { bg: "#cfe2ff", color: "#084298", label: "On-Site" };
-    if (s === "pending")
-      return { bg: "#fff3cd", color: "#664d03", label: "Pending" };
-    return { bg: "#e9ecef", color: "#6c757d", label: s || "—" };
-  };
-
-  const formatExperience = (startWorkDate) => {
-    if (!startWorkDate) return null;
-    const start = new Date(startWorkDate);
-    if (isNaN(start.getTime())) return null;
-    const now = new Date();
-    let months =
-      (now.getFullYear() - start.getFullYear()) * 12 +
-      (now.getMonth() - start.getMonth());
-    if (now.getDate() < start.getDate()) months -= 1;
-    if (months < 0) return null;
-    const years = Math.floor(months / 12);
-    const remMonths = months % 12;
-    if (years === 0) return `${remMonths} mo`;
-    if (remMonths === 0) return `${years} yr`;
-    return `${years}y ${remMonths}m`;
-  };
-
-  const getRetirementInfo = (birthDate) => {
-    if (!birthDate) return null;
-    const dob = new Date(birthDate);
-    if (isNaN(dob.getTime())) return null;
-    const now = new Date();
-    const retireDate = new Date(dob);
-    retireDate.setFullYear(dob.getFullYear() + RETIREMENT_AGE);
-    let monthsLeft =
-      (retireDate.getFullYear() - now.getFullYear()) * 12 +
-      (retireDate.getMonth() - now.getMonth());
-    if (now.getDate() > retireDate.getDate()) monthsLeft -= 1;
-    if (monthsLeft <= 0) {
-      return {
-        label: "⚠ Over retirement age",
-        bg: "#f8d7da",
-        color: "#842029",
-      };
-    }
-    if (monthsLeft <= 6) {
-      return {
-        label: `⚠ Retires in ${monthsLeft} mo`,
-        bg: "#ffe0b2",
-        color: "#8a4b00",
-      };
-    }
-    if (monthsLeft <= 12) {
-      return {
-        label: `⚠ Retires in ${monthsLeft} mo`,
-        bg: "#fff3cd",
-        color: "#664d03",
-      };
-    }
-    return null;
-  };
-
-  const renderDayOff = (dayOff) => {
-    if (dayOff === null || dayOff === undefined)
-      return <span style={{ color: "#adb5bd" }}>—</span>;
-    if (dayOff < 0)
-      return (
-        <span
-          style={{ color: "#dc3545", fontWeight: 600 }}
-          title={`ยังไม่ถึง D-MOB อีก ${Math.abs(dayOff)} วัน (ยังอยู่บนแท่น)`}
-        >
-          {dayOff}d
-        </span>
-      );
-    const color =
-      dayOff > 30 ? "#198754" : dayOff >= 15 ? "#0d6efd" : "#6c757d";
-    return (
-      <span
-        style={{ color, fontWeight: 600 }}
-        title={`พักมาแล้ว ${dayOff} วัน (พ้น D-MOB)`}
-      >
-        {dayOff}d off
-      </span>
-    );
-  };
-
-  const renderMedical = (expiry) => {
-    if (!expiry) return <span style={{ color: "#adb5bd" }}>—</span>;
-    const d = new Date(expiry);
-    if (isNaN(d.getTime())) return <span style={{ color: "#adb5bd" }}>—</span>;
-    const days = Math.ceil((d.getTime() - Date.now()) / 86400000);
-    let label, bg, color;
-    if (days < 0) {
-      label = "Overdue";
-      bg = "#f8d7da";
-      color = "#842029";
-    } else if (days <= 30) {
-      label = "Due soon";
-      bg = "#fff3cd";
-      color = "#664d03";
-    } else {
-      label = "Fit";
-      bg = "#d1e7dd";
-      color = "#0f5132";
-    }
-    return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-start",
-          gap: "2px",
-        }}
-      >
-        <span
-          style={{
-            background: bg,
-            color,
-            borderRadius: "6px",
-            padding: "2px 8px",
-            fontSize: "11px",
-            fontWeight: 600,
-          }}
-        >
-          {label}
-        </span>
-        <span style={{ fontSize: "10px", color: "#6c757d" }}>
-          Exp{" "}
-          {d.toLocaleDateString("en-GB", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })}
-        </span>
-      </div>
-    );
-  };
 
   const totalShortlisted = shortlist.reduce(
     (sum, r) => sum + (r.candidates?.length ?? 0),
     0,
   );
 
-  // ── เช็คว่าทุก position ใน shortlist approve ครบหมดแล้วหรือยัง ──
-  // ต้องมีอย่างน้อย 1 request ที่มี candidate อยู่ และไม่มี proposed ค้างเลยสักคน
+  // Step 9 มีอะไรให้แสดงไหม (shortlist หรือสถานะคำขอ PE)
+  const hasStep9Content = shortlist.some(
+    (r) =>
+      r.candidates?.length ||
+      r.peExceptions?.pending?.length ||
+      r.peExceptions?.rejected?.length,
+  );
+
   const requestsWithCandidates = shortlist.filter(
     (r) => (r.candidates?.length ?? 0) > 0,
   );
@@ -670,6 +1088,12 @@ export default function Allocation() {
     ? Math.max(0, selectedRequest.quantity - currentRequestShortlisted)
     : 0;
 
+  // สรุปคำขออนุมัติ PE ของ position request ที่เลือกอยู่
+  const exceptionCounts = Object.values(exceptions).reduce(
+    (acc, e) => ({ ...acc, [e.status]: (acc[e.status] || 0) + 1 }),
+    { pending: 0, approved: 0, rejected: 0 },
+  );
+
   const requestOptions =
     selectedProject?.requests?.map((r) => ({
       value: r.id,
@@ -677,150 +1101,368 @@ export default function Allocation() {
       request: r,
     })) ?? [];
 
-  // ← ใหม่: format วันที่แบบสั้น สำหรับ disambiguate project ที่ชื่อซ้ำกัน
-  const fmtProjectDate = (d) =>
-    d
-      ? new Date(d).toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })
-      : null;
-
-  // ← ใหม่: options สำหรับ Select Project (react-select แทน native <select>)
   const projectOptions = projects.map((p) => {
     const codePart = p.masterProjectRecord?.projectCode
       ? `[${p.masterProjectRecord.projectCode}] `
       : "";
-    const startPart = fmtProjectDate(p.startDate);
-    const locationPart = p.location || null;
-    const idTail = p.id.slice(-6); // ← fallback สุดท้าย กันซ้ำเป๊ะ
-
-    // ── รวม location + startDate เข้าด้วยกัน ไม่ใช่เลือกอันใดอันหนึ่ง ──
     const parts = [];
-    if (locationPart) parts.push(locationPart);
-    if (startPart) parts.push(`Start ${startPart}`);
-
-    const disambiguator = parts.length > 0 ? parts.join(" · ") : `#${idTail}`;
-
+    if (p.location) parts.push(p.location);
+    if (p.startDate) parts.push(`Start ${fmtShort(p.startDate)}`);
+    const disambiguator =
+      parts.length > 0 ? parts.join(" · ") : `#${p.id.slice(-6)}`;
     return {
       value: p.id,
       label: `${codePart}${p.name} — ${p.contract?.client?.name} · ${disambiguator}`,
-      project: p,
     };
   });
 
-  const customSelectStyles = {
-    control: (provided) => ({
-      ...provided,
-      borderColor: "#dee2e6",
-      borderRadius: "8px",
-      minHeight: "36px",
-      fontSize: "13px",
-      boxShadow: "none",
-      "&:hover": { borderColor: "#86b7fe" },
-    }),
-    option: (provided) => ({ ...provided, fontSize: "13px" }),
-    placeholder: (provided) => ({
-      ...provided,
-      fontSize: "13px",
-      color: "#6c757d",
-    }),
-    menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+  const positionFilterOptions = allPositions.map((p) => ({
+    value: p.id,
+    label: `${p.name}${p._count ? ` (${p._count.employees})` : ""}`,
+  }));
+
+  const quickSearchOptions = useMemo(
+    () =>
+      [...allWorkers]
+        .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || ""))
+        .map((w) => ({ value: w.id, label: workerLabel(w), worker: w })),
+    [allWorkers],
+  );
+
+  const clientName = selectedProject?.contract?.client?.name;
+
+  // ===========================================================
+  // Handlers — Workers / Shortlist
+  // ===========================================================
+  const toggleWorker = (id) =>
+    setSelectedWorkerIds((prev) =>
+      prev.includes(id) ? prev.filter((w) => w !== id) : [...prev, id],
+    );
+
+  const toggleAll = () => {
+    const ids = selectableDisplayedWorkers.map((w) => w.id);
+    if (allDisplayedSelected) {
+      const set = new Set(ids);
+      setSelectedWorkerIds((prev) => prev.filter((id) => !set.has(id)));
+    } else {
+      setSelectedWorkerIds((prev) => [...new Set([...prev, ...ids])]);
+    }
   };
 
-  // ← ใหม่: เหมือน customSelectStyles แต่ขยาย menu ให้กว้างกว่ากล่อง control
-  //    เพราะ label ยาว (มี code + name + client + start date)
-  const projectSelectStyles = {
-    ...customSelectStyles,
-    menu: (provided) => ({
-      ...provided,
-      minWidth: "560px", // ← กว้างกว่ากล่องด้านบน กันตัวหนังสือตัดคำ
-    }),
-    menuList: (provided) => ({
-      ...provided,
-      maxHeight: "360px", // ← เผื่อ project มีเยอะ scroll ได้
-    }),
+  const removeQuickWorker = (id) =>
+    setQuickPickedWorkers((prev) => prev.filter((p) => p.id !== id));
+
+  // ids = รายชื่อที่จะเพิ่ม (ตารางหลัก = ที่ติ๊กไว้, quick search = คนที่เลือกในช่องค้นหา)
+  const handleAddToShortlist = async (ids) => {
+    if (!selectedRequest?.id || ids.length === 0 || addingShortlist) return;
+
+    // เฉพาะคนที่ eligible จริง (100% match + ไม่ถูกแบน)
+    const eligibleIds = ids.filter((id) => {
+      const w = workers.find((x) => x.id === id) || quickMatchResults[id];
+      return w && isWorkerSelectable(w);
+    });
+
+    if (eligibleIds.length === 0) {
+      alert(
+        "ไม่มีคนที่เลือกได้ — ต้อง % Match ครบ 100% หรือ PE อนุมัติแล้ว และไม่ถูกแบน",
+      );
+      return;
+    }
+    if (eligibleIds.length < ids.length) {
+      const skip = ids.length - eligibleIds.length;
+      if (
+        !window.confirm(
+          `มี ${skip} คนที่ยังเลือกไม่ได้ (% Match ไม่ครบและ PE ยังไม่อนุมัติ หรือถูกแบน) จะถูกข้าม — ดำเนินการต่อ?`,
+        )
+      )
+        return;
+    }
+
+    try {
+      setAddingShortlist(true);
+      await axios.post(
+        `${backendUrl}/api/allocation/shortlist`,
+        { requestId: selectedRequest.id, employeeIds: eligibleIds },
+        { withCredentials: true },
+      );
+      setSelectedWorkerIds([]);
+      setQuickPickedWorkers([]);
+      fetchShortlist(selectedProjectId);
+      handleFindWorkers();
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.message || "เพิ่มเข้า Shortlist ไม่สำเร็จ");
+    } finally {
+      setAddingShortlist(false);
+    }
   };
 
-  // ── styles สำหรับ Resume (CV modal ใหม่) ──
-  const resumeSectionTitle = {
-    background: "#e6fbfb",
-    border: "1px solid #1e3a5f",
-    borderTop: "none",
-    padding: "6px 12px",
-    fontWeight: 700,
-    fontSize: "13px",
-    color: "#1e3a5f",
-  };
-  const resumeTd1 = {
-    padding: "4px 8px",
-    fontSize: "12px",
-    fontWeight: 700,
-    color: "#1e3a5f",
-    verticalAlign: "top",
-    whiteSpace: "nowrap",
-  };
-  const resumeTd2 = {
-    padding: "4px 8px",
-    fontSize: "12px",
-    color: "#212529",
-    verticalAlign: "top",
+  const callShortlistApi = async (fn, failMsg) => {
+    try {
+      await fn();
+      fetchShortlist(selectedProjectId);
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.message || failMsg);
+    }
   };
 
-  const [trainingCart, setTrainingCart] = useState([]); // [{employeeId, employeeName, trainingName, trainingId, clientName}]
-  const [globalTrainingMap, setGlobalTrainingMap] = useState({}); // name -> id
-  const [sendingCart, setSendingCart] = useState(false);
+  const handleApprove = (candidateIds, requestId) =>
+    callShortlistApi(
+      () =>
+        axios.put(
+          `${backendUrl}/api/allocation/approve`,
+          { candidateIds, requestId },
+          { withCredentials: true },
+        ),
+      "Approve ไม่สำเร็จ",
+    );
 
-  const [cartReviewOpen, setCartReviewOpen] = useState(false);
+  const handleUnapprove = (candidateIds, requestId) =>
+    callShortlistApi(
+      () =>
+        axios.put(
+          `${backendUrl}/api/allocation/unapprove`,
+          { candidateIds, requestId },
+          { withCredentials: true },
+        ),
+      "ยกเลิก Approve ไม่สำเร็จ",
+    );
 
-  const removeFromCart = (employeeId, trainingId) => {
+  const handleRemoveFromShortlist = (candidateId) =>
+    callShortlistApi(async () => {
+      await axios.delete(
+        `${backendUrl}/api/allocation/candidate/${candidateId}`,
+        { withCredentials: true },
+      );
+      if (selectedRequest) handleFindWorkers();
+    }, "เอาออกจาก Shortlist ไม่สำเร็จ");
+
+  // ===========================================================
+  // Handlers — ขออนุมัติ PE (% Match ไม่ครบ)
+  // ===========================================================
+  const openExceptionModal = (w) => {
+    setExceptionReasonType("");
+    setExceptionReason("");
+    setExceptionModal(w);
+  };
+
+  // รวมเป็นข้อความเดียวส่งให้ backend: "เหตุผล — รายละเอียด" หรือข้อความที่พิมพ์เอง
+  const composeExceptionReason = () => {
+    const detail = exceptionReason.trim();
+    if (exceptionReasonType === "other") return detail;
+    const label = EXCEPTION_REASONS.find(
+      ([k]) => k === exceptionReasonType,
+    )?.[1];
+    if (!label) return "";
+    return detail ? `${label} — ${detail}` : label;
+  };
+  const exceptionReasonReady = composeExceptionReason() !== "";
+
+  const submitException = async () => {
+    if (!exceptionModal || !selectedRequest || sendingException) return;
+    try {
+      setSendingException(true);
+      const res = await axios.post(
+        `${backendUrl}/api/match-exceptions`,
+        {
+          requestId: selectedRequest.id,
+          employeeIds: [exceptionModal.id],
+          reason: composeExceptionReason(),
+        },
+        { withCredentials: true },
+      );
+      if (res.data.created > 0) {
+        alert(`ส่งคำขอให้ PE แล้ว — ${exceptionModal.fullName}`);
+      } else {
+        alert(res.data.skipped?.[0]?.reason || "ไม่ได้ส่งคำขอ");
+      }
+      setExceptionModal(null);
+      fetchExceptions(selectedRequest.id);
+      fetchShortlist(selectedProjectId); // อัปเดตจำนวน "รอ PE" ใน Step 9
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || "ส่งคำขอไม่สำเร็จ");
+    } finally {
+      setSendingException(false);
+    }
+  };
+
+  // ===========================================================
+  // Handlers — เอกสาร (CV / Roster / Skill Matrix)
+  // ===========================================================
+  const loadDoc = async (path, setLoading, onData, failMsg) => {
+    if (!selectedProjectId || totalShortlisted === 0) return;
+    try {
+      setLoading(true);
+      const res = await axios.get(
+        `${backendUrl}/api/allocation/${path}/${selectedProjectId}`,
+        { withCredentials: true },
+      );
+      onData(res.data);
+    } catch (error) {
+      console.error(error);
+      alert(failMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGenerateCv = () =>
+    loadDoc(
+      "cv-summary",
+      setCvLoading,
+      setCvModal,
+      "โหลด CV Summary ไม่สำเร็จ",
+    );
+
+  const handleGenerateRoster = () =>
+    loadDoc(
+      "roster",
+      setRosterLoading,
+      (data) =>
+        setRosterModal({
+          ...data,
+          rows: data.rows.map((r) => ({
+            ...r,
+            from: r.from ?? "",
+            remark: r.remark ?? "",
+          })),
+        }),
+      "โหลด Roster ไม่สำเร็จ",
+    );
+
+  const handleGenerateSkillMatrix = () =>
+    loadDoc(
+      "skill-matrix",
+      setSkillMatrixLoading,
+      setSkillMatrixModal,
+      "โหลด Skill Matrix ไม่สำเร็จ",
+    );
+
+  const handleExportSkillMatrixExcel = () => {
+    if (!skillMatrixModal) return;
+    const { project, trainings, rows } = skillMatrixModal;
+    exportSkillMatrixExcel({
+      title: `${project?.name ?? ""} — ${project?.client ?? ""}`,
+      trainings,
+      rows,
+      fileName: `SkillMatrix_${project?.name || "export"}.xlsx`,
+    });
+  };
+
+  const updateRosterField = (employeeId, field, value) =>
+    setRosterModal((prev) => ({
+      ...prev,
+      rows: prev.rows.map((r) =>
+        r.employeeId === employeeId ? { ...r, [field]: value } : r,
+      ),
+    }));
+
+  const handleViewEligibility = async (worker) => {
+    try {
+      setEligibilityLoading(true);
+      setActiveClientTab(0);
+      const res = await axios.get(
+        `${backendUrl}/api/allocation/eligibility/${worker.id}`,
+        {
+          withCredentials: true,
+          params: selectedRequest
+            ? {
+                positionId: selectedRequest.position?.id,
+                contractId: selectedProject?.contractId,
+              }
+            : undefined,
+        },
+      );
+      setEligibilityModal(res.data);
+    } catch (error) {
+      console.error(error);
+      alert("โหลดข้อมูล Eligibility ไม่สำเร็จ");
+    } finally {
+      setEligibilityLoading(false);
+    }
+  };
+
+  // ===========================================================
+  // Handlers — ตะกร้า Training / Medical
+  // ===========================================================
+  const isInTrainingCart = (employeeId, trainingId) =>
+    trainingCart.some(
+      (c) => c.employeeId === employeeId && c.trainingId === trainingId,
+    );
+
+  const toggleTrainingCartItem = (item, cName) => {
+    if (!canManageAllocation || !eligibilityModal) return;
+    const { employeeId, fullName } = eligibilityModal;
+    setTrainingCart((prev) => {
+      const exists = prev.some(
+        (c) => c.employeeId === employeeId && c.trainingId === item.trainingId,
+      );
+      if (exists)
+        return prev.filter(
+          (c) =>
+            !(c.employeeId === employeeId && c.trainingId === item.trainingId),
+        );
+      return [
+        ...prev,
+        {
+          employeeId,
+          employeeName: fullName,
+          trainingName: item.name,
+          trainingId: item.trainingId,
+          clientName: cName,
+        },
+      ];
+    });
+  };
+
+  const addAllMissingToCart = (missing, cName) => {
+    if (!canManageAllocation || !eligibilityModal) return;
+    const { employeeId, fullName } = eligibilityModal;
+    setTrainingCart((prev) => {
+      const existing = new Set(
+        prev
+          .filter((c) => c.employeeId === employeeId)
+          .map((c) => c.trainingId),
+      );
+      const additions = missing
+        .filter((item) => !existing.has(item.trainingId))
+        .map((item) => ({
+          employeeId,
+          employeeName: fullName,
+          trainingName: item.name,
+          trainingId: item.trainingId,
+          clientName: cName,
+        }));
+      return [...prev, ...additions];
+    });
+  };
+
+  // ล้างเฉพาะ training ของกลุ่มนี้ ของพนักงานคนนี้ — ไม่แตะรายการอื่น
+  const removeAllMissingFromCart = (missing) => {
+    if (!eligibilityModal) return;
+    const ids = new Set(missing.map((item) => item.trainingId));
+    setTrainingCart((prev) =>
+      prev.filter(
+        (c) =>
+          !(
+            c.employeeId === eligibilityModal.employeeId &&
+            ids.has(c.trainingId)
+          ),
+      ),
+    );
+  };
+
+  const removeFromTrainingCart = (employeeId, trainingId) =>
     setTrainingCart((prev) =>
       prev.filter(
         (c) => !(c.employeeId === employeeId && c.trainingId === trainingId),
       ),
     );
-  };
-
-  useEffect(() => {
-    axios
-      .get(`${backendUrl}/api/global-trainings`, { withCredentials: true })
-      .then((res) => {
-        const map = {};
-        (res.data || []).forEach((t) => (map[t.name] = t.id));
-        setGlobalTrainingMap(map);
-      })
-      .catch((err) => console.error(err));
-  }, [backendUrl]);
-
-  const addToCart = (employeeId, employeeName, trainingName, clientName) => {
-    const trainingId = globalTrainingMap[trainingName];
-    if (!trainingId) return; // เผื่อชื่อไม่ match (ไม่ควรเกิด แต่กันไว้)
-    setTrainingCart((prev) => {
-      const exists = prev.some(
-        (c) => c.employeeId === employeeId && c.trainingId === trainingId,
-      );
-      if (exists) {
-        return prev.filter(
-          (c) => !(c.employeeId === employeeId && c.trainingId === trainingId),
-        );
-      }
-      return [
-        ...prev,
-        { employeeId, employeeName, trainingName, trainingId, clientName },
-      ];
-    });
-  };
-
-  const isInCart = (employeeId, trainingName) => {
-    const trainingId = globalTrainingMap[trainingName];
-    return trainingCart.some(
-      (c) => c.employeeId === employeeId && c.trainingId === trainingId,
-    );
-  };
 
   const handleSendCart = async () => {
-    if (trainingCart.length === 0) return;
+    if (trainingCart.length === 0 || sendingCart) return;
     try {
       setSendingCart(true);
       await axios.post(
@@ -836,166 +1478,122 @@ export default function Allocation() {
       );
       alert(`แจ้ง HR ให้จัด training ${trainingCart.length} รายการแล้ว`);
       setTrainingCart([]);
+      setCartReviewOpen(false);
     } catch (err) {
       console.error(err);
-      alert("ส่งไม่สำเร็จ — ดู console");
+      alert(err.response?.data?.message || "ส่งคำขอ Training ไม่สำเร็จ");
     } finally {
       setSendingCart(false);
     }
   };
 
-  const [allWorkers, setAllWorkers] = useState([]);
-  const [quickSearch, setQuickSearch] = useState("");
-  const [showQuickResults, setShowQuickResults] = useState(false);
+  const isInMedicalCart = (employeeId) =>
+    medicalCart.some((c) => c.employeeId === employeeId);
 
-  useEffect(() => {
-    axios
-      .get(`${backendUrl}/api/workers`, { withCredentials: true })
-      .then((res) => setAllWorkers(res.data || []))
-      .catch((err) => console.error(err));
-  }, [backendUrl]);
-
-  const quickSearchResults = useMemo(() => {
-    return quickSearch.trim()
-      ? allWorkers
-          .filter(
-            (w) =>
-              w.fullName?.toLowerCase().includes(quickSearch.toLowerCase()) ||
-              w.empCode?.toLowerCase().includes(quickSearch.toLowerCase()),
-          )
-          .slice(0, 8)
-      : [];
-  }, [quickSearch, allWorkers]);
-
-  useEffect(() => {
-    const idsSet = new Set([
-      ...quickSearchResults.map((w) => w.id),
-      ...quickPickedWorkers.map((w) => w.id),
-    ]);
-    const employeeIds = Array.from(idsSet);
-
-    if (!selectedRequest || employeeIds.length === 0) {
-      setQuickMatchResults({});
-      return;
-    }
-
-    setLoadingQuickMatch(true);
-    axios
-      .get(`${backendUrl}/api/allocation/workers`, {
-        withCredentials: true,
-        params: {
-          positionId: selectedRequest.position?.id,
-          requestId: selectedRequest.id,
-          contractId: selectedProject?.contractId,
-          employeeIds: employeeIds.join(","),
+  const toggleMedicalCart = (worker, reason) =>
+    setMedicalCart((prev) => {
+      if (prev.some((c) => c.employeeId === worker.id))
+        return prev.filter((c) => c.employeeId !== worker.id);
+      return [
+        ...prev,
+        {
+          employeeId: worker.id,
+          employeeName: worker.fullName,
+          clientName,
+          reason, // "overdue" | "no_record" | "due_soon"
         },
-      })
-      .then((res) => {
-        const map = {};
-        res.data.forEach((w) => (map[w.id] = w));
-        setQuickMatchResults(map);
-      })
-      .catch((err) => console.error(err))
-      .finally(() => setLoadingQuickMatch(false));
-  }, [
-    quickSearchResults,
-    quickPickedWorkers,
-    selectedRequest,
-    selectedProject,
-  ]);
+      ];
+    });
 
+  const handleSendMedicalCart = async () => {
+    if (medicalCart.length === 0 || sendingMedicalCart) return;
+    try {
+      setSendingMedicalCart(true);
+      await axios.post(
+        `${backendUrl}/api/medical-requests`,
+        {
+          items: medicalCart.map((c) => ({
+            employeeId: c.employeeId,
+            clientName: c.clientName,
+            reason: c.reason,
+          })),
+        },
+        { withCredentials: true },
+      );
+      alert(`แจ้ง HR ให้จัด Medical Check-up ${medicalCart.length} คนแล้ว`);
+      setMedicalCart([]);
+      setMedicalCartReviewOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || "ส่งคำขอ Medical ไม่สำเร็จ");
+    } finally {
+      setSendingMedicalCart(false);
+    }
+  };
+
+  // ===========================================================
+  // Render helpers
+  // ===========================================================
+  const renderMedical = (info) => (
+    <MedicalCell
+      expiry={info.medicalExpiry}
+      status={info.medicalStatus}
+      canRequest={canManageAllocation}
+      inCart={isInMedicalCart(info.id)}
+      onToggleRequest={(reason) => toggleMedicalCart(info, reason)}
+    />
+  );
+
+  const openNote = (name) => (note) => setHealthNoteModal({ name, note });
+
+  const emptyWorkerMessage =
+    empType === "permanent" && permCount === 0
+      ? 'ไม่มี Permanent worker ในผลลัพธ์ — กด "Non-Permanent" หรือ "All" (หรือยังไม่ได้ import ข้อมูล isPermanent)'
+      : empType === "nonpermanent" && permCount === workers.length
+        ? 'มีแต่ Permanent — กด "All" เพื่อดูทั้งหมด'
+        : empType === "new_sse" && newSseCount === 0
+          ? 'ไม่มี New SSE ในผลลัพธ์นี้ — กด "All" เพื่อดูทั้งหมด'
+          : workerSearch
+            ? `ไม่พบ worker ที่ตรงกับ "${workerSearch}"`
+            : "ไม่มีรายชื่อ";
+
+  const hasCart = trainingCart.length > 0 || medicalCart.length > 0;
+
+  // ===========================================================
+  // Render
+  // ===========================================================
   return (
-    <div className="container-fluid p-0">
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #dee2e6",
-            borderRadius: "10px",
-            padding: "16px 24px",
-            marginBottom: "1.5rem",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "20px" }}>👥</span>
-            <span style={{ fontSize: "18px", fontWeight: 700 }}>
-              Worker Allocation
-            </span>
-            <span
-              style={{
-                background: "#e9f5fb",
-                color: "#0d6efd",
-                borderRadius: "6px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-              }}
-            >
+    <div className={hasCart ? "pb-[140px]" : ""}>
+      <div className="mx-auto w-full min-w-0 max-w-[1800px]">
+        {/* ════════ Header ════════ */}
+        <div className="mb-4 rounded-[10px] border border-gray-200 bg-white px-4 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className="text-xl">👥</span>
+            <span className="text-lg font-bold">Worker Allocation</span>
+            <span className="rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600">
               Phase 3
             </span>
-            <span style={{ color: "#6c757d", fontSize: "12px" }}>
+            <span className="basis-full text-xs text-gray-500 md:basis-auto">
               Steps 8–9: Filter & Match → Shortlist → Generate CV
             </span>
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) 340px",
-            gap: "1.5rem",
-            alignItems: "start",
-          }}
-        >
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                padding: "14px 20px",
-                borderBottom: "1px solid #dee2e6",
-              }}
-            >
-              <span style={{ fontWeight: 700, fontSize: "14px" }}>
-                Step 8: Filter & Match — Search for 'Ready' Workers
-              </span>
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+          {/* ════════ Step 8 ════════ */}
+          <div className={CARD}>
+            <div className={CARD_HEAD}>
+              Step 8: Filter & Match — Search for 'Ready' Workers
             </div>
-            <div style={{ padding: "20px" }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr auto",
-                  gap: "12px",
-                  marginBottom: "16px",
-                  alignItems: "end",
-                }}
-              >
-                <div>
-                  <label
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#6c757d",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.4px",
-                      marginBottom: "6px",
-                      display: "block",
-                    }}
-                  >
-                    Select Project
-                  </label>
+            <div className={CARD_BODY}>
+              {/* Project / Position Request */}
+              <div className="mb-4">
+                <div className="mb-3">
+                  <label className={LABEL}>Select Project</label>
                   <Select
+                    {...SELECT_PORTAL}
                     options={projectOptions}
                     styles={projectSelectStyles}
-                    menuPortalTarget={
-                      typeof document !== "undefined" ? document.body : null
-                    }
-                    menuPosition="fixed"
                     value={
                       projectOptions.find(
                         (o) => o.value === selectedProjectId,
@@ -1007,807 +1605,369 @@ export default function Allocation() {
                       setSelectedRequest(null);
                       setWorkers([]);
                       setSelectedWorkerIds([]);
+                      if (!o) setShortlist([]);
                     }}
                     placeholder="-- Select Project --"
                     isClearable
                     noOptionsMessage={() => "No projects found"}
                   />
                 </div>
-                <div>
-                  <label
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#6c757d",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.4px",
-                      marginBottom: "6px",
-                      display: "block",
-                    }}
-                  >
-                    Position Request
-                  </label>
-                  <Select
-                    options={requestOptions}
-                    styles={customSelectStyles}
-                    menuPortalTarget={
-                      typeof document !== "undefined" ? document.body : null
-                    }
-                    menuPosition="fixed"
-                    value={
-                      requestOptions.find(
-                        (o) => o.value === selectedRequest?.id,
-                      ) || null
-                    }
-                    onChange={(o) => {
-                      setSelectedRequest(o ? o.request : null);
-                      setSelectedRequestId(o ? o.value : "");
-                      setWorkers([]);
-                      setSelectedWorkerIds([]);
-                    }}
-                    placeholder="Select position..."
-                    isClearable
-                    isDisabled={
-                      !selectedProjectId || requestOptions.length === 0
-                    }
-                    noOptionsMessage={() => "No position requests found"}
-                  />
-                </div>
-                <button
-                  onClick={handleFindWorkers}
-                  disabled={!selectedRequest}
-                  style={{
-                    background: selectedRequest ? "#0d6efd" : "#adb5bd",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "8px 20px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: selectedRequest ? "pointer" : "not-allowed",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  🔍 Find Workers
-                </button>
-              </div>
-              {/* ── Quick search: ค้นหา worker คนใดก็ได้ เทียบ % Match กับ Position Request ด้านบน ── */}
-              <div
-                style={{
-                  borderTop: "1px solid #f1f3f5",
-                  paddingTop: "16px",
-                  marginBottom: "16px",
-                }}
-              >
-                <div
-                  style={{
-                    fontWeight: 700,
-                    fontSize: "14px",
-                    marginBottom: "8px",
-                  }}
-                >
-                  🔍 ค้นหา Worker คนใดก็ได้ (เช่น client เจาะจงชื่อมาตรงๆ)
-                </div>
-                <div style={{ position: "relative", maxWidth: "400px" }}>
-                  <input
-                    type="text"
-                    placeholder="พิมพ์ชื่อ หรือรหัสพนักงาน..."
-                    value={quickSearch}
-                    onChange={(e) => {
-                      setQuickSearch(e.target.value);
-                      setShowQuickResults(true);
-                    }}
-                    onFocus={() => setShowQuickResults(true)}
-                    onBlur={() =>
-                      setTimeout(() => setShowQuickResults(false), 200)
-                    }
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      fontSize: "13px",
-                      border: "1px solid #dee2e6",
-                      borderRadius: "8px",
-                      outline: "none",
-                    }}
-                  />
-                  {showQuickResults && quickSearchResults.length > 0 && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "calc(100% + 4px)",
-                        left: 0,
-                        right: 0,
-                        background: "#fff",
-                        border: "1px solid #dee2e6",
-                        borderRadius: "8px",
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                        zIndex: 1000,
-                        maxHeight: "260px",
-                        overflowY: "auto",
-                      }}
-                    >
-                      {quickSearchResults.map((w) => {
-                        const selected = selectedWorkerIds.includes(w.id);
-                        return (
-                          <div
-                            key={w.id}
-                            onClick={() => toggleQuickWorker(w)}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "10px",
-                              padding: "10px 14px",
-                              cursor: "pointer",
-                              borderBottom: "1px solid #f1f3f5",
-                              background: selected ? "#f0f7ff" : "#fff",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!selected)
-                                e.currentTarget.style.background = "#f8f9fa";
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!selected)
-                                e.currentTarget.style.background = "#fff";
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selected}
-                              onChange={() => toggleQuickWorker(w)}
-                              onClick={(e) => e.stopPropagation()}
-                              style={{
-                                width: "14px",
-                                height: "14px",
-                                cursor: "pointer",
-                              }}
-                            />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div
-                                style={{ fontWeight: 600, fontSize: "13px" }}
-                              >
-                                {w.fullName}
-                              </div>
-                              <div
-                                style={{ fontSize: "11px", color: "#6c757d" }}
-                              >
-                                {w.empCode} · {w.position?.name || "—"}
-                              </div>
-                            </div>
-                            <span
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleViewEligibility(w);
-                                setShowQuickResults(false);
-                              }}
-                              style={{
-                                fontSize: "11px",
-                                color: "#0d6efd",
-                                cursor: "pointer",
-                                fontWeight: 600,
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              ดู Gap →
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
 
-                {/* ── ตาราง preview ของคนที่เลือกจาก quick search ── */}
-                {quickPickedWorkers.length > 0 && (
-                  <div
-                    style={{
-                      marginTop: "12px",
-                      border: "1px solid #dee2e6",
-                      borderRadius: "8px",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        padding: "8px 12px",
-                        background: "#f8f9fa",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        color: "#495057",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                        gap: "6px",
+                <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[1fr_auto]">
+                  <div>
+                    <label className={LABEL}>Position Request</label>
+                    <Select
+                      {...SELECT_PORTAL}
+                      options={requestOptions}
+                      styles={customSelectStyles}
+                      value={
+                        requestOptions.find(
+                          (o) => o.value === selectedRequest?.id,
+                        ) || null
+                      }
+                      onChange={(o) => {
+                        const req = o ? o.request : null;
+                        setSelectedRequest(req);
+                        setSelectedRequestId(o ? o.value : "");
+                        setPositionFilterId(req?.position?.id || "");
+                        setWorkers([]);
+                        setSelectedWorkerIds([]);
+                        if (req)
+                          handleFindWorkers(
+                            req,
+                            selectedProject,
+                            req.position?.id,
+                          );
                       }}
-                    >
-                      <span>✅ เลือกแล้ว {quickPickedWorkers.length} คน</span>
-                      {!selectedRequest && (
-                        <span
-                          style={{
-                            color: "#664d03",
-                            fontWeight: 400,
-                            fontSize: "11px",
-                          }}
-                        >
-                          💡 เลือก Position Request ด้านบนเพื่อดู % Match
-                        </span>
-                      )}
+                      placeholder="Select position..."
+                      isClearable
+                      isDisabled={
+                        !selectedProjectId || requestOptions.length === 0
+                      }
+                      noOptionsMessage={() => "No position requests found"}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleFindWorkers(
+                        selectedRequest,
+                        selectedProject,
+                        positionFilterId,
+                      )
+                    }
+                    disabled={!selectedRequest || loadingWorkers}
+                    className="cursor-pointer whitespace-nowrap rounded-lg border-none bg-blue-600 px-5 py-2 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                  >
+                    🔍 Find Workers
+                  </button>
+                </div>
+              </div>
+
+              {/* ── ค้นหา Worker คนใดก็ได้ ── */}
+              <div className="mb-3 border-t border-gray-100 pt-2.5">
+                <button
+                  type="button"
+                  onClick={() => setQuickSearchOpen((v) => !v)}
+                  aria-expanded={quickSearchOpen}
+                  className={`inline-flex cursor-pointer select-none items-center gap-1.5 rounded-lg border px-3.5 py-[7px] text-[13px] font-semibold text-gray-700 transition-colors ${
+                    quickSearchOpen
+                      ? "mb-2.5 border-blue-600 bg-[#f0f7ff]"
+                      : "border-gray-200 bg-gray-50 hover:bg-[#eef1f4]"
+                  }`}
+                >
+                  <span className="text-[11px] text-blue-600">
+                    {quickSearchOpen ? "▾" : "▸"}
+                  </span>
+                  🔍 ค้นหา Worker คนใดก็ได้
+                  {quickPickedWorkers.length > 0 && (
+                    <span className="rounded-[10px] bg-blue-600 px-2 py-px text-[11px] font-bold text-white">
+                      {quickPickedWorkers.length} เลือกแล้ว
+                    </span>
+                  )}
+                </button>
+
+                {quickSearchOpen && (
+                  <>
+                    <div className="rounded-[10px] border border-gray-200 bg-white px-4 py-3.5">
+                      <label className="mb-1 block text-[11px] font-semibold text-gray-500">
+                        Worker (Employee ID / Name)
+                      </label>
+                      <div className="max-w-[400px]">
+                        <Select
+                          {...SELECT_PORTAL}
+                          isMulti
+                          options={quickSearchOptions}
+                          value={quickPickedWorkers.map((w) => ({
+                            value: w.id,
+                            label: workerLabel(w),
+                            worker: w,
+                          }))}
+                          onChange={(opts) =>
+                            setQuickPickedWorkers(
+                              (opts || []).map((o) => o.worker),
+                            )
+                          }
+                          placeholder="🔍 ค้นหาด้วย Employee ID หรือชื่อ..."
+                          noOptionsMessage={() => "ไม่พบ worker"}
+                          styles={quickSelectStyles}
+                        />
+                      </div>
                     </div>
-                    <div style={{ overflowX: "auto" }}>
-                      <table
-                        style={{
-                          width: "100%",
-                          borderCollapse: "collapse",
-                          fontSize: "12px",
-                        }}
-                      >
-                        <thead>
-                          <tr
-                            style={{
-                              background: "#fff",
-                              borderBottom: "1px solid #dee2e6",
-                            }}
-                          >
-                            <th
-                              style={{ padding: "8px 10px", width: "28px" }}
-                            ></th>
-                            {[
-                              "NAME",
-                              "RETIREMENT",
-                              "HEALTH RISK",
-                              "MEDICAL",
-                              "CERTIFICATIONS",
-                              "REST DAYS",
-                              "% MATCH",
-                            ].map((h) => (
-                              <th
-                                key={h}
-                                style={{
-                                  padding: "8px 10px",
-                                  fontSize: "10px",
-                                  fontWeight: 600,
-                                  color: "#6c757d",
-                                  textAlign: "left",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {h}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
+
+                    {quickPickedWorkers.length > 0 && (
+                      <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">
+                          <span>
+                            ✅ เลือกแล้ว {quickPickedWorkers.length} คน
+                          </span>
+                          {!selectedRequest && (
+                            <span className="text-[11px] font-normal text-[#664d03]">
+                              💡 เลือก Position Request ด้านบนเพื่อดู % Match
+                            </span>
+                          )}
+                        </div>
+
+                        <WorkerTable leadHeader={null}>
                           {quickPickedWorkers.map((w) => {
                             const matched = quickMatchResults[w.id];
-                            const age = w.birthDate
-                              ? Math.floor(
-                                  (Date.now() -
-                                    new Date(w.birthDate).getTime()) /
-                                    (365.25 * 86400000),
-                                )
-                              : null;
-                            const health = matched?.healthRisk
-                              ? HEALTH_MAP[matched.healthRisk]
-                              : null;
-
+                            const matchState = !selectedRequest
+                              ? "need_request"
+                              : loadingQuickMatch
+                                ? "loading"
+                                : !matched
+                                  ? "none"
+                                  : "ready";
                             return (
                               <tr
                                 key={w.id}
-                                style={{ borderTop: "1px solid #f1f3f5" }}
+                                className="border-t border-gray-100 bg-white"
                               >
-                                <td style={{ padding: "8px 10px" }}>
+                                <td className={`${TD} ${STICKY_CHECK}`}>
                                   <button
-                                    onClick={() => toggleQuickWorker(w)}
+                                    type="button"
+                                    onClick={() => removeQuickWorker(w.id)}
                                     title="เอาออก"
-                                    style={{
-                                      background: "none",
-                                      border: "none",
-                                      color: "#dc3545",
-                                      cursor: "pointer",
-                                      fontSize: "14px",
-                                      padding: 0,
-                                      lineHeight: 1,
-                                    }}
+                                    className="cursor-pointer border-none bg-transparent p-0 text-sm leading-none text-[#dc3545]"
                                   >
                                     ✕
                                   </button>
                                 </td>
-                                <td style={{ padding: "8px 10px" }}>
-                                  <div
-                                    onClick={() => handleViewEligibility(w)}
-                                    style={{
-                                      fontWeight: 600,
-                                      cursor: "pointer",
-                                      color: "#212529",
-                                    }}
-                                    title="คลิกดู eligibility"
-                                  >
-                                    {w.fullName}
-                                  </div>
-                                  <div
-                                    style={{
-                                      fontSize: "10px",
-                                      color: "#6c757d",
-                                    }}
-                                  >
-                                    {w.empCode} · {w.position?.name || "—"}
-                                  </div>
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "8px 10px",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {age !== null ? `อายุ ${age}` : "—"}
-                                </td>
-                                <td style={{ padding: "8px 10px" }}>
-                                  {health ? (
-                                    <span
-                                      style={{
-                                        background: health.bg,
-                                        color: health.color,
-                                        borderRadius: "6px",
-                                        padding: "2px 6px",
-                                        fontSize: "10px",
-                                        fontWeight: 600,
-                                      }}
-                                    >
-                                      {health.label}
-                                    </span>
-                                  ) : (
-                                    "—"
-                                  )}
-                                </td>
-                                <td style={{ padding: "8px 10px" }}>
-                                  {matched
-                                    ? renderMedical(matched.medicalExpiry)
-                                    : "—"}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "8px 10px",
-                                    maxWidth: "140px",
-                                  }}
-                                >
-                                  {matched?.certifications?.length ? (
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        flexWrap: "wrap",
-                                        gap: "4px",
-                                      }}
-                                      title={matched.certifications.join(", ")}
-                                    >
-                                      {matched.certifications
-                                        .slice(0, 2)
-                                        .map((c, i) => (
-                                          <span
-                                            key={i}
-                                            style={{
-                                              background: "#e9ecef",
-                                              color: "#495057",
-                                              borderRadius: "4px",
-                                              padding: "1px 6px",
-                                              fontSize: "11px",
-                                            }}
-                                          >
-                                            {c}
-                                          </span>
-                                        ))}
-                                      {matched.certifications.length > 2 && (
-                                        <span
-                                          style={{
-                                            fontSize: "11px",
-                                            color: "#6c757d",
-                                            cursor: "help",
-                                          }}
-                                          title={matched.certifications
-                                            .slice(2)
-                                            .join(", ")}
-                                        >
-                                          +{matched.certifications.length - 2}{" "}
-                                          more
-                                        </span>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    "—"
-                                  )}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "8px 10px",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {matched ? renderDayOff(matched.dayOff) : "—"}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "8px 10px",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {!selectedRequest ? (
-                                    <span
-                                      style={{
-                                        color: "#adb5bd",
-                                        fontSize: "10px",
-                                      }}
-                                    >
-                                      เลือก position ก่อน
-                                    </span>
-                                  ) : loadingQuickMatch ? (
-                                    <span style={{ color: "#adb5bd" }}>
-                                      ...
-                                    </span>
-                                  ) : matched?.matchPct != null ? (
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        flexDirection: "column",
-                                        alignItems: "flex-start",
-                                        gap: "2px",
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          color:
-                                            matched.matchPct === 100
-                                              ? "#198754"
-                                              : matched.matchPct >= 70
-                                                ? "#cc8400"
-                                                : "#dc3545",
-                                          fontWeight: 700,
-                                        }}
-                                        title={matched.missingTrainings?.join(
-                                          ", ",
-                                        )}
-                                      >
-                                        {matched.matchPct}% Match
-                                      </span>
-                                      <span
-                                        onClick={() => handleViewEligibility(w)}
-                                        style={{
-                                          fontSize: "10px",
-                                          color: "#0d6efd",
-                                          cursor: "pointer",
-                                          fontWeight: 600,
-                                        }}
-                                      >
-                                        🔍 ดู Gap →
-                                      </span>
-                                    </div>
-                                  ) : matched && !matched.hasMatrix ? (
-                                    <span
-                                      title="ยังไม่มี Training Matrix สำหรับตำแหน่งนี้ + Client นี้"
-                                      style={{
-                                        color: "#b08900",
-                                        fontSize: "10px",
-                                        fontWeight: 600,
-                                        cursor: "help",
-                                      }}
-                                    >
-                                      ⚠ No Matrix
-                                    </span>
-                                  ) : (
-                                    "—"
-                                  )}
-                                </td>
+                                <NameCell
+                                  w={w}
+                                  info={matched}
+                                  onViewGap={() => handleViewEligibility(w)}
+                                />
+                                <MatchCell
+                                  state={matchState}
+                                  pct={matched?.matchPct}
+                                  missing={matched?.missingTrainings}
+                                  onViewGap={() => handleViewEligibility(w)}
+                                  exception={exceptions[w.id]}
+                                  onRequestException={
+                                    canManageAllocation &&
+                                    selectedRequest &&
+                                    matched &&
+                                    !matched.activeBan
+                                      ? () => openExceptionModal(matched)
+                                      : undefined
+                                  }
+                                />
+                                {matched ? (
+                                  <DayOffCell
+                                    dayOff={matched.dayOff}
+                                    platform={matched.platform}
+                                  />
+                                ) : (
+                                  <td className={`${TD} text-center`}>
+                                    {DASH}
+                                  </td>
+                                )}
+                                <RetirementCell birthDate={w.birthDate} />
+                                <HealthCell
+                                  info={matched}
+                                  onOpenNote={openNote(w.fullName)}
+                                />
+                                {matched ? (
+                                  renderMedical(matched)
+                                ) : (
+                                  <td className={TD}>{DASH}</td>
+                                )}
                               </tr>
                             );
                           })}
-                        </tbody>
-                      </table>
-                    </div>
-                    {canManageAllocation && (
-                      <div
-                        style={{
-                          padding: "10px",
-                          borderTop: "1px solid #dee2e6",
-                          background: "#f8f9fa",
-                        }}
-                      >
-                        {!selectedRequest ? (
-                          <div
-                            style={{
-                              fontSize: "11px",
-                              color: "#dc3545",
-                              textAlign: "center",
-                            }}
-                          >
-                            ⚠ ต้องเลือก Position Request ก่อนถึงจะ Add to
-                            Shortlist ได้
+                        </WorkerTable>
+
+                        {canManageAllocation && (
+                          <div className="border-t border-gray-200 bg-gray-50 p-2.5">
+                            {!selectedRequest ? (
+                              <div className="text-center text-[11px] text-[#dc3545]">
+                                ⚠ ต้องเลือก Position Request ก่อนถึงจะ Add to
+                                Shortlist ได้
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleAddToShortlist(
+                                    quickPickedWorkers.map((w) => w.id),
+                                  )
+                                }
+                                disabled={addingShortlist || loadingQuickMatch}
+                                className={`${BTN_GREEN} w-full p-2 text-xs`}
+                              >
+                                {addingShortlist
+                                  ? "กำลังเพิ่ม..."
+                                  : `👥 Add Selected to Shortlist (${quickPickedWorkers.length})`}
+                              </button>
+                            )}
                           </div>
-                        ) : (
-                          <button
-                            onClick={handleAddToShortlist}
-                            style={{
-                              width: "100%",
-                              background: "#198754",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: "8px",
-                              padding: "8px",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            👥 Add Selected to Shortlist (
-                            {quickPickedWorkers.length})
-                          </button>
                         )}
                       </div>
                     )}
-                  </div>
+                  </>
                 )}
               </div>
-              {selectedProjectId && requestOptions.length === 0 && (
-                <div
-                  style={{
-                    background: "#fff8e1",
-                    border: "1px solid #ffe69c",
-                    borderRadius: "8px",
-                    padding: "10px 14px",
-                    marginBottom: "16px",
-                    fontSize: "13px",
-                    color: "#664d03",
-                  }}
-                >
-                  ⚠ โปรเจกต์นี้ยังไม่มี position request —{" "}
-                  <span
-                    onClick={() => navigate(`/projects/${selectedProjectId}`)}
-                    style={{
-                      color: "#0d6efd",
-                      cursor: "pointer",
-                      fontWeight: 600,
-                      textDecoration: "underline",
-                    }}
-                  >
-                    เพิ่ม Position ในหน้า Project Detail →
-                  </span>
-                </div>
-              )}
 
-              {selectedRequest && (
-                <div
-                  style={{
-                    background: "#f0f7ff",
-                    border: "1px solid #cfe2ff",
-                    borderRadius: "8px",
-                    padding: "12px 16px",
-                    marginBottom: "16px",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: "13px",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    Looking for{" "}
-                    <strong>{selectedRequest.position?.name}</strong>
+              {selectedProjectId &&
+                selectedProject &&
+                requestOptions.length === 0 && (
+                  <div className="mb-2.5 rounded-lg border border-[#ffe69c] bg-[#fff8e1] px-3.5 py-2.5 text-[13px] text-[#664d03]">
+                    ⚠ โปรเจกต์นี้ยังไม่มี position request —{" "}
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/projects/${selectedProjectId}`)}
+                      className={`${LINK_TEXT} underline`}
+                    >
+                      เพิ่ม Position ในหน้า Project Detail →
+                    </button>
                   </div>
-                  <div
-                    style={{ display: "flex", gap: "20px", fontSize: "13px" }}
-                  >
-                    <span>
-                      Need: <strong>{selectedRequest.quantity}</strong>
-                    </span>
-                    <span>
-                      Shortlisted:{" "}
-                      <strong
-                        style={{
-                          color:
-                            currentRequestShortlisted > 0
-                              ? "#198754"
-                              : "#6c757d",
-                        }}
-                      >
-                        {currentRequestShortlisted}
-                      </strong>
-                    </span>
-                    <span>
-                      Remaining:{" "}
-                      <strong
-                        style={{ color: remaining > 0 ? "#dc3545" : "#198754" }}
-                      >
-                        {remaining}
-                      </strong>
-                    </span>
-                  </div>
-                </div>
-              )}
+                )}
 
-              {loadingWorkers ? (
-                <div
-                  style={{
-                    textAlign: "center",
-                    padding: "40px",
-                    color: "#6c757d",
-                  }}
-                >
-                  Finding workers...
-                </div>
-              ) : workers.length === 0 ? (
-                <div
-                  style={{
-                    textAlign: "center",
-                    padding: "40px",
-                    color: "#6c757d",
-                    fontSize: "13px",
-                  }}
-                >
-                  {selectedRequest
-                    ? "No available workers found for this position"
-                    : "Select a project and position, then click Find Workers"}
+              {!selectedRequest ? (
+                <div className="p-10 text-center text-[13px] text-gray-500">
+                  Select a project and position, then click Find Workers
                 </div>
               ) : (
                 <>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: "12px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                    >
-                      <span style={{ fontWeight: 600, fontSize: "14px" }}>
+                  {/* สรุปจำนวน + ปุ่ม Add */}
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold">
                         Matching Workers
                       </span>
-                      <span
-                        style={{
-                          background: "#0d6efd",
-                          color: "#fff",
-                          borderRadius: "12px",
-                          padding: "2px 10px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                        }}
-                      >
+                      <span className="rounded-xl bg-blue-600 px-2.5 py-0.5 text-xs font-semibold text-white">
                         {workers.length} found
                       </span>
-                      <span style={{ fontSize: "12px", color: "#6c757d" }}>
-                        · Permanent {permCount}
+                      <span className="text-xs text-gray-500">
+                        · Permanent {permCount} · New SSE {newSseCount}
+                      </span>
+                      <span className="inline-flex items-center gap-2.5 border-l border-gray-200 pl-2.5 text-xs text-gray-500">
+                        <span>
+                          Need{" "}
+                          <strong className="text-gray-900">
+                            {selectedRequest.quantity}
+                          </strong>
+                        </span>
+                        <span>
+                          Shortlisted{" "}
+                          <strong
+                            className={
+                              currentRequestShortlisted > 0
+                                ? "text-[#198754]"
+                                : "text-gray-500"
+                            }
+                          >
+                            {currentRequestShortlisted}
+                          </strong>
+                        </span>
+                        <span>
+                          Remaining{" "}
+                          <strong
+                            className={
+                              remaining > 0
+                                ? "text-[#dc3545]"
+                                : "text-[#198754]"
+                            }
+                          >
+                            {remaining}
+                          </strong>
+                        </span>
+                        {exceptionCounts.pending + exceptionCounts.approved >
+                          0 && (
+                          <span title="คำขออนุมัติ PE (% Match ไม่ครบ) ของตำแหน่งนี้">
+                            PE: รอ{" "}
+                            <strong className="text-[#b08900]">
+                              {exceptionCounts.pending}
+                            </strong>
+                            {" · "}อนุมัติ{" "}
+                            <strong className="text-[#198754]">
+                              {exceptionCounts.approved}
+                            </strong>
+                          </span>
+                        )}
                       </span>
                     </div>
                     {selectedWorkerIds.length > 0 && canManageAllocation && (
                       <button
-                        onClick={handleAddToShortlist}
-                        style={{
-                          background: "#198754",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: "8px",
-                          padding: "7px 16px",
-                          fontSize: "13px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
+                        type="button"
+                        onClick={() => handleAddToShortlist(selectedWorkerIds)}
+                        disabled={addingShortlist}
+                        className={`${BTN_GREEN} px-4 py-[7px] text-[13px]`}
                       >
-                        👥 Add Selected to Shortlist ({selectedWorkerIds.length}
-                        )
+                        {addingShortlist
+                          ? "กำลังเพิ่ม..."
+                          : `👥 Add Selected to Shortlist (${selectedWorkerIds.length})`}
                       </button>
                     )}
                   </div>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                      marginBottom: "12px",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "16px",
-                        flexWrap: "wrap",
+                  <div className="mb-3">
+                    <label className={LABEL}>Position</label>
+                    <Select
+                      {...SELECT_PORTAL}
+                      options={positionFilterOptions}
+                      styles={customSelectStyles}
+                      value={
+                        positionFilterOptions.find(
+                          (o) => o.value === positionFilterId,
+                        ) || null
+                      }
+                      onChange={(o) => {
+                        const newPosId = o ? o.value : "";
+                        setPositionFilterId(newPosId);
+                        handleFindWorkers(
+                          selectedRequest,
+                          selectedProject,
+                          newPosId,
+                        );
                       }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                        }}
-                      >
-                        <span style={{ fontSize: "12px", color: "#6c757d" }}>
-                          Type:
-                        </span>
-                        {[
-                          ["permanent", "Permanent"],
-                          ["nonpermanent", "Non-Permanent"],
-                          ["all", "All"],
-                        ].map(([key, label]) => (
-                          <button
-                            key={key}
-                            onClick={() => setEmpType(key)}
-                            style={{
-                              padding: "5px 12px",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              border:
-                                "1px solid " +
-                                (empType === key ? "#198754" : "#dee2e6"),
-                              background: empType === key ? "#198754" : "#fff",
-                              color: empType === key ? "#fff" : "#495057",
-                              borderRadius: "6px",
-                              cursor: "pointer",
-                            }}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
+                      placeholder="เลือกตำแหน่งพนักงาน..."
+                      noOptionsMessage={() => "ไม่มีตำแหน่ง"}
+                    />
+                  </div>
 
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                        }}
-                      >
-                        <span style={{ fontSize: "12px", color: "#6c757d" }}>
-                          Sort by:
-                        </span>
-                        {[
-                          ["dayoff", "Rest Days"],
-                          ["match", "% Match"],
-                        ].map(([key, label]) => (
-                          <button
-                            key={key}
-                            onClick={() => setSortBy(key)}
-                            style={{
-                              padding: "5px 12px",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              border:
-                                "1px solid " +
-                                (sortBy === key ? "#0d6efd" : "#dee2e6"),
-                              background: sortBy === key ? "#0d6efd" : "#fff",
-                              color: sortBy === key ? "#fff" : "#495057",
-                              borderRadius: "6px",
-                              cursor: "pointer",
-                            }}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
+                  {/* Type / Sort / Search */}
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-4">
+                      <ButtonGroup
+                        label="Type:"
+                        options={EMP_TYPES}
+                        value={empType}
+                        onChange={setEmpType}
+                        activeClass="border-[#198754] bg-[#198754] text-white"
+                      />
+                      <ButtonGroup
+                        label="Sort by:"
+                        options={SORTS}
+                        value={sortBy}
+                        onChange={setSortBy}
+                        activeClass="border-blue-600 bg-blue-600 text-white"
+                      />
                     </div>
 
-                    <div
-                      style={{
-                        position: "relative",
-                        flex: "1 1 200px",
-                        maxWidth: "300px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          position: "absolute",
-                          left: "10px",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          color: "#adb5bd",
-                          fontSize: "13px",
-                        }}
-                      >
+                    <div className="relative min-w-[200px] flex-1 sm:max-w-[300px]">
+                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-gray-400">
                         🔍
                       </span>
                       <input
@@ -1815,775 +1975,263 @@ export default function Allocation() {
                         placeholder="Search name or emp code..."
                         value={workerSearch}
                         onChange={(e) => setWorkerSearch(e.target.value)}
-                        style={{
-                          width: "100%",
-                          paddingLeft: "32px",
-                          paddingRight: workerSearch ? "28px" : "12px",
-                          paddingTop: "6px",
-                          paddingBottom: "6px",
-                          fontSize: "13px",
-                          border: "1px solid #dee2e6",
-                          borderRadius: "8px",
-                          outline: "none",
-                          boxSizing: "border-box",
-                        }}
+                        className="box-border w-full rounded-lg border border-gray-200 bg-white py-1.5 pl-8 pr-7 text-[13px] outline-none focus:border-blue-400"
                       />
                       {workerSearch && (
-                        <span
+                        <button
+                          type="button"
                           onClick={() => setWorkerSearch("")}
                           title="Clear"
-                          style={{
-                            position: "absolute",
-                            right: "10px",
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            color: "#adb5bd",
-                            fontSize: "13px",
-                            cursor: "pointer",
-                          }}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer border-none bg-transparent p-0 text-[13px] text-gray-400 hover:text-gray-600"
                         >
                           ✕
-                        </span>
+                        </button>
                       )}
                     </div>
                   </div>
 
-                  <div style={{ overflowX: "auto" }}>
-                    <table
-                      style={{
-                        width: "100%",
-                        borderCollapse: "collapse",
-                        fontSize: "13px",
-                        tableLayout: "fixed",
-                      }}
-                    >
-                      <thead>
-                        <tr style={{ borderBottom: "1px solid #dee2e6" }}>
-                          {canManageAllocation && (
-                            <th style={{ padding: "10px 12px", width: "36px" }}>
-                              <input
-                                type="checkbox"
-                                checked={allDisplayedSelected}
-                                onChange={toggleAll}
-                                disabled={
-                                  selectableDisplayedWorkers.length === 0
-                                }
-                                style={{
-                                  width: "15px",
-                                  height: "15px",
-                                  cursor:
-                                    selectableDisplayedWorkers.length === 0
-                                      ? "not-allowed"
-                                      : "pointer",
-                                }}
-                              />
-                            </th>
-                          )}
-                          {[
-                            ["NAME", "left"],
-                            ["RETIREMENT", "center"],
-                            ["HEALTH RISK", "left"],
-                            ["MEDICAL", "left"],
-                            ["CERTIFICATIONS", "left"],
-                            ["REST DAYS", "center"],
-                            ["% MATCH", "center"],
-                          ].map(([h, align]) => (
-                            <th
-                              key={h}
-                              style={{
-                                padding: "10px 12px",
-                                fontSize: "11px",
-                                fontWeight: 600,
-                                color: "#6c757d",
-                                letterSpacing: "0.5px",
-                                textAlign: align,
-                              }}
-                            >
-                              {h}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {displayedWorkers.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={canManageAllocation ? 8 : 7}
-                              style={{
-                                textAlign: "center",
-                                padding: "24px",
-                                color: "#6c757d",
-                                fontSize: "13px",
-                              }}
-                            >
-                              {empType === "permanent" && permCount === 0
-                                ? 'ไม่มี Permanent employee ในผลลัพธ์ — กด "Non-Permanent" หรือ "All" (หรือยังไม่ได้ import ข้อมูล isPermanent)'
-                                : empType === "nonpermanent" &&
-                                    permCount === workers.length
-                                  ? 'มีแต่ Permanent — กด "All" เพื่อดูทั้งหมด'
-                                  : workerSearch
-                                    ? `ไม่พบ worker ที่ตรงกับ "${workerSearch}"`
-                                    : "ไม่มีรายชื่อ"}
-                            </td>
-                          </tr>
-                        ) : (
-                          displayedWorkers.map((w, idx) => {
-                            const selected = selectedWorkerIds.includes(w.id);
-                            const selectable = isWorkerSelectable(w); // ← เพิ่มบรรทัดนี้ที่ขาดไป
-                            const retire = getRetirementInfo(w.birthDate);
-                            const age = w.birthDate
-                              ? Math.floor(
-                                  (Date.now() -
-                                    new Date(w.birthDate).getTime()) /
-                                    (365.25 * 86400000),
-                                )
-                              : null;
-                            const health = w.healthRisk
-                              ? HEALTH_MAP[w.healthRisk]
-                              : null;
-                            return (
-                              <tr
-                                key={w.id}
-                                style={{
-                                  borderBottom:
-                                    idx < displayedWorkers.length - 1
-                                      ? "1px solid #f1f3f5"
-                                      : "none",
-                                  background: selected ? "#f0f7ff" : "#fff",
-                                  // ลบ opacity ออกจากตรงนี้
-                                  cursor:
-                                    canManageAllocation && selectable
-                                      ? "pointer"
-                                      : "default",
-                                }}
-                                onClick={
-                                  canManageAllocation && selectable
-                                    ? () => toggleWorker(w.id)
-                                    : undefined
-                                }
-                                title={
-                                  canManageAllocation && !selectable
-                                    ? "เลือกได้เฉพาะ worker ที่ % Match = 100% เท่านั้น"
-                                    : undefined
-                                }
-                              >
-                                {canManageAllocation && (
-                                  <td
-                                    style={{
-                                      padding: "12px 12px",
-                                      opacity: selectable ? 1 : 0.4,
-                                    }}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={selected}
-                                      disabled={!selectable}
-                                      onChange={() => toggleWorker(w.id)}
-                                      onClick={(e) => e.stopPropagation()}
-                                      style={{
-                                        width: "15px",
-                                        height: "15px",
-                                        cursor: selectable
-                                          ? "pointer"
-                                          : "not-allowed",
-                                      }}
-                                    />
-                                  </td>
-                                )}
-                                <td
-                                  style={{
-                                    padding: "12px 12px",
-                                    opacity: selectable ? 1 : 0.6,
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "6px",
-                                      flexWrap: "wrap",
-                                    }}
-                                  >
-                                    <span style={{ fontWeight: 600 }}>
-                                      {w.fullName}
-                                    </span>
-                                    {w.isPermanent && (
-                                      <span
-                                        title="Permanent employee"
-                                        style={{
-                                          background: "#d1e7dd",
-                                          color: "#0f5132",
-                                          borderRadius: "4px",
-                                          padding: "0 5px",
-                                          fontSize: "10px",
-                                          fontWeight: 700,
-                                        }}
-                                      >
-                                        PERM
-                                      </span>
-                                    )}
-                                    {w.sseLevel && SSE_LABEL[w.sseLevel] && (
-                                      <span
-                                        title={
-                                          w.sseCompleted
-                                            ? "SSE Completed"
-                                            : "SSE not completed"
-                                        }
-                                        style={{
-                                          background: w.sseCompleted
-                                            ? "#cfe2ff"
-                                            : "#fff3cd",
-                                          color: w.sseCompleted
-                                            ? "#084298"
-                                            : "#664d03",
-                                          borderRadius: "4px",
-                                          padding: "0 5px",
-                                          fontSize: "10px",
-                                          fontWeight: 700,
-                                        }}
-                                      >
-                                        {SSE_LABEL[w.sseLevel]}
-                                        {w.sseCompleted ? " ✓" : ""}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div
-                                    style={{
-                                      fontSize: "11px",
-                                      color: "#6c757d",
-                                    }}
-                                  >
-                                    {w.empCode}
-                                  </div>
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "12px 12px",
-                                    textAlign: "center",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {retire ? (
-                                    <span
-                                      title={
-                                        age !== null
-                                          ? `อายุ ${age} ปี`
-                                          : undefined
-                                      }
-                                      style={{
-                                        background: retire.bg,
-                                        color: retire.color,
-                                        borderRadius: "6px",
-                                        padding: "2px 8px",
-                                        fontSize: "11px",
-                                        fontWeight: 600,
-                                      }}
-                                    >
-                                      {retire.label}
-                                    </span>
-                                  ) : age !== null ? (
-                                    <span
-                                      style={{
-                                        fontSize: "11px",
-                                        color: "#6c757d",
-                                      }}
-                                      title={`อายุ ${age} ปี · เกษียณตอน ${RETIREMENT_AGE} (ยังเหลือ >12 เดือน)`}
-                                    >
-                                      อายุ {age}
-                                    </span>
-                                  ) : (
-                                    <span
-                                      style={{ color: "#adb5bd" }}
-                                      title="ไม่มีข้อมูลวันเกิด (birthDate)"
-                                    >
-                                      —
-                                    </span>
-                                  )}
-                                </td>
-
-                                <td style={{ padding: "12px 12px" }}>
-                                  {health || w.healthNote ? (
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        flexDirection: "column",
-                                        gap: "2px",
-                                        maxWidth: "120px",
-                                      }}
-                                    >
-                                      {health && (
-                                        <span
-                                          style={{
-                                            alignSelf: "flex-start",
-                                            background: health.bg,
-                                            color: health.color,
-                                            borderRadius: "6px",
-                                            padding: "2px 8px",
-                                            fontSize: "11px",
-                                            fontWeight: 600,
-                                            whiteSpace: "nowrap",
-                                          }}
-                                        >
-                                          {health.label}
-                                        </span>
-                                      )}
-                                      {w.healthNote && (
-                                        <span
-                                          title={w.healthNote}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setHealthNoteModal({
-                                              name: w.fullName,
-                                              note: w.healthNote,
-                                            });
-                                          }}
-                                          style={{
-                                            fontSize: "10px",
-                                            color: "#6c757d",
-                                            cursor: "pointer",
-                                            whiteSpace: "nowrap",
-                                            overflow: "hidden",
-                                            textOverflow: "ellipsis",
-                                            maxWidth: "120px",
-                                            textDecorationLine: "underline",
-                                            textDecorationStyle: "dotted",
-                                          }}
-                                        >
-                                          📄 {w.healthNote}
-                                        </span>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <span style={{ color: "#6c757d" }}>—</span>
-                                  )}
-                                </td>
-                                <td style={{ padding: "12px 12px" }}>
-                                  {renderMedical(w.medicalExpiry)}
-                                </td>
-                                <td style={{ padding: "12px 12px" }}>
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      flexWrap: "wrap",
-                                      gap: "4px",
-                                    }}
-                                    title={w.certifications?.join(", ")}
-                                  >
-                                    {w.certifications
-                                      ?.slice(0, 2)
-                                      .map((c, i) => (
-                                        <span
-                                          key={i}
-                                          style={{
-                                            background: "#e9ecef",
-                                            color: "#495057",
-                                            borderRadius: "4px",
-                                            padding: "1px 6px",
-                                            fontSize: "11px",
-                                          }}
-                                        >
-                                          {c}
-                                        </span>
-                                      ))}
-                                    {(w.certifications?.length ?? 0) > 2 && (
-                                      <span
-                                        style={{
-                                          fontSize: "11px",
-                                          color: "#6c757d",
-                                          cursor: "help",
-                                        }}
-                                        title={w.certifications
-                                          .slice(2)
-                                          .join(", ")}
-                                      >
-                                        +{w.certifications.length - 2} more
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "12px 12px",
-                                    textAlign: "center",
-                                    whiteSpace: "nowrap",
-                                  }}
+                  {/* ตารางหลัก */}
+                  <WorkerTable
+                    leadHeader={
+                      canManageAllocation && (
+                        <input
+                          type="checkbox"
+                          checked={allDisplayedSelected}
+                          onChange={toggleAll}
+                          disabled={selectableDisplayedWorkers.length === 0}
+                          title="เลือกทั้งหมด (เฉพาะคนที่ % Match = 100% หรือ PE อนุมัติแล้ว)"
+                          className="h-[15px] w-[15px] cursor-pointer disabled:cursor-not-allowed"
+                        />
+                      )
+                    }
+                  >
+                    {loadingWorkers ? (
+                      <EmptyRow>Finding workers...</EmptyRow>
+                    ) : workers.length === 0 ? (
+                      <EmptyRow>
+                        No available workers found for this position
+                      </EmptyRow>
+                    ) : displayedWorkers.length === 0 ? (
+                      <EmptyRow>{emptyWorkerMessage}</EmptyRow>
+                    ) : (
+                      displayedWorkers.map((w) => {
+                        const selected = selectedWorkerIds.includes(w.id);
+                        const selectable = isWorkerSelectable(w);
+                        const clickable = canManageAllocation && selectable;
+                        return (
+                          <tr
+                            key={w.id}
+                            onClick={
+                              clickable ? () => toggleWorker(w.id) : undefined
+                            }
+                            title={
+                              canManageAllocation && !selectable
+                                ? "เลือกได้เฉพาะคนที่ % Match = 100% หรือ PE อนุมัติแล้ว"
+                                : undefined
+                            }
+                            className={`border-b border-gray-100 last:border-b-0 ${
+                              selected ? "bg-[#f0f7ff]" : "bg-white"
+                            } ${clickable ? "cursor-pointer hover:bg-gray-50" : ""}`}
+                          >
+                            <td className={`${TD} ${STICKY_CHECK}`}>
+                              {canManageAllocation && (
+                                <input
+                                  type="checkbox"
+                                  checked={selected}
+                                  disabled={!selectable}
+                                  onChange={() => toggleWorker(w.id)}
+                                  onClick={(e) => e.stopPropagation()}
                                   title={
-                                    w.platform
-                                      ? `แท่นล่าสุด: ${w.platform}`
-                                      : ""
+                                    w.activeBan
+                                      ? `พนักงานถูกแบนถึง ${fmtBanDate(w.activeBan.bannedUntil)}`
+                                      : !selectable
+                                        ? "% Match ต้องครบ 100% หรือขออนุมัติ PE ก่อน"
+                                        : ""
                                   }
-                                >
-                                  {renderDayOff(w.dayOff)}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "12px 8px",
-                                    textAlign: "center",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {w.matchPct === null ? (
-                                    <span
-                                      title="ยังไม่มี Training Matrix สำหรับตำแหน่งนี้ + Client นี้ — ไปที่ Manage Positions → Matrix Editor เพื่อเพิ่ม"
-                                      style={{
-                                        color: "#b08900",
-                                        fontSize: "11px",
-                                        fontWeight: 600,
-                                        cursor: "help",
-                                      }}
-                                    >
-                                      ⚠ No Matrix
-                                    </span>
-                                  ) : (
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        flexDirection: "column",
-                                        alignItems: "center",
-                                        gap: "2px",
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          color:
-                                            w.matchPct === 100
-                                              ? "#198754"
-                                              : w.matchPct >= 70
-                                                ? "#cc8400"
-                                                : "#dc3545",
-                                          fontWeight: 700,
-                                          fontSize: "13px",
-                                        }}
-                                        title={w.missingTrainings?.join(", ")}
-                                      >
-                                        {w.matchPct}% Match
-                                      </span>
-                                      {w.matchPct !== 100 && (
-                                        <span
-                                          style={{
-                                            fontSize: "10px",
-                                            color: "#dc3545",
-                                            fontWeight: 600,
-                                          }}
-                                        >
-                                          ต้องครบ 100%
-                                        </span>
-                                      )}
-                                      <span
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleViewEligibility(w);
-                                        }}
-                                        style={{
-                                          fontSize: "11px",
-                                          color: "#0d6efd",
-                                          cursor: "pointer",
-                                          fontWeight: 600,
-                                        }}
-                                      >
-                                        🔍 ดู Gap →
-                                      </span>
-                                    </div>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                                  className="h-[15px] w-[15px] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                                />
+                              )}
+                            </td>
+                            <NameCell
+                              w={w}
+                              info={w}
+                              dim={!selectable}
+                              onViewGap={() => handleViewEligibility(w)}
+                            />
+                            <MatchCell
+                              pct={w.matchPct}
+                              missing={w.missingTrainings}
+                              onViewGap={() => handleViewEligibility(w)}
+                              exception={exceptions[w.id]}
+                              onRequestException={
+                                canManageAllocation && !w.activeBan
+                                  ? () => openExceptionModal(w)
+                                  : undefined
+                              }
+                            />
+                            <DayOffCell
+                              dayOff={w.dayOff}
+                              platform={w.platform}
+                            />
+                            <RetirementCell birthDate={w.birthDate} />
+                            <HealthCell
+                              info={w}
+                              onOpenNote={openNote(w.fullName)}
+                            />
+                            {renderMedical(w)}
+                          </tr>
+                        );
+                      })
+                    )}
+                  </WorkerTable>
                 </>
               )}
             </div>
           </div>
 
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #dee2e6",
-              borderRadius: "10px",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                padding: "14px 20px",
-                borderBottom: "1px solid #dee2e6",
-              }}
-            >
-              <span style={{ fontWeight: 700, fontSize: "14px" }}>
-                Step 9: Shortlist & CV
-              </span>
-            </div>
-            <div style={{ padding: "20px" }}>
-              {!canManageAllocation ? (
-                <div
-                  style={{
-                    textAlign: "center",
-                    padding: "32px 16px",
-                    color: "#6c757d",
-                    fontSize: "13px",
-                  }}
-                >
-                  🔒 การจัดการ Shortlist เป็นสิทธิ์เฉพาะ Manpower
-                </div>
-              ) : loadingShortlist ? (
-                <div
-                  style={{
-                    textAlign: "center",
-                    padding: "20px",
-                    color: "#6c757d",
-                    fontSize: "13px",
-                  }}
-                >
+          {/* ════════ Step 9 ════════ */}
+          <div className={CARD}>
+            <div className={CARD_HEAD}>Step 9: Shortlist & CV</div>
+            <div className={CARD_BODY}>
+              {loadingShortlist ? (
+                <div className="p-5 text-center text-[13px] text-gray-500">
                   Loading...
                 </div>
-              ) : totalShortlisted === 0 ? (
-                <div
-                  style={{
-                    textAlign: "center",
-                    padding: "20px",
-                    color: "#6c757d",
-                    fontSize: "13px",
-                  }}
-                >
+              ) : !hasStep9Content ? (
+                <div className="p-5 text-center text-[13px] text-gray-500">
                   No workers shortlisted yet for this project.
                 </div>
               ) : (
-                <div style={{ marginBottom: "16px" }}>
+                <div className="mb-4">
                   {shortlist.map((req) => {
-                    if (!req.candidates || req.candidates.length === 0)
+                    const pe = req.peExceptions ?? {
+                      pending: [],
+                      rejected: [],
+                    };
+                    const all = req.candidates ?? [];
+                    if (
+                      !all.length &&
+                      !pe.pending.length &&
+                      !pe.rejected.length
+                    )
                       return null;
-
-                    const proposedCandidates = req.candidates.filter(
+                    // คนที่ PE อนุมัติ → ไปหน้า Mobilization เลย ไม่แสดงในรายชื่อ shortlist
+                    const peApproved = all.filter(
+                      (c) => c.viaPeApproval && c.status === "approved",
+                    );
+                    const visible = all.filter(
+                      (c) => !(c.viaPeApproval && c.status === "approved"),
+                    );
+                    const proposed = visible.filter(
                       (c) => c.status !== "approved",
                     );
-                    const approvedCandidates = req.candidates.filter(
+                    const approved = visible.filter(
                       (c) => c.status === "approved",
                     );
-                    const isApprovedListOpen =
-                      !!approvedExpanded[req.requestId];
+                    const approvedOpen = !!approvedExpanded[req.requestId];
 
                     return (
-                      <div key={req.requestId} style={{ marginBottom: "16px" }}>
-                        <div
-                          style={{
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            color: "#6c757d",
-                            marginBottom: "8px",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.4px",
-                          }}
-                        >
+                      <div key={req.requestId} className="mb-4">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.4px] text-gray-500">
                           {req.position?.name} × {req.quantity}
-                          <span style={{ marginLeft: "8px", color: "#0d6efd" }}>
-                            ({req.candidates.length} shortlisted)
-                          </span>
+                          {all.length > 0 && (
+                            <span className="ml-2 whitespace-nowrap text-blue-600">
+                              ({all.length} shortlisted)
+                            </span>
+                          )}
+                          {pe.pending.length > 0 && (
+                            <span className="ml-2 whitespace-nowrap normal-case tracking-normal text-[#b08900]">
+                              (รอ PE อนุมัติ {pe.pending.length} คน)
+                            </span>
+                          )}
                         </div>
 
-                        {/* ── Proposed candidates — approve ทีละคน ── */}
-                        {proposedCandidates.length === 0 ? (
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              color: "#198754",
-                              fontWeight: 600,
-                              padding: "8px 0",
-                            }}
-                          >
+                        {visible.length > 0 && proposed.length === 0 && (
+                          <div className="py-2 text-xs font-semibold text-[#198754]">
                             ✓ ทุกคนได้รับการ approve แล้ว
                           </div>
-                        ) : (
-                          proposedCandidates.map((c) => (
-                            <div
-                              key={c.id}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                padding: "8px 12px",
-                                background: "#f8f9fa",
-                                borderRadius: "6px",
-                                marginBottom: "6px",
-                                gap: "8px", // ← เพิ่มใหม่ กันชื่อกับปุ่มชิดกันเกินไป
-                              }}
-                            >
-                              <div style={{ minWidth: 0 }}>
-                                {" "}
-                                {/* ← เพิ่ม minWidth: 0 ให้ชื่อ wrap ได้โดยไม่ดันปุ่ม */}
-                                <div
-                                  style={{ fontWeight: 600, fontSize: "13px" }}
-                                >
-                                  {c.employee?.fullName}
-                                </div>
-                                <div
-                                  style={{ fontSize: "11px", color: "#6c757d" }}
-                                >
-                                  {c.employee?.empCode}
-                                </div>
-                              </div>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "6px",
-                                  flexShrink: 0, // ← เพิ่มใหม่ กันฝั่งปุ่มถูกบีบ
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    background: "#fff3cd",
-                                    color: "#664d03",
-                                    borderRadius: "6px",
-                                    padding: "2px 8px",
-                                    fontSize: "11px",
-                                    fontWeight: 600,
-                                    whiteSpace: "nowrap", // ← เพิ่มใหม่
-                                  }}
-                                >
-                                  Proposed
-                                </span>
-                                <button
-                                  onClick={() =>
-                                    handleApprove([c.id], req.requestId)
-                                  }
-                                  title="Approve คนนี้"
-                                  style={{
-                                    background: "#198754",
-                                    border: "1px solid #198754",
-                                    color: "#fff",
-                                    borderRadius: "6px",
-                                    padding: "3px 10px",
-                                    fontSize: "11px",
-                                    fontWeight: 600,
-                                    cursor: "pointer",
-                                    whiteSpace: "nowrap", // ← เพิ่มใหม่ (ตัวสำคัญที่สุด)
-                                  }}
-                                >
-                                  ✓ Approve
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleRemoveFromShortlist(c.id)
-                                  }
-                                  title="เอาออกจาก shortlist"
-                                  style={{
-                                    background: "none",
-                                    border: "none",
-                                    color: "#adb5bd",
-                                    fontSize: "14px",
-                                    cursor: "pointer",
-                                    padding: "0 2px",
-                                    lineHeight: 1,
-                                    flexShrink: 0, // ← เพิ่มใหม่
-                                  }}
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </div>
-                          ))
                         )}
 
-                        {/* ── Approved list — collapsible ── */}
-                        {approvedCandidates.length > 0 && (
-                          <div style={{ marginTop: "8px" }}>
-                            <span
+                        {proposed.map((c) => (
+                          <div
+                            key={c.id}
+                            className="mb-1.5 flex items-center justify-between gap-2 rounded-md bg-gray-50 px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <div className="text-[13px] font-semibold">
+                                {c.employee?.fullName}
+                              </div>
+                              <EmpMeta
+                                emp={c.employee}
+                                requestPositionId={req.position?.id}
+                              />
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <Pill tone="yellow">Proposed</Pill>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleApprove([c.id], req.requestId)
+                                }
+                                title="Approve คนนี้"
+                                className="cursor-pointer whitespace-nowrap rounded-md border border-[#198754] bg-[#198754] px-2.5 py-[3px] text-[11px] font-semibold text-white hover:bg-[#157347]"
+                              >
+                                ✓ Approve
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveFromShortlist(c.id)}
+                                title="เอาออกจาก shortlist"
+                                className="cursor-pointer border-none bg-transparent px-0.5 text-sm leading-none text-gray-400 hover:text-[#dc3545]"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+
+                        {approved.length > 0 && (
+                          <div className="mt-2">
+                            <button
+                              type="button"
                               onClick={() =>
                                 setApprovedExpanded((prev) => ({
                                   ...prev,
                                   [req.requestId]: !prev[req.requestId],
                                 }))
                               }
-                              style={{
-                                fontSize: "11px",
-                                color: "#198754",
-                                cursor: "pointer",
-                                fontWeight: 600,
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "4px",
-                              }}
+                              className="inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[11px] font-semibold text-[#198754]"
                             >
-                              {isApprovedListOpen ? "▾" : "▸"} ✓{" "}
-                              {approvedCandidates.length} approved —{" "}
-                              {isApprovedListOpen ? "ซ่อนรายชื่อ" : "ดูรายชื่อ"}
-                            </span>
+                              {approvedOpen ? "▾" : "▸"} ✓ {approved.length}{" "}
+                              approved —{" "}
+                              {approvedOpen ? "ซ่อนรายชื่อ" : "ดูรายชื่อ"}
+                            </button>
 
-                            {isApprovedListOpen && (
-                              <div style={{ marginTop: "6px" }}>
-                                {approvedCandidates.map((c) => (
+                            {approvedOpen && (
+                              <div className="mt-1.5">
+                                {approved.map((c) => (
                                   <div
                                     key={c.id}
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "space-between",
-                                      padding: "8px 12px",
-                                      background: "#f0fff4",
-                                      borderRadius: "6px",
-                                      marginBottom: "6px",
-                                      gap: "8px", // ← เพิ่มใหม่
-                                    }}
+                                    className="mb-1.5 flex items-center justify-between gap-2 rounded-md bg-[#f0fff4] px-3 py-2"
                                   >
-                                    <div style={{ minWidth: 0 }}>
-                                      {" "}
-                                      {/* ← เพิ่มใหม่ */}
-                                      <div
-                                        style={{
-                                          fontWeight: 600,
-                                          fontSize: "13px",
-                                        }}
-                                      >
+                                    <div className="min-w-0">
+                                      <div className="text-[13px] font-semibold">
                                         {c.employee?.fullName}
                                       </div>
-                                      <div
-                                        style={{
-                                          fontSize: "11px",
-                                          color: "#6c757d",
-                                        }}
-                                      >
-                                        {c.employee?.empCode}
-                                      </div>
+                                      <EmpMeta
+                                        emp={c.employee}
+                                        requestPositionId={req.position?.id}
+                                      />
                                     </div>
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "6px",
-                                        flexShrink: 0, // ← เพิ่มใหม่
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          background: "#d1e7dd",
-                                          color: "#0f5132",
-                                          borderRadius: "6px",
-                                          padding: "2px 8px",
-                                          fontSize: "11px",
-                                          fontWeight: 600,
-                                          whiteSpace: "nowrap", // ← เพิ่มใหม่
-                                        }}
-                                      >
-                                        ✓ Approved
-                                      </span>
+                                    <div className="flex shrink-0 items-center gap-1.5">
+                                      <Pill tone="green">✓ Approved</Pill>
                                       <button
+                                        type="button"
                                         onClick={() =>
                                           handleUnapprove([c.id], req.requestId)
                                         }
                                         title="ยกเลิก approve (กลับเป็น Proposed)"
-                                        style={{
-                                          background: "none",
-                                          border: "none",
-                                          color: "#adb5bd",
-                                          fontSize: "14px",
-                                          cursor: "pointer",
-                                          padding: "0 2px",
-                                          lineHeight: 1,
-                                          flexShrink: 0, // ← เพิ่มใหม่
-                                        }}
+                                        className="cursor-pointer border-none bg-transparent px-0.5 text-sm leading-none text-gray-400 hover:text-gray-700"
                                       >
                                         ↩
                                       </button>
@@ -2594,1737 +2242,621 @@ export default function Allocation() {
                             )}
                           </div>
                         )}
+
+                        {/* ── สถานะคำขอ PE (% Match ไม่ครบ) — แสดงให้รู้ ไม่มีปุ่มให้กด ── */}
+                        {pe.pending.length > 0 && (
+                          <div className="mt-2 rounded-md bg-[#fff8e1] px-3 py-2 text-[#664d03]">
+                            <div className="text-[11px] font-semibold">
+                              ⏳ รอ PE อนุมัติ {pe.pending.length} คน
+                            </div>
+                            {pe.pending.map((e) => (
+                              <PeRow
+                                key={e.employeeId}
+                                emp={e.employee}
+                                requestPositionId={req.position?.id}
+                                pct={e.matchPct}
+                              />
+                            ))}
+                          </div>
+                        )}
+                        {peApproved.length > 0 && (
+                          <div className="mt-2 rounded-md bg-[#f0fff4] px-3 py-2 text-[#0f5132]">
+                            <div className="text-[11px] font-semibold">
+                              🚀 PE อนุมัติ {peApproved.length} คน — อยู่ในหน้า
+                              Mobilization แล้ว
+                            </div>
+                            {peApproved.map((c) => (
+                              <PeRow
+                                key={c.id}
+                                emp={c.employee}
+                                requestPositionId={req.position?.id}
+                                pct={c.matchPct}
+                              />
+                            ))}
+                          </div>
+                        )}
+                        {pe.rejected.length > 0 && (
+                          <div className="mt-2 rounded-md bg-[#fff5f5] px-3 py-2 text-[#842029]">
+                            <div className="text-[11px] font-semibold">
+                              ✕ PE ไม่อนุมัติ {pe.rejected.length} คน
+                            </div>
+                            {pe.rejected.map((e) => (
+                              <PeRow
+                                key={e.employeeId}
+                                emp={e.employee}
+                                requestPositionId={req.position?.id}
+                                pct={e.matchPct}
+                                note={e.decisionNote}
+                              />
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
               )}
+              <div
+                className={`flex flex-col gap-2 ${
+                  totalShortlisted > 0 ? "border-t border-gray-200 pt-4" : ""
+                }`}
+              >
+                {allApproved && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(`/mobilization?projectId=${selectedProjectId}`)
+                    }
+                    className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border-none bg-[#198754] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(25,135,84,0.4)] transition-all hover:-translate-y-px hover:shadow-[0_4px_10px_rgba(25,135,84,0.5)]"
+                  >
+                    🚀 ทุกคน Approve แล้ว — ไป Mobilization →
+                  </button>
+                )}
 
-              {canManageAllocation && (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                    borderTop:
-                      totalShortlisted > 0 ? "1px solid #dee2e6" : "none",
-                    paddingTop: totalShortlisted > 0 ? "16px" : "0",
-                  }}
+                <button
+                  type="button"
+                  onClick={handleGenerateCv}
+                  disabled={totalShortlisted === 0 || cvLoading}
+                  className={EXPORT_BTN}
                 >
-                  {/* ── โผล่เฉพาะตอน approve ครบทุก position แล้ว ── */}
-                  {allApproved && (
-                    <button
-                      onClick={() =>
-                        navigate(`/mobilization?projectId=${selectedProjectId}`)
-                      }
-                      style={{
-                        width: "100%",
-                        padding: "9px",
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        border: "none",
-                        borderRadius: "8px",
-                        background: "#0f5132",
-                        color: "#fff",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "6px",
-                      }}
-                    >
-                      🚀 ทุกคน Approve แล้ว — ไป Mobilization →
-                    </button>
-                  )}
+                  {cvLoading ? "Generating..." : "📄 Generate CV Summary"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerateRoster}
+                  disabled={totalShortlisted === 0 || rosterLoading}
+                  className={EXPORT_BTN}
+                >
+                  {rosterLoading
+                    ? "Generating..."
+                    : "🛫 Export Roster (MOB/D-MOB)"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerateSkillMatrix}
+                  disabled={totalShortlisted === 0 || skillMatrixLoading}
+                  className={EXPORT_BTN}
+                >
+                  {skillMatrixLoading
+                    ? "Generating..."
+                    : "📋 Export Skill Matrix"}
+                </button>
 
+                {selectedProjectId && (
                   <button
-                    onClick={handleGenerateCv}
-                    disabled={totalShortlisted === 0 || cvLoading}
-                    style={{
-                      width: "100%",
-                      padding: "9px",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      border: "1px solid #dee2e6",
-                      borderRadius: "8px",
-                      background: totalShortlisted > 0 ? "#fff" : "#f8f9fa",
-                      color: totalShortlisted > 0 ? "#0d6efd" : "#adb5bd",
-                      cursor:
-                        totalShortlisted > 0 && !cvLoading
-                          ? "pointer"
-                          : "not-allowed",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "6px",
-                    }}
+                    type="button"
+                    onClick={() =>
+                      navigate(`/projects/${selectedProjectId}?tab=discussion`)
+                    }
+                    className="mt-1 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border-none bg-[#f0f7ff] py-[9px] text-[13px] font-semibold text-blue-600 shadow-[0_1px_3px_rgba(13,110,253,0.15)] transition-all hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(13,110,253,0.25)]"
                   >
-                    {cvLoading ? "Generating..." : "📄 Generate CV Summary"}
+                    💬 ส่งไฟล์ให้ PE →
                   </button>
-
-                  <button
-                    onClick={handleGenerateRoster}
-                    disabled={totalShortlisted === 0 || rosterLoading}
-                    style={{
-                      width: "100%",
-                      padding: "9px",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      border: "1px solid #dee2e6",
-                      borderRadius: "8px",
-                      background: totalShortlisted > 0 ? "#fff" : "#f8f9fa",
-                      color: totalShortlisted > 0 ? "#0d6efd" : "#adb5bd",
-                      cursor:
-                        totalShortlisted > 0 && !rosterLoading
-                          ? "pointer"
-                          : "not-allowed",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "6px",
-                    }}
-                  >
-                    {rosterLoading
-                      ? "Generating..."
-                      : "🛫 Export Roster (MOB/D-MOB)"}
-                  </button>
-
-                  <button
-                    onClick={handleGenerateSkillMatrix}
-                    disabled={totalShortlisted === 0 || skillMatrixLoading}
-                    style={{
-                      width: "100%",
-                      padding: "9px",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      border: "1px solid #dee2e6",
-                      borderRadius: "8px",
-                      background: totalShortlisted > 0 ? "#fff" : "#f8f9fa",
-                      color: totalShortlisted > 0 ? "#0d6efd" : "#adb5bd",
-                      cursor:
-                        totalShortlisted > 0 && !skillMatrixLoading
-                          ? "pointer"
-                          : "not-allowed",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "6px",
-                    }}
-                  >
-                    {skillMatrixLoading
-                      ? "Generating..."
-                      : "📋 Export Skill Matrix"}
-                  </button>
-
-                  {/* ── ลิงก์ไปหน้า Discussion ของ project ที่เลือกอยู่ ── */}
-                  {selectedProjectId && (
-                    <button
-                      onClick={() =>
-                        navigate(
-                          `/projects/${selectedProjectId}?tab=discussion`,
-                        )
-                      }
-                      style={{
-                        width: "100%",
-                        padding: "9px",
-                        fontSize: "13px",
-                        fontWeight: 600,
-                        border: "1px solid #0d6efd",
-                        borderRadius: "8px",
-                        background: "#f0f7ff",
-                        color: "#0d6efd",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "6px",
-                        marginTop: "4px",
-                      }}
-                    >
-                      💬 ส่งไฟล์ให้ PE →
-                    </button>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ════════════════════════════════════════════════════════════
-          CV Summary — เวอร์ชันใหม่: หน้าตาตรงกับเรซูเม่จริงที่ส่งลูกค้า
-          1 candidate = 1 "resume block" (page-break ตอน print)
-          ════════════════════════════════════════════════════════════ */}
+      {/* ════════ CV Summary ════════ */}
       {cvModal &&
-        createPortal(
-          <div
-            className="cv-print-overlay"
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.5)",
-              zIndex: 999999,
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "center",
-              padding: "24px",
-              overflowY: "auto",
-            }}
-            onClick={() => setCvModal(null)}
-          >
-            <style>{`@media print {
-            #root { display: none !important; }
-            .cv-print-overlay {
-              position: static !important;
-              background: none !important;
-              padding: 0 !important;
-            }
-            #cv-print {
-              position: static !important;
-              box-shadow: none !important;
-              border-radius: 0 !important;
-            }
-            .cv-no-print { display: none !important; }
-            .cv-resume-page { page-break-after: always; border: none !important; box-shadow: none !important; }
-            .cv-resume-page:last-child { page-break-after: auto; }
-          }`}</style>
-            <div
-              id="cv-print"
-              style={{
-                background: "#fff",
-                borderRadius: "10px",
-                width: "100%",
-                maxWidth: "900px",
-                overflow: "hidden",
-                boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
-              }}
-              onClick={(e) => e.stopPropagation()}
+        (() => {
+          const proposedGroups = cvModal.groups
+            .map((g) => ({
+              ...g,
+              candidates: g.candidates.filter((c) => c.status !== "approved"),
+            }))
+            .filter((g) => g.candidates.length > 0);
+          return (
+            <PrintModal
+              kind="cv"
+              printId="cv-print"
+              maxW="max-w-[900px]"
+              title="📄 CV Summary — Resume"
+              onClose={() => setCvModal(null)}
             >
-              {/* Toolbar — ไม่พิมพ์ */}
-              <div
-                className="cv-no-print"
-                style={{
-                  background: "#1e3a5f",
-                  color: "#fff",
-                  padding: "14px 24px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span style={{ fontWeight: 600, fontSize: "16px" }}>
-                  📄 CV Summary — Resume
-                </span>
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <button
-                    onClick={() => window.print()}
-                    style={{
-                      background: "#fff",
-                      color: "#1e3a5f",
-                      border: "none",
-                      borderRadius: "6px",
-                      padding: "6px 16px",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    🖨 Print / Save PDF
-                  </button>
-                  <button
-                    onClick={() => setCvModal(null)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#fff",
-                      fontSize: "20px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ padding: "20px", background: "#e9ecef" }}>
-                {(() => {
-                  // กรองเฉพาะ candidate ที่ยังเป็น Proposed (ไม่รวมคนที่ approved แล้ว)
-                  const proposedGroups = cvModal.groups
-                    .map((g) => ({
-                      ...g,
-                      candidates: g.candidates.filter(
-                        (c) => c.status !== "approved",
-                      ),
-                    }))
-                    .filter((g) => g.candidates.length > 0);
-                  return proposedGroups.length === 0 ? (
-                    <div
-                      style={{
-                        color: "#6c757d",
-                        fontSize: "13px",
-                        textAlign: "center",
-                        padding: "40px",
-                        background: "#fff",
-                      }}
-                    >
-                      ไม่มี candidate สถานะ Proposed ใน shortlist
-                      <div
-                        style={{
-                          fontSize: "11px",
-                          color: "#adb5bd",
-                          marginTop: "6px",
-                        }}
-                      >
-                        (candidate ที่ Approved แล้วจะไม่แสดงในนี้)
-                      </div>
+              <div className="overflow-x-auto bg-[#e9ecef] p-3 sm:p-5">
+                {proposedGroups.length === 0 ? (
+                  <div className="bg-white p-10 text-center text-[13px] text-gray-500">
+                    ไม่มี candidate สถานะ Proposed ใน shortlist
+                    <div className="mt-1.5 text-[11px] text-gray-400">
+                      (candidate ที่ Approved แล้วจะไม่แสดงในนี้)
                     </div>
-                  ) : (
-                    proposedGroups.map((g) =>
-                      g.candidates.map((c, ci) => {
-                        const age = calcAge(c.birthDate);
-                        const p = c.personal || {};
-                        const pro = c.professional || {};
-                        const trainedCourses = c.trainedCourses || [];
-                        const projectReferences = pro.projectReferences || [];
-
-                        return (
-                          <div
-                            key={`${g.position}-${ci}`}
-                            className="cv-resume-page"
-                            style={{
-                              background: "#fff",
-                              border: "1px solid #dee2e6",
-                              borderRadius: "6px",
-                              marginBottom: "20px",
-                              padding: "24px 28px",
-                              fontFamily: "Arial, sans-serif",
-                            }}
-                          >
-                            {/* status badge — ไม่พิมพ์ ใช้ดูก่อนส่งเท่านั้น */}
-                            <div
-                              className="cv-no-print"
-                              style={{
-                                display: "flex",
-                                justifyContent: "flex-end",
-                                marginBottom: "8px",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  background:
-                                    c.status === "approved"
-                                      ? "#d1e7dd"
-                                      : "#fff3cd",
-                                  color:
-                                    c.status === "approved"
-                                      ? "#0f5132"
-                                      : "#664d03",
-                                  borderRadius: "6px",
-                                  padding: "2px 10px",
-                                  fontSize: "11px",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {c.status === "approved"
-                                  ? "Approved"
-                                  : "Proposed"}
-                              </span>
-                            </div>
-
-                            {/* ── Letterhead ── */}
-                            <div
-                              style={{
-                                display: "flex",
-                                border: "1px solid #000",
-                                marginBottom: "0",
-                              }}
-                            >
-                              {/* โลโก้บริษัท — ซ้าย */}
-                              <div
-                                style={{
-                                  width: "100px",
-                                  flexShrink: 0,
-                                  borderRight: "1px solid #000",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  padding: "8px",
-                                }}
-                              >
-                                <img
-                                  src={`${backendUrl}/uploads/branding/experteam-logo.png`}
-                                  alt="EXPERTEAM Logo"
-                                  style={{
-                                    maxWidth: "100%",
-                                    maxHeight: "70px",
-                                    objectFit: "contain",
-                                  }}
-                                />
-                              </div>
-
-                              {/* ข้อความบริษัท — กลาง (ไทย + อังกฤษ) */}
-                              <div
-                                style={{
-                                  flex: 1,
-                                  textAlign: "center",
-                                  padding: "10px 12px",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontWeight: 700,
-                                    fontSize: "13px",
-                                    color: "#1e3a5f",
-                                  }}
-                                >
-                                  บริษัท เอ็กซ์เพิททีม จำกัด
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: "10px",
-                                    color: "#1e3a5f",
-                                    marginBottom: "4px",
-                                  }}
-                                >
-                                  110, 112, 114 ถนนพระราม 2 แขวงแสมดำ
-                                  เขตบางขุนเทียน กรุงเทพฯ 10150
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: "10px",
-                                    color: "#1e3a5f",
-                                    marginBottom: "6px",
-                                  }}
-                                >
-                                  โทร (662) 898-6001 แฟ็กซ์ (662) 898-6451
-                                </div>
-                                <div
-                                  style={{
-                                    fontWeight: 700,
-                                    fontSize: "13px",
-                                    color: "#1e3a5f",
-                                  }}
-                                >
-                                  EXPERTEAM CO., LTD.
-                                </div>
-                                <div
-                                  style={{ fontSize: "10px", color: "#1e3a5f" }}
-                                >
-                                  110, 112, 114 Rama II Road, Sa-maedum,
-                                  Bangkuntean, Bangkok 10150
-                                </div>
-                                <div
-                                  style={{ fontSize: "10px", color: "#1e3a5f" }}
-                                >
-                                  TEL: (662) 898-6001 FAX: (662) 898-6451
-                                </div>
-                              </div>
-
-                              {/* ISO badges — ขวา */}
-                              <div
-                                style={{
-                                  width: "160px",
-                                  flexShrink: 0,
-                                  borderLeft: "1px solid #000",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  padding: "8px",
-                                }}
-                              >
-                                <img
-                                  src={`${backendUrl}/uploads/branding/iso-badges.png`}
-                                  alt="ISO 9001 / 14001 / 45001 Certified"
-                                  style={{
-                                    maxWidth: "100%",
-                                    maxHeight: "70px",
-                                    objectFit: "contain",
-                                  }}
-                                />
-                              </div>
-                            </div>
-                            <div
-                              style={{
-                                border: "1px solid #000",
-                                borderTop: "none",
-                                padding: "6px",
-                                textAlign: "center",
-                                fontWeight: 700,
-                                fontSize: "16px",
-                                marginBottom: "16px",
-                              }}
-                            >
-                              Resume
-                            </div>
-
-                            {/* ── Personal Details (พร้อมรูปมุมขวาบน — เหมือนเรซูเม่ต้นฉบับ) ── */}
-                            <div style={resumeSectionTitle}>
-                              Personal Details
-                            </div>
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: "16px",
-                                border: "1px solid #1e3a5f",
-                                borderTop: "none",
-                                marginBottom: "16px",
-                              }}
-                            >
-                              <table
-                                style={{
-                                  flex: 1,
-                                  borderCollapse: "collapse",
-                                }}
-                              >
-                                <tbody>
-                                  <tr>
-                                    <td style={resumeTd1}>Name</td>
-                                    <td style={resumeTd2} colSpan={3}>
-                                      {c.fullName}
-                                    </td>
-                                  </tr>
-                                  <tr>
-                                    <td style={resumeTd1}>Address</td>
-                                    <td style={resumeTd2} colSpan={3}>
-                                      {p.address || "—"}
-                                    </td>
-                                  </tr>
-                                  <tr>
-                                    <td style={resumeTd1}>Telephone</td>
-                                    <td style={resumeTd2}>{p.phone || "—"}</td>
-                                    <td style={resumeTd1}>Email</td>
-                                    <td style={resumeTd2}>{p.email || "—"}</td>
-                                  </tr>
-                                  <tr>
-                                    <td style={resumeTd1}>Date of Birth</td>
-                                    <td style={resumeTd2}>
-                                      {fmtResumeDate(c.birthDate)}
-                                    </td>
-                                    <td style={resumeTd1}>Age</td>
-                                    <td style={resumeTd2}>
-                                      {age !== null ? `${age} years` : "—"}
-                                    </td>
-                                  </tr>
-                                  <tr>
-                                    <td style={resumeTd1}>Sex</td>
-                                    <td style={resumeTd2}>
-                                      {GENDER_LABEL[p.gender] || "—"}
-                                    </td>
-                                    <td style={resumeTd1}>Nationality</td>
-                                    <td style={resumeTd2}>
-                                      {c.nationality || "—"}
-                                    </td>
-                                  </tr>
-                                  <tr>
-                                    <td style={resumeTd1}>Height</td>
-                                    <td style={resumeTd2}>
-                                      {p.height != null
-                                        ? `${p.height} cm.`
-                                        : "—"}
-                                    </td>
-                                    <td style={resumeTd1}>Weight</td>
-                                    <td style={resumeTd2}>
-                                      {p.weight != null
-                                        ? `${p.weight} kg.`
-                                        : "—"}
-                                    </td>
-                                  </tr>
-                                  <tr>
-                                    <td style={resumeTd1}>Religion</td>
-                                    <td style={resumeTd2}>
-                                      {p.religion || "—"}
-                                    </td>
-                                    <td style={resumeTd1}>Language</td>
-                                    <td style={resumeTd2}>
-                                      {p.language || "—"}
-                                    </td>
-                                  </tr>
-                                  <tr>
-                                    <td style={resumeTd1}>Education</td>
-                                    <td style={resumeTd2} colSpan={3}>
-                                      {p.education || "—"}
-                                    </td>
-                                  </tr>
-                                </tbody>
-                              </table>
-
-                              {/* รูปพนักงาน — มุมขวา เหมือนเรซูเม่ต้นฉบับ */}
-                              <div
-                                style={{
-                                  width: "110px",
-                                  flexShrink: 0,
-                                  padding: "10px",
-                                  display: "flex",
-                                  alignItems: "flex-start",
-                                  justifyContent: "center",
-                                }}
-                              >
-                                {p.photoUrl ? (
-                                  <img
-                                    src={`${backendUrl}${p.photoUrl}`}
-                                    alt={c.fullName}
-                                    style={{
-                                      width: "100px",
-                                      height: "120px",
-                                      objectFit: "cover",
-                                      border: "1px solid #1e3a5f",
-                                      borderRadius: "4px",
-                                    }}
-                                  />
-                                ) : (
-                                  <div
-                                    className="cv-no-print"
-                                    style={{
-                                      width: "100px",
-                                      height: "120px",
-                                      border: "1px dashed #adb5bd",
-                                      borderRadius: "4px",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      fontSize: "10px",
-                                      color: "#adb5bd",
-                                      textAlign: "center",
-                                      padding: "4px",
-                                    }}
-                                  >
-                                    No Photo
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* ── Trained Courses ── */}
-                            <div style={resumeSectionTitle}>
-                              Trained Courses
-                            </div>
-                            <div
-                              style={{
-                                border: "1px solid #1e3a5f",
-                                borderTop: "none",
-                                padding: "10px 14px",
-                                marginBottom: "16px",
-                              }}
-                            >
-                              {trainedCourses.length === 0 ? (
-                                <div
-                                  style={{ fontSize: "12px", color: "#6c757d" }}
-                                >
-                                  — ไม่มีข้อมูล
-                                </div>
-                              ) : (
-                                trainedCourses.map((t, ti) => (
-                                  <div
-                                    key={ti}
-                                    style={{
-                                      display: "flex",
-                                      fontSize: "12px",
-                                      marginBottom: "6px",
-                                      gap: "8px",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        fontWeight: 700,
-                                        color: "#1e3a5f",
-                                        minWidth: "110px",
-                                      }}
-                                    >
-                                      {fmtResumeDate(t.completedDate)}
-                                    </span>
-                                    <span>:</span>
-                                    <div>
-                                      <div>{t.name}</div>
-                                      {t.institute && (
-                                        <div
-                                          style={{
-                                            color: "#6c757d",
-                                            fontSize: "11px",
-                                          }}
-                                        >
-                                          By {t.institute}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-
-                            {/* ── Professional Experience ── */}
-                            <div style={resumeSectionTitle}>
-                              Professional Experience
-                            </div>
-                            <div
-                              style={{
-                                border: "1px solid #1e3a5f",
-                                borderTop: "none",
-                                padding: "10px 14px",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontSize: "12px",
-                                  fontWeight: 700,
-                                  textDecoration: "underline",
-                                  marginBottom: "8px",
-                                }}
-                              >
-                                Present
-                              </div>
-                              <table
-                                style={{
-                                  fontSize: "12px",
-                                  marginBottom: "16px",
-                                }}
-                              >
-                                <tbody>
-                                  <tr>
-                                    <td
-                                      style={{
-                                        fontWeight: 700,
-                                        paddingRight: "8px",
-                                        verticalAlign: "top",
-                                      }}
-                                    >
-                                      Company
-                                    </td>
-                                    <td>:&nbsp;&nbsp;{pro.company}</td>
-                                  </tr>
-                                  <tr>
-                                    <td
-                                      style={{
-                                        fontWeight: 700,
-                                        paddingRight: "8px",
-                                        verticalAlign: "top",
-                                      }}
-                                    >
-                                      Position
-                                    </td>
-                                    <td>
-                                      :&nbsp;&nbsp;{pro.currentPosition || "—"}
-                                    </td>
-                                  </tr>
-                                  {pro.responsibilities?.length > 0 && (
-                                    <tr>
-                                      <td
-                                        style={{
-                                          fontWeight: 700,
-                                          paddingRight: "8px",
-                                          verticalAlign: "top",
-                                        }}
-                                      >
-                                        Responsibility
-                                      </td>
-                                      <td>
-                                        :&nbsp;&nbsp;
-                                        {pro.responsibilities.map((r, ri) => (
-                                          <div key={ri}>
-                                            {ri + 1}. {r}
-                                          </div>
-                                        ))}
-                                      </td>
-                                    </tr>
-                                  )}
-                                </tbody>
-                              </table>
-
-                              <div
-                                style={{
-                                  fontSize: "12px",
-                                  fontWeight: 700,
-                                  textDecoration: "underline",
-                                  marginBottom: "8px",
-                                }}
-                              >
-                                Project References
-                              </div>
-                              {projectReferences.length === 0 ? (
-                                <div
-                                  style={{ fontSize: "12px", color: "#6c757d" }}
-                                >
-                                  — ไม่มีประวัติ deploy
-                                </div>
-                              ) : (
-                                projectReferences.map((pr, pi) => (
-                                  <table
-                                    key={pi}
-                                    style={{
-                                      fontSize: "12px",
-                                      marginBottom: "10px",
-                                    }}
-                                  >
-                                    <tbody>
-                                      <tr>
-                                        <td
-                                          style={{
-                                            fontWeight: 700,
-                                            paddingRight: "8px",
-                                            width: "70px",
-                                            verticalAlign: "top",
-                                          }}
-                                        >
-                                          Project
-                                        </td>
-                                        <td>:&nbsp;&nbsp;{pr.projectLabel}</td>
-                                      </tr>
-                                      <tr>
-                                        <td
-                                          style={{
-                                            fontWeight: 700,
-                                            paddingRight: "8px",
-                                            verticalAlign: "top",
-                                          }}
-                                        >
-                                          Position
-                                        </td>
-                                        <td>
-                                          :&nbsp;&nbsp;{pr.position || "—"}
-                                        </td>
-                                      </tr>
-                                      <tr>
-                                        <td
-                                          style={{
-                                            fontWeight: 700,
-                                            paddingRight: "8px",
-                                            verticalAlign: "top",
-                                          }}
-                                        >
-                                          Period
-                                        </td>
-                                        <td>
-                                          :&nbsp;&nbsp;
-                                          {fmtResumeDate(pr.mobDate)}
-                                          {pr.demobDate
-                                            ? ` to ${fmtResumeDate(pr.demobDate)}`
-                                            : ""}
-                                        </td>
-                                      </tr>
-                                    </tbody>
-                                  </table>
-                                ))
-                              )}
-                            </div>
-
-                            {/* ── ข้อมูลเสริม (Medical/Passport) — ไม่พิมพ์ ใช้ดูก่อนส่งเท่านั้น ── */}
-                            <div
-                              className="cv-no-print"
-                              style={{
-                                marginTop: "16px",
-                                paddingTop: "12px",
-                                borderTop: "1px dashed #dee2e6",
-                                fontSize: "11px",
-                                color: "#6c757d",
-                              }}
-                            >
-                              <strong>Medical:</strong>{" "}
-                              {c.medical
-                                ? `${c.medical.status || "—"} (exp ${fmtShort(c.medical.expiryDate)})`
-                                : "—"}
-                              {"  ·  "}
-                              <strong>Passport:</strong>{" "}
-                              {c.passport?.passportNo
-                                ? `${c.passport.passportNo} (exp ${fmtShort(c.passport.expiryDate)})`
-                                : "—"}
-                            </div>
-                          </div>
-                        );
-                      }),
-                    )
-                  );
-                })()}
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-      {rosterModal &&
-        createPortal(
-          <div
-            className="roster-print-overlay"
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.5)",
-              zIndex: 999999,
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "center",
-              padding: "24px",
-              overflowY: "auto",
-            }}
-            onClick={() => setRosterModal(null)}
-          >
-            <style>{`@media print {
-  #root { display: none !important; }
-  .roster-print-overlay {
-    position: static !important;
-    background: none !important;
-    padding: 0 !important;
-  }
-  #roster-print {
-    position: static !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-  }
-  .cv-no-print { display: none !important; }
-  #roster-print input { border: none !important; background: transparent !important; }
-}`}</style>
-            <div
-              id="roster-print"
-              style={{
-                background: "#fff",
-                borderRadius: "10px",
-                width: "100%",
-                maxWidth: "1100px",
-                overflow: "hidden",
-                boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div
-                className="cv-no-print"
-                style={{
-                  background: "#1e3a5f",
-                  color: "#fff",
-                  padding: "14px 24px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span style={{ fontWeight: 600, fontSize: "16px" }}>
-                  🛫 Roster (MOB/D-MOB)
-                </span>
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <button
-                    onClick={() => window.print()}
-                    style={{
-                      background: "#fff",
-                      color: "#1e3a5f",
-                      border: "none",
-                      borderRadius: "6px",
-                      padding: "6px 16px",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    🖨 Print / Save PDF
-                  </button>
-                  <button
-                    onClick={() => setRosterModal(null)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#fff",
-                      fontSize: "20px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ padding: "24px" }}>
-                <div
-                  style={{
-                    fontSize: "18px",
-                    fontWeight: 700,
-                    marginBottom: "4px",
-                  }}
-                >
-                  {rosterModal.project?.name}
-                  {rosterModal.project?.workingDay
-                    ? ` (${fmtShort(rosterModal.project.workingDay)})`
-                    : rosterModal.project?.startDate
-                      ? ` (${fmtShort(rosterModal.project.startDate)})`
-                      : ""}
-                </div>
-                <div
-                  style={{
-                    fontSize: "13px",
-                    color: "#6c757d",
-                    marginBottom: "16px",
-                  }}
-                >
-                  {rosterModal.project?.client}{" "}
-                  {rosterModal.project?.location
-                    ? `· ${rosterModal.project.location}`
-                    : ""}
-                </div>
-
-                <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse",
-                    fontSize: "12px",
-                  }}
-                >
-                  <thead>
-                    <tr style={{ background: "#f1f3f5" }}>
-                      {[
-                        "Item",
-                        "Name (Eng)",
-                        "Position",
-                        "Company",
-                        "From",
-                        "To",
-                        "MOB",
-                        "D-MOB",
-                        "Working Day",
-                        "Day Off",
-                        "Previous Location",
-                        "Remark",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          style={{
-                            padding: "8px 6px",
-                            border: "1px solid #dee2e6",
-                            textAlign: "left",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rosterModal.rows.map((r, i) => (
-                      <tr key={r.employeeId}>
-                        <td
-                          style={{
-                            padding: "6px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          {i + 1}
-                        </td>
-                        <td
-                          style={{
-                            padding: "6px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          {r.fullName}
-                        </td>
-                        <td
-                          style={{
-                            padding: "6px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          {r.position}
-                        </td>
-                        <td
-                          style={{
-                            padding: "6px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          {r.company}
-                        </td>
-                        <td
-                          style={{
-                            padding: "2px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          <input
-                            value={r.from}
-                            onChange={(e) =>
-                              updateRosterField(
-                                r.employeeId,
-                                "from",
-                                e.target.value,
-                              )
-                            }
-                            style={{
-                              width: "60px",
-                              border: "1px solid #dee2e6",
-                              padding: "4px",
-                              fontSize: "12px",
-                            }}
-                            placeholder="—"
-                          />
-                        </td>
-                        <td
-                          style={{
-                            padding: "6px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          {r.to ?? "—"}
-                        </td>
-                        <td
-                          style={{
-                            padding: "6px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          {fmtShort(r.mobDate)}
-                        </td>
-                        <td
-                          style={{
-                            padding: "6px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          {fmtShort(r.demobDate)}
-                        </td>
-                        <td
-                          style={{
-                            padding: "6px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          {fmtShort(r.workingDay)}
-                        </td>
-                        <td
-                          style={{
-                            padding: "6px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          {r.dayOff ?? "—"}
-                        </td>
-                        <td
-                          style={{
-                            padding: "6px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          {r.previousLocation ?? "—"}
-                        </td>
-                        <td
-                          style={{
-                            padding: "2px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          <input
-                            value={r.remark}
-                            onChange={(e) =>
-                              updateRosterField(
-                                r.employeeId,
-                                "remark",
-                                e.target.value,
-                              )
-                            }
-                            style={{
-                              width: "120px",
-                              border: "1px solid #dee2e6",
-                              padding: "4px",
-                              fontSize: "12px",
-                            }}
-                            placeholder="—"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-      {skillMatrixModal &&
-        createPortal(
-          <div
-            className="matrix-print-overlay"
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.5)",
-              zIndex: 999999,
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "center",
-              padding: "24px",
-              overflowY: "auto",
-            }}
-            onClick={() => setSkillMatrixModal(null)}
-          >
-            <style>{`@media print {
-  @page { size: A4 landscape; margin: 6mm; }
-  #root { display: none !important; }
-  .matrix-print-overlay {
-    position: static !important;
-    background: none !important;
-    padding: 0 !important;
-  }
-  #matrix-print {
-    position: static !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-  }
-  .cv-no-print { display: none !important; }
-  #matrix-print table {
-    transform-origin: top left;
-    transform: scale(var(--matrix-scale, 1));
-  }
-}`}</style>
-            <div
-              id="matrix-print"
-              style={{
-                background: "#fff",
-                borderRadius: "10px",
-                width: "100%",
-                maxWidth: "95vw",
-                overflow: "hidden",
-                boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div
-                className="cv-no-print"
-                style={{
-                  background: "#1e3a5f",
-                  color: "#fff",
-                  padding: "14px 24px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span style={{ fontWeight: 600, fontSize: "16px" }}>
-                  📋 Skill Matrix
-                </span>
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <button
-                    onClick={handleExportSkillMatrixExcel}
-                    style={{
-                      background: "#198754",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "6px",
-                      padding: "6px 16px",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    📊 Export to Excel
-                  </button>
-                  <button
-                    onClick={() => window.print()}
-                    style={{
-                      background: "#fff",
-                      color: "#1e3a5f",
-                      border: "none",
-                      borderRadius: "6px",
-                      padding: "6px 16px",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    🖨 Print / Save PDF
-                  </button>
-                  <button
-                    onClick={() => setSkillMatrixModal(null)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#fff",
-                      fontSize: "20px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ padding: "24px", overflowX: "auto" }}>
-                <div
-                  style={{
-                    fontSize: "18px",
-                    fontWeight: 700,
-                    marginBottom: "16px",
-                  }}
-                >
-                  {skillMatrixModal.project?.name} —{" "}
-                  {skillMatrixModal.project?.client}
-                </div>
-
-                {skillMatrixModal.trainings.length === 0 ? (
-                  <div style={{ color: "#6c757d", fontSize: "13px" }}>
-                    ไม่พบ training requirement สำหรับตำแหน่งในกลุ่มนี้ (เช็คว่า
-                    Training Matrix ของตำแหน่งเหล่านี้ตั้งไว้แล้วหรือยัง)
                   </div>
                 ) : (
-                  <table
-                    style={{
-                      borderCollapse: "collapse",
-                      fontSize: "11px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <thead>
-                      <tr style={{ background: "#f1f3f5" }}>
-                        <th
-                          style={{
-                            padding: "6px",
-                            border: "1px solid #dee2e6",
-                            position: "sticky",
-                            left: 0,
-                            background: "#f1f3f5",
-                          }}
-                        >
-                          Name
-                        </th>
-                        <th
-                          style={{
-                            padding: "6px",
-                            border: "1px solid #dee2e6",
-                          }}
-                        >
-                          Position
-                        </th>
-                        {skillMatrixModal.trainings.map((tr) => (
-                          <th
-                            key={tr.id}
-                            style={{
-                              border: "1px solid #dee2e6",
-                              width: "55px",
-                              minWidth: "55px",
-                              maxWidth: "55px",
-                              height: "150px",
-                              verticalAlign: "bottom",
-                              padding: 0,
-                              overflow: "visible",
-                            }}
-                          >
-                            <div
-                              style={{
-                                transform: "rotate(-45deg)",
-                                transformOrigin: "bottom left",
-                                whiteSpace: "nowrap",
-                                fontSize: "10px",
-                                fontWeight: 700,
-                                width: "0px",
-                                marginLeft: "20px",
-                                marginBottom: "6px",
-                              }}
-                            >
-                              {tr.name}
-                            </div>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {skillMatrixModal.rows.map((r) => (
-                        <tr key={r.employeeId}>
-                          <td
-                            style={{
-                              padding: "6px",
-                              border: "1px solid #dee2e6",
-                              position: "sticky",
-                              left: 0,
-                              background: "#fff",
-                              fontWeight: 600,
-                            }}
-                          >
-                            {r.fullName}
-                          </td>
-                          <td
-                            style={{
-                              padding: "6px",
-                              border: "1px solid #dee2e6",
-                            }}
-                          >
-                            {r.position}
-                          </td>
-                          {r.cells.map((cell) => (
-                            <td
-                              key={cell.trainingId}
-                              style={{
-                                padding: "4px 2px",
-                                border: "1px solid #dee2e6",
-                                textAlign: "center",
-                                width: "55px",
-                                minWidth: "55px",
-                                maxWidth: "55px",
-                                fontSize: "10px",
-                                whiteSpace: "nowrap",
-                                color:
-                                  cell.status === "overdue"
-                                    ? "#dc3545"
-                                    : "#212529",
-                              }}
-                            >
-                              {skillCellLabel(cell)}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  proposedGroups.map((g) =>
+                    g.candidates.map((c, ci) => (
+                      <ResumePage
+                        key={`${g.position}-${ci}`}
+                        cvData={c}
+                        backendUrl={backendUrl}
+                        className="mb-5"
+                        top={
+                          <div className="cv-no-print mb-2 flex justify-end">
+                            <Pill tone="yellow">Proposed</Pill>
+                          </div>
+                        }
+                        bottom={
+                          <div className="cv-no-print mt-4 border-t border-dashed border-gray-200 pt-3 text-[11px] text-gray-500">
+                            <strong>Medical:</strong>{" "}
+                            {c.medical
+                              ? `${c.medical.status || "—"} (exp ${fmtShort(c.medical.expiryDate)})`
+                              : "—"}
+                            {"  ·  "}
+                            <strong>Passport:</strong>{" "}
+                            {c.passport?.passportNo
+                              ? `${c.passport.passportNo} (exp ${fmtShort(c.passport.expiryDate)})`
+                              : "—"}
+                          </div>
+                        }
+                      />
+                    )),
+                  )
                 )}
               </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-      {healthNoteModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 999999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-          }}
-          onClick={() => setHealthNoteModal(null)}
+            </PrintModal>
+          );
+        })()}
+
+      {/* ════════ Roster ════════ */}
+      {rosterModal && (
+        <PrintModal
+          kind="roster"
+          printId="roster-print"
+          maxW="max-w-[1100px]"
+          title="🛫 Roster (MOB/D-MOB)"
+          onClose={() => setRosterModal(null)}
         >
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: "10px",
-              width: "100%",
-              maxWidth: "420px",
-              overflow: "hidden",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              style={{
-                background: "#1e3a5f",
-                color: "#fff",
-                padding: "14px 20px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
+          <div className="roster-scroll overflow-x-auto p-4 sm:p-6">
+            <div className="mb-1 text-lg font-bold">
+              {rosterModal.project?.name}
+              {rosterModal.project?.workingDay
+                ? ` (${fmtShort(rosterModal.project.workingDay)})`
+                : rosterModal.project?.startDate
+                  ? ` (${fmtShort(rosterModal.project.startDate)})`
+                  : ""}
+            </div>
+            <div className="mb-4 text-[13px] text-gray-500">
+              {rosterModal.project?.client}
+              {rosterModal.project?.location
+                ? ` · ${rosterModal.project.location}`
+                : ""}
+            </div>
+
+            <table className="w-full min-w-[960px] border-collapse text-xs">
+              <thead>
+                <tr className="bg-[#f1f3f5]">
+                  {[
+                    "Item",
+                    "Name (Eng)",
+                    "Position",
+                    "Company",
+                    "From",
+                    "To",
+                    "MOB",
+                    "D-MOB",
+                    "Working Day",
+                    "Day Off",
+                    "Previous Location",
+                    "Remark",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="border border-gray-200 px-1.5 py-2 text-left font-bold"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rosterModal.rows.map((r, i) => {
+                  const cell = "border border-gray-200 p-1.5";
+                  const inputCell = "border border-gray-200 p-0.5";
+                  const input =
+                    "border border-gray-200 p-1 text-xs outline-none focus:border-blue-400";
+                  return (
+                    <tr key={r.employeeId}>
+                      <td className={cell}>{i + 1}</td>
+                      <td className={cell}>{r.fullName}</td>
+                      <td className={cell}>{r.position}</td>
+                      <td className={cell}>{r.company}</td>
+                      <td className={inputCell}>
+                        <input
+                          value={r.from}
+                          onChange={(e) =>
+                            updateRosterField(
+                              r.employeeId,
+                              "from",
+                              e.target.value,
+                            )
+                          }
+                          placeholder="—"
+                          className={`${input} w-[60px]`}
+                        />
+                      </td>
+                      <td className={cell}>{r.to ?? "—"}</td>
+                      <td className={cell}>{fmtShort(r.mobDate)}</td>
+                      <td className={cell}>{fmtShort(r.demobDate)}</td>
+                      <td className={cell}>{fmtShort(r.workingDay)}</td>
+                      <td className={cell}>{r.dayOff ?? "—"}</td>
+                      <td className={cell}>{r.previousLocation ?? "—"}</td>
+                      <td className={inputCell}>
+                        <input
+                          value={r.remark}
+                          onChange={(e) =>
+                            updateRosterField(
+                              r.employeeId,
+                              "remark",
+                              e.target.value,
+                            )
+                          }
+                          placeholder="—"
+                          className={`${input} w-[120px]`}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </PrintModal>
+      )}
+
+      {/* ════════ Skill Matrix ════════ */}
+      {skillMatrixModal && (
+        <PrintModal
+          kind="matrix"
+          printId="matrix-print"
+          maxW="max-w-[95vw]"
+          title="📋 Skill Matrix"
+          onClose={() => setSkillMatrixModal(null)}
+          actions={
+            <button
+              type="button"
+              onClick={handleExportSkillMatrixExcel}
+              className={EXCEL_BTN}
             >
-              <span style={{ fontWeight: 600, fontSize: "15px" }}>
-                📄 Health Note — {healthNoteModal.name}
-              </span>
-              <button
-                onClick={() => setHealthNoteModal(null)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#fff",
-                  fontSize: "20px",
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
+              📊 Export to Excel
+            </button>
+          }
+        >
+          <div className="overflow-x-auto p-4 sm:p-6">
+            <div className="mb-4 text-lg font-bold">
+              {skillMatrixModal.project?.name} —{" "}
+              {skillMatrixModal.project?.client}
+            </div>
+            {skillMatrixModal.trainings.length === 0 ? (
+              <div className="text-[13px] text-gray-500">
+                ไม่พบ training requirement สำหรับตำแหน่งในกลุ่มนี้ (เช็คว่า
+                Training Matrix ของตำแหน่งเหล่านี้ตั้งไว้แล้วหรือยัง)
+              </div>
+            ) : (
+              <SkillMatrixTable
+                trainings={skillMatrixModal.trainings}
+                rows={skillMatrixModal.rows}
+              />
+            )}
+          </div>
+        </PrintModal>
+      )}
+
+      {/* ════════ ขออนุมัติ PE ════════ */}
+      {exceptionModal && (
+        <Modal
+          onClose={() => !sendingException && setExceptionModal(null)}
+          maxW="max-w-[480px]"
+          z="z-[1000001]"
+        >
+          <ModalHeader
+            title="📝 ขออนุมัติ PE — % Match ไม่ครบ"
+            onClose={() => !sendingException && setExceptionModal(null)}
+            bg="bg-[#8a5a00]"
+          />
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+            <div className="text-[15px] font-bold">
+              {exceptionModal.fullName}
+            </div>
+            <div className="text-xs text-gray-500">
+              {exceptionModal.empId} · ขอใช้ในตำแหน่ง{" "}
+              {selectedRequest?.position?.name}
             </div>
             <div
-              style={{
-                padding: "20px",
-                fontSize: "14px",
-                color: "#212529",
-                whiteSpace: "pre-wrap",
-                lineHeight: 1.6,
-              }}
+              className={`mt-2 text-sm font-bold ${matchColor(exceptionModal.matchPct)}`}
             >
-              {healthNoteModal.note}
+              {exceptionModal.matchPct}% Match
+            </div>
+            {exceptionModal.missingTrainings?.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {exceptionModal.missingTrainings.map((m) => (
+                  <span
+                    key={m}
+                    className="rounded-md border border-[#f5c6cb] bg-[#fff5f5] px-2 py-0.5 text-xs text-[#842029]"
+                  >
+                    ✕ {m}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="mb-1.5 mt-4 text-xs font-semibold text-gray-700">
+              เหตุผลที่ขอใช้คนนี้ *
+            </div>
+            <div className="flex flex-col gap-1.5" role="radiogroup">
+              {EXCEPTION_REASONS.map(([key, label]) => {
+                const active = exceptionReasonType === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setExceptionReasonType(key)}
+                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-left text-[13px] ${
+                      active
+                        ? "border-[#8a5a00] bg-[#fff8e1] font-semibold text-[#5c3d00]"
+                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                        active ? "border-[#8a5a00]" : "border-gray-300"
+                      }`}
+                    >
+                      {active && (
+                        <span className="h-2 w-2 rounded-full bg-[#8a5a00]" />
+                      )}
+                    </span>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {exceptionReasonType && (
+              <>
+                <label className="mb-1 mt-3 block text-xs font-semibold text-gray-700">
+                  {exceptionReasonType === "other"
+                    ? "ระบุเหตุผล *"
+                    : "รายละเอียดเพิ่มเติม (ถ้ามี)"}
+                </label>
+                <textarea
+                  rows={2}
+                  value={exceptionReason}
+                  onChange={(e) => setExceptionReason(e.target.value)}
+                  autoFocus={exceptionReasonType === "other"}
+                  placeholder={
+                    exceptionReasonType === "training_booked"
+                      ? "เช่น อบรมวันที่ 15 ต.ค. 2569"
+                      : exceptionReasonType === "other"
+                        ? "พิมพ์เหตุผล..."
+                        : "เช่น เคยทำงานตำแหน่งนี้ที่แท่น BELQ 2 ปี"
+                  }
+                  className="box-border w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-[13px] outline-none focus:border-blue-400"
+                />
+              </>
+            )}
+            <div className="mt-1.5 text-[11px] text-gray-500">
+              ระบบแจ้งเตือนไปที่ PE ทุกคน เมื่อ PE อนุมัติ คนนี้จะไปที่หน้า
+              Mobilization ทันที
             </div>
           </div>
-        </div>
+          <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-4 py-3.5 sm:px-6">
+            <button
+              type="button"
+              onClick={() => setExceptionModal(null)}
+              disabled={sendingException}
+              className={BTN_OUTLINE}
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              onClick={submitException}
+              disabled={sendingException || !exceptionReasonReady}
+              className={`${BTN_GREEN} px-5 py-2 text-[13px]`}
+            >
+              {sendingException ? "กำลังส่ง..." : "ส่งให้ PE"}
+            </button>
+          </div>
+        </Modal>
       )}
+
+      {/* ════════ Health Note ════════ */}
+      {healthNoteModal && (
+        <Modal onClose={() => setHealthNoteModal(null)} maxW="max-w-[420px]">
+          <ModalHeader
+            title={`📄 Health Note — ${healthNoteModal.name}`}
+            onClose={() => setHealthNoteModal(null)}
+          />
+          <div className="overflow-y-auto whitespace-pre-wrap p-5 text-sm leading-relaxed text-gray-900">
+            {healthNoteModal.note}
+          </div>
+        </Modal>
+      )}
+
+      {/* ════════ Eligibility (Client Requirement Check) ════════ */}
       {eligibilityModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 999999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-          }}
-          onClick={() => setEligibilityModal(null)}
+        <Modal
+          onClose={() => setEligibilityModal(null)}
+          maxW="max-w-[min(920px,92vw)]"
         >
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: "10px",
-              width: "100%",
-              maxWidth: "720px",
-              maxHeight: "85vh",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              style={{
-                background: "#1e3a5f",
-                color: "#fff",
-                padding: "16px 24px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "10px" }}
-              >
-                <span style={{ fontSize: "16px" }}>☑️</span>
-                <span style={{ fontWeight: 600, fontSize: "16px" }}>
-                  Client Requirement Check
-                </span>
-              </div>
-              <button
-                onClick={() => setEligibilityModal(null)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#fff",
-                  fontSize: "20px",
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
-            </div>
+          <ModalHeader
+            title="☑️ Client Requirement Check"
+            onClose={() => setEligibilityModal(null)}
+          />
 
-            <div
-              style={{
-                padding: "16px 24px",
-                borderBottom: "1px solid #dee2e6",
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 700, fontSize: "16px" }}>
-                  {eligibilityModal.fullName}
-                </div>
-                <div style={{ fontSize: "13px", color: "#6c757d" }}>
-                  {eligibilityModal.position} · {eligibilityModal.empCode}
-                </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-gray-200 px-4 py-2.5 sm:px-6">
+            <div className="min-w-0">
+              <div className="text-base font-bold">
+                {eligibilityModal.fullName}
               </div>
-              <span
-                style={{
-                  marginLeft: "auto",
-                  background:
-                    eligibilityModal.mobilizationStatus === "ready"
-                      ? "#d1e7dd"
-                      : "#fff3cd",
-                  color:
-                    eligibilityModal.mobilizationStatus === "ready"
-                      ? "#0f5132"
-                      : "#664d03",
-                  borderRadius: "6px",
-                  padding: "4px 12px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                }}
-              >
-                {eligibilityModal.mobilizationStatus === "ready"
-                  ? "Ready"
-                  : eligibilityModal.mobilizationStatus}
-              </span>
+              <div className="text-[13px] text-gray-500">
+                {eligibilityModal.position} · {eligibilityModal.empId}
+              </div>
             </div>
-
-            <div
-              style={{
-                borderBottom: "1px solid #dee2e6",
-                display: "flex",
-                padding: "0 24px",
-              }}
+            <Pill
+              tone={
+                eligibilityModal.mobilizationStatus === "ready"
+                  ? "green"
+                  : "yellow"
+              }
+              className="ml-auto px-3 py-1 text-xs"
             >
+              {eligibilityModal.mobilizationStatus === "ready"
+                ? "Ready"
+                : eligibilityModal.mobilizationStatus}
+            </Pill>
+          </div>
+
+          {eligibilityModal.clients.length > 1 && (
+            <div className="flex shrink-0 overflow-x-auto overflow-y-hidden border-b border-gray-200 px-4 sm:px-6">
               {eligibilityModal.clients.map((c, i) => (
                 <button
                   key={i}
-                  onClick={() => {
-                    setActiveClientTab(i);
-                    setCompletedExpanded({});
-                  }}
-                  style={{
-                    padding: "10px 16px",
-                    fontSize: "13px",
-                    fontWeight: activeClientTab === i ? 700 : 400,
-                    border: "none",
-                    borderBottom:
-                      activeClientTab === i
-                        ? "2px solid #0d6efd"
-                        : "2px solid transparent",
-                    background: "none",
-                    cursor: "pointer",
-                    color: activeClientTab === i ? "#0d6efd" : "#6c757d",
-                  }}
+                  type="button"
+                  onClick={() => setActiveClientTab(i)}
+                  className={`-mb-px shrink-0 cursor-pointer whitespace-nowrap border-x-0 border-b-2 border-t-0 border-solid bg-transparent px-4 py-2 text-[13px] ${
+                    activeClientTab === i
+                      ? "border-blue-600 font-bold text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
                 >
                   {c.clientName}
                 </button>
               ))}
             </div>
+          )}
 
-            <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1 }}>
-              {eligibilityModal.clients.length === 0 ? (
-                <div
-                  style={{
-                    textAlign: "center",
-                    color: "#6c757d",
-                    padding: "20px",
-                  }}
-                >
-                  No training matrix found for this position
-                </div>
-              ) : (
-                (() => {
-                  const client = eligibilityModal.clients[activeClientTab];
-                  if (!client) return null;
+          <div className="flex-1 overflow-y-auto px-4 py-3.5 sm:px-6">
+            {eligibilityModal.clients.length === 0 ? (
+              <div className="p-5 text-center text-gray-500">
+                No training matrix found for this position
+              </div>
+            ) : (
+              (() => {
+                const client = eligibilityModal.clients[activeClientTab];
+                if (!client) return null;
+                const empty = { required: [], completed: [], missing: [] };
+                const mandatory = client.mandatory ?? empty;
+                const assigned = client.assigned ?? empty;
+                const others = client.others ?? { completed: [] };
 
-                  const mandatory = client.mandatory ?? {
-                    required: [],
-                    completed: [],
-                    missing: [],
-                  };
-                  const assigned = client.assigned ?? {
-                    required: [],
-                    completed: [],
-                    missing: [],
-                  };
-                  const others = client.others ?? { completed: [] };
-
-                  const renderTags = (missing, completed, clientName) => (
+                const renderTags = (missing, completed, groupLabel) => {
+                  const allInCart =
+                    missing.length > 0 &&
+                    missing.every((item) =>
+                      isInTrainingCart(
+                        eligibilityModal.employeeId,
+                        item.trainingId,
+                      ),
+                    );
+                  return (
                     <>
                       {missing.length > 0 ? (
-                        <div style={{ marginBottom: "10px" }}>
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              color: "#dc3545",
-                              marginBottom: "6px",
-                            }}
-                          >
-                            ✗ Missing ({missing.length}):
+                        <div className="mb-1.5">
+                          <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5">
+                            <span className="text-xs font-semibold text-[#dc3545]">
+                              ✗ Missing ({missing.length}):
+                            </span>
+                            {canManageAllocation &&
+                              (allInCart ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    removeAllMissingFromCart(missing)
+                                  }
+                                  title={`เอา ${groupLabel} ทั้งหมดของ ${eligibilityModal.fullName} ออกจากคำขอ Training ที่จะแจ้ง HR`}
+                                  className="cursor-pointer rounded-md border border-[#f5c6cb] bg-[#fff5f5] px-2.5 py-0.5 text-[11px] font-semibold text-[#dc3545]"
+                                >
+                                  ✕ ล้าง {groupLabel} ที่เพิ่มไว้
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    addAllMissingToCart(
+                                      missing,
+                                      client.clientName,
+                                    )
+                                  }
+                                  title={`เพิ่ม ${groupLabel} ที่ขาดทั้งหมดของ ${eligibilityModal.fullName} (${client.clientName}) เข้าคำขอ Training ที่จะแจ้ง HR`}
+                                  className="cursor-pointer rounded-md border border-blue-600 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-blue-600 hover:bg-blue-50"
+                                >
+                                  + เพิ่ม {groupLabel} ทั้งหมดเข้าคำขอ Training
+                                </button>
+                              ))}
                           </div>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: "6px",
-                            }}
-                          >
+                          <div className="flex flex-wrap gap-1.5">
                             {missing.map((item, i) => {
-                              const inCart = trainingCart.some(
-                                (c) =>
-                                  c.employeeId ===
-                                    eligibilityModal.employeeId &&
-                                  c.trainingId === item.trainingId,
+                              const inCart = isInTrainingCart(
+                                eligibilityModal.employeeId,
+                                item.trainingId,
                               );
                               return (
-                                <span
+                                <button
                                   key={i}
+                                  type="button"
+                                  disabled={!canManageAllocation}
                                   onClick={() =>
-                                    canManageAllocation &&
-                                    setTrainingCart((prev) => {
-                                      const exists = prev.some(
-                                        (c) =>
-                                          c.employeeId ===
-                                            eligibilityModal.employeeId &&
-                                          c.trainingId === item.trainingId,
-                                      );
-                                      if (exists) {
-                                        return prev.filter(
-                                          (c) =>
-                                            !(
-                                              c.employeeId ===
-                                                eligibilityModal.employeeId &&
-                                              c.trainingId === item.trainingId
-                                            ),
-                                        );
-                                      }
-                                      return [
-                                        ...prev,
-                                        {
-                                          employeeId:
-                                            eligibilityModal.employeeId,
-                                          employeeName:
-                                            eligibilityModal.fullName,
-                                          trainingName: item.name,
-                                          trainingId: item.trainingId,
-                                          clientName,
-                                        },
-                                      ];
-                                    })
+                                    toggleTrainingCartItem(
+                                      item,
+                                      client.clientName,
+                                    )
                                   }
-                                  style={{
-                                    background: inCart ? "#fff3cd" : "#fff5f5",
-                                    color: inCart ? "#664d03" : "#dc3545",
-                                    border: `1px solid ${inCart ? "#ffe69c" : "#f5c6cb"}`,
-                                    borderRadius: "6px",
-                                    padding: "3px 10px",
-                                    fontSize: "12px",
-                                    cursor: canManageAllocation
-                                      ? "pointer"
-                                      : "default",
-                                  }}
                                   title={
                                     canManageAllocation
                                       ? "คลิกเพื่อเลือก/ยกเลิกขอ training นี้"
                                       : ""
                                   }
+                                  className={`cursor-pointer rounded-md border px-2.5 py-[3px] text-xs disabled:cursor-default ${
+                                    inCart
+                                      ? "border-[#ffe69c] bg-[#fff3cd] text-[#664d03]"
+                                      : "border-[#f5c6cb] bg-[#fff5f5] text-[#dc3545]"
+                                  }`}
                                 >
                                   {inCart ? "☑" : "✕"} {item.name}
-                                </span>
+                                </button>
                               );
                             })}
                           </div>
                         </div>
                       ) : (
-                        <div
-                          style={{
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            color: "#198754",
-                            marginBottom: "10px",
-                          }}
-                        >
+                        <div className="mb-1.5 text-xs font-semibold text-[#198754]">
                           ✅ ครบทุกตัว
                         </div>
                       )}
                       {completed.length > 0 && (
                         <div>
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              color: "#198754",
-                              marginBottom: "6px",
-                            }}
-                          >
+                          <div className="mb-1 text-xs font-semibold text-[#198754]">
                             ✓ Completed ({completed.length}):
                           </div>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: "6px",
-                            }}
-                          >
+                          <div className="flex flex-wrap gap-1.5">
                             {completed.map((item, i) => (
                               <span
                                 key={i}
-                                style={{
-                                  background: "#f0fff4",
-                                  color: "#198754",
-                                  border: "1px solid #b2dfdb",
-                                  borderRadius: "6px",
-                                  padding: "3px 10px",
-                                  fontSize: "12px",
-                                }}
+                                className="rounded-md border border-[#b2dfdb] bg-[#f0fff4] px-2.5 py-[3px] text-xs text-[#198754]"
                               >
                                 ✓ {item.name}
                               </span>
@@ -4334,472 +2866,371 @@ export default function Allocation() {
                       )}
                     </>
                   );
+                };
 
-                  return (
-                    <div>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          marginBottom: "12px",
-                        }}
-                      >
-                        <div>
-                          <span style={{ fontWeight: 700, fontSize: "14px" }}>
-                            {client.clientName}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: "13px",
-                              color: "#6c757d",
-                              marginLeft: "8px",
-                            }}
-                          >
-                            — Matched: "{client.positionMatched}"
-                          </span>
-                        </div>
-                        <span
-                          style={{
-                            background: client.eligible ? "#d1e7dd" : "#dc3545",
-                            color: client.eligible ? "#0f5132" : "#fff",
-                            borderRadius: "6px",
-                            padding: "4px 12px",
-                            fontSize: "12px",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {client.eligible ? "✓ ELIGIBLE" : "✗ NOT ELIGIBLE"}
+                return (
+                  <div>
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="text-sm font-bold">
+                          {client.clientName}
+                        </span>
+                        <span className="ml-2 text-[13px] text-gray-500">
+                          — Matched: "{client.positionMatched}"
                         </span>
                       </div>
-
-                      <div
-                        style={{
-                          background: "#e9ecef",
-                          borderRadius: "4px",
-                          height: "6px",
-                          marginBottom: "8px",
-                        }}
+                      <span
+                        className={`rounded-md px-3 py-1 text-xs font-bold ${
+                          client.eligible
+                            ? "bg-[#d1e7dd] text-[#0f5132]"
+                            : "bg-[#dc3545] text-white"
+                        }`}
                       >
-                        <div
-                          style={{
-                            background: client.eligible ? "#198754" : "#dc3545",
-                            borderRadius: "4px",
-                            height: "6px",
-                            width: `${client.matchPct}%`,
-                            transition: "width 0.3s",
-                          }}
-                        />
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "13px",
-                          color: "#6c757d",
-                          marginBottom: "20px",
-                        }}
-                      >
-                        {mandatory.completed.length} of{" "}
-                        {mandatory.required.length} mandatory trainings
-                        completed ({client.matchPct}%)
-                      </div>
-
-                      <div style={{ marginBottom: "20px" }}>
-                        <div
-                          style={{
-                            fontSize: "13px",
-                            fontWeight: 700,
-                            color: "#212529",
-                            marginBottom: "10px",
-                          }}
-                        >
-                          🔴 Mandatory
-                        </div>
-                        {renderTags(
-                          mandatory.missing,
-                          mandatory.completed,
-                          client.clientName,
-                        )}
-                      </div>
-
-                      <div style={{ marginBottom: "20px" }}>
-                        <div
-                          style={{
-                            fontSize: "13px",
-                            fontWeight: 700,
-                            color: "#212529",
-                            marginBottom: "10px",
-                          }}
-                        >
-                          🟠 Assigned
-                        </div>
-                        {assigned.required.length === 0 ? (
-                          <div style={{ fontSize: "12px", color: "#6c757d" }}>
-                            — ไม่มี Assigned training สำหรับตำแหน่งนี้
-                          </div>
-                        ) : (
-                          renderTags(
-                            assigned.missing,
-                            assigned.completed,
-                            client.clientName,
-                          )
-                        )}
-                      </div>
-
-                      <div>
-                        <div
-                          style={{
-                            fontSize: "13px",
-                            fontWeight: 700,
-                            color: "#212529",
-                            marginBottom: "10px",
-                          }}
-                        >
-                          ⚪ Others{" "}
-                          <span
-                            style={{
-                              fontWeight: 400,
-                              color: "#6c757d",
-                              fontSize: "11px",
-                            }}
-                          >
-                            (training ที่มีนอกเหนือจาก matrix ตำแหน่งนี้)
-                          </span>
-                        </div>
-                        {others.completed.length === 0 ? (
-                          <div style={{ fontSize: "12px", color: "#6c757d" }}>
-                            — ไม่มี
-                          </div>
-                        ) : (
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: "6px",
-                            }}
-                          >
-                            {others.completed.map((name, i) => (
-                              <span
-                                key={i}
-                                style={{
-                                  background: "#f1f3f5",
-                                  color: "#495057",
-                                  border: "1px solid #dee2e6",
-                                  borderRadius: "6px",
-                                  padding: "3px 10px",
-                                  fontSize: "12px",
-                                }}
-                              >
-                                ✓ {name}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                        {client.eligible ? "✓ ELIGIBLE" : "✗ NOT ELIGIBLE"}
+                      </span>
                     </div>
-                  );
-                })()
-              )}
-            </div>
 
-            <div
-              style={{
-                padding: "14px 24px",
-                borderTop: "1px solid #dee2e6",
-                textAlign: "right",
-              }}
-            >
-              <button
-                onClick={() => setEligibilityModal(null)}
-                style={{
-                  padding: "8px 24px",
-                  fontSize: "13px",
-                  border: "1px solid #dee2e6",
-                  borderRadius: "8px",
-                  background: "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                Close
-              </button>
-            </div>
+                    <div className="mb-1.5 h-1.5 rounded bg-gray-200">
+                      <div
+                        className={`h-1.5 rounded transition-[width] duration-300 ${
+                          client.eligible ? "bg-[#198754]" : "bg-[#dc3545]"
+                        }`}
+                        style={{ width: `${client.matchPct}%` }}
+                      />
+                    </div>
+                    <div className="mb-3 text-[13px] text-gray-500">
+                      {mandatory.completed.length} of{" "}
+                      {mandatory.required.length} mandatory trainings completed
+                      ({client.matchPct}%)
+                    </div>
+
+                    <div className="mb-3.5">
+                      <div className="mb-2.5 text-[13px] font-bold">
+                        🔴 Mandatory
+                      </div>
+                      {renderTags(
+                        mandatory.missing,
+                        mandatory.completed,
+                        "Mandatory",
+                      )}
+                    </div>
+
+                    <div className="mb-3.5">
+                      <div className="mb-2.5 text-[13px] font-bold">
+                        🟠 Assigned
+                      </div>
+                      {assigned.required.length === 0 ? (
+                        <div className="text-xs text-gray-500">
+                          — ไม่มี Assigned training สำหรับตำแหน่งนี้
+                        </div>
+                      ) : (
+                        renderTags(
+                          assigned.missing,
+                          assigned.completed,
+                          "Assigned",
+                        )
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="mb-2.5 text-[13px] font-bold">
+                        ⚪ Others{" "}
+                        <span className="text-[11px] font-normal text-gray-500">
+                          (training ที่มีนอกเหนือจาก matrix ตำแหน่งนี้)
+                        </span>
+                      </div>
+                      {others.completed.length === 0 ? (
+                        <div className="text-xs text-gray-500">— ไม่มี</div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {others.completed.map((name, i) => (
+                            <span
+                              key={i}
+                              className="rounded-md border border-gray-200 bg-[#f1f3f5] px-2.5 py-[3px] text-xs text-gray-700"
+                            >
+                              ✓ {name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()
+            )}
           </div>
-        </div>
+
+          <div className="flex shrink-0 justify-end border-t border-gray-200 px-4 py-3.5 sm:px-6">
+            <button
+              type="button"
+              onClick={() => setEligibilityModal(null)}
+              className={BTN_OUTLINE}
+            >
+              Close
+            </button>
+          </div>
+        </Modal>
       )}
+
+      {/* ════════ ตะกร้า Training ════════ */}
       {cartReviewOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 1000001,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-          }}
-          onClick={() => setCartReviewOpen(false)}
+        <Modal
+          onClose={() => setCartReviewOpen(false)}
+          maxW="max-w-[560px]"
+          z="z-[1000001]"
         >
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: "10px",
-              width: "100%",
-              maxWidth: "560px",
-              maxHeight: "80vh",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              style={{
-                background: "#1e3a5f",
-                color: "#fff",
-                padding: "16px 24px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <span style={{ fontWeight: 600, fontSize: "16px" }}>
-                📦 รายการในตะกร้า ({trainingCart.length})
-              </span>
-              <button
-                onClick={() => setCartReviewOpen(false)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#fff",
-                  fontSize: "20px",
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ padding: "16px 24px", overflowY: "auto", flex: 1 }}>
-              {trainingCart.length === 0 ? (
-                <div
-                  style={{
-                    textAlign: "center",
-                    color: "#6c757d",
-                    padding: "20px",
-                  }}
-                >
-                  ตะกร้าว่างเปล่า
-                </div>
-              ) : (
-                (() => {
-                  // จัดกลุ่มตาม employee เพื่อให้เห็นชัดว่าใครขอ training อะไรบ้าง
-                  const byEmployee = {};
-                  trainingCart.forEach((c) => {
-                    if (!byEmployee[c.employeeId]) {
-                      byEmployee[c.employeeId] = {
-                        employeeName: c.employeeName,
-                        items: [],
-                      };
-                    }
-                    byEmployee[c.employeeId].items.push(c);
-                  });
-
-                  return Object.entries(byEmployee).map(([empId, group]) => (
-                    <div key={empId} style={{ marginBottom: "16px" }}>
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          fontSize: "13px",
-                          color: "#1e3a5f",
-                          marginBottom: "8px",
-                          borderBottom: "1px solid #f1f3f5",
-                          paddingBottom: "6px",
-                        }}
-                      >
-                        👤 {group.employeeName}
-                      </div>
-                      {group.items.map((item) => (
-                        <div
-                          key={`${item.employeeId}-${item.trainingId}`}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            padding: "8px 12px",
-                            background: "#f8f9fa",
-                            borderRadius: "6px",
-                            marginBottom: "6px",
-                            gap: "8px",
-                          }}
-                        >
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: "13px", fontWeight: 600 }}>
-                              {item.trainingName}
-                            </div>
-                            <div style={{ fontSize: "11px", color: "#6c757d" }}>
-                              Client: {item.clientName || "—"}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() =>
-                              removeFromCart(item.employeeId, item.trainingId)
-                            }
-                            title="เอาออกจากตะกร้า"
-                            style={{
-                              background: "none",
-                              border: "none",
-                              color: "#dc3545",
-                              fontSize: "14px",
-                              cursor: "pointer",
-                              padding: "0 4px",
-                              flexShrink: 0,
-                            }}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ));
-                })()
-              )}
-            </div>
-
-            <div
-              style={{
-                padding: "14px 24px",
-                borderTop: "1px solid #dee2e6",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <button
-                onClick={() => setTrainingCart([])}
-                disabled={trainingCart.length === 0}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: trainingCart.length === 0 ? "#adb5bd" : "#dc3545",
-                  fontSize: "13px",
-                  cursor: trainingCart.length === 0 ? "default" : "pointer",
-                }}
-              >
-                ล้างตะกร้าทั้งหมด
-              </button>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  onClick={() => setCartReviewOpen(false)}
-                  style={{
-                    padding: "8px 20px",
-                    fontSize: "13px",
-                    border: "1px solid #dee2e6",
-                    borderRadius: "8px",
-                    background: "#fff",
-                    cursor: "pointer",
-                  }}
-                >
-                  ปิด
-                </button>
-                <button
-                  onClick={() => {
-                    handleSendCart();
-                    setCartReviewOpen(false);
-                  }}
-                  disabled={trainingCart.length === 0 || sendingCart}
-                  style={{
-                    padding: "8px 20px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    border: "none",
-                    borderRadius: "8px",
-                    background: "#198754",
-                    color: "#fff",
-                    cursor:
-                      trainingCart.length === 0 || sendingCart
-                        ? "not-allowed"
-                        : "pointer",
-                  }}
-                >
-                  {sendingCart ? "กำลังส่ง..." : "แจ้ง HR →"}
-                </button>
+          <ModalHeader
+            title={`📦 รายการในตะกร้า (${trainingCart.length})`}
+            onClose={() => setCartReviewOpen(false)}
+          />
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+            {trainingCart.length === 0 ? (
+              <div className="p-5 text-center text-gray-500">
+                ตะกร้าว่างเปล่า
               </div>
+            ) : (
+              Object.values(
+                trainingCart.reduce((acc, c) => {
+                  (acc[c.employeeId] ||= {
+                    employeeId: c.employeeId,
+                    employeeName: c.employeeName,
+                    items: [],
+                  }).items.push(c);
+                  return acc;
+                }, {}),
+              ).map((group) => (
+                <div key={group.employeeId} className="mb-4">
+                  <div className="mb-2 border-b border-gray-100 pb-1.5 text-[13px] font-bold text-[#1e3a5f]">
+                    👤 {group.employeeName}
+                  </div>
+                  {group.items.map((item) => (
+                    <div
+                      key={`${item.employeeId}-${item.trainingId}`}
+                      className="mb-1.5 flex items-center justify-between gap-2 rounded-md bg-gray-50 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-semibold">
+                          {item.trainingName}
+                        </div>
+                        <div className="text-[11px] text-gray-500">
+                          Client: {item.clientName || "—"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removeFromTrainingCart(
+                            item.employeeId,
+                            item.trainingId,
+                          )
+                        }
+                        title="เอาออกจากตะกร้า"
+                        className="shrink-0 cursor-pointer border-none bg-transparent px-1 text-sm text-[#dc3545]"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+          <div className={MODAL_FOOT}>
+            <button
+              type="button"
+              onClick={() => setTrainingCart([])}
+              disabled={trainingCart.length === 0}
+              className="cursor-pointer border-none bg-transparent text-[13px] text-[#dc3545] disabled:cursor-default disabled:text-gray-400"
+            >
+              ล้างตะกร้าทั้งหมด
+            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCartReviewOpen(false)}
+                className={BTN_OUTLINE}
+              >
+                ปิด
+              </button>
+              <button
+                type="button"
+                onClick={handleSendCart}
+                disabled={trainingCart.length === 0 || sendingCart}
+                className={`${BTN_GREEN} px-5 py-2 text-[13px]`}
+              >
+                {sendingCart ? "กำลังส่ง..." : "แจ้ง HR →"}
+              </button>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* ════════ ตะกร้า Medical ════════ */}
+      {medicalCartReviewOpen && (
+        <Modal
+          onClose={() => setMedicalCartReviewOpen(false)}
+          maxW="max-w-[480px]"
+          z="z-[1000001]"
+        >
+          <ModalHeader
+            title={`📦 คำขอ Medical Check-up (${medicalCart.length})`}
+            onClose={() => setMedicalCartReviewOpen(false)}
+            bg="bg-[#7c2d12]"
+          />
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+            {medicalCart.length === 0 ? (
+              <div className="p-5 text-center text-gray-500">
+                ตะกร้าว่างเปล่า
+              </div>
+            ) : (
+              medicalCart.map((item) => {
+                const reasonLabel =
+                  item.reason === "overdue"
+                    ? "❌ หมดอายุ"
+                    : item.reason === "no_record"
+                      ? "⚪ ไม่มีข้อมูล"
+                      : "⏰ ใกล้หมดอายุ";
+                return (
+                  <div
+                    key={item.employeeId}
+                    className="mb-1.5 flex items-center justify-between gap-2 rounded-md bg-gray-50 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold">
+                        {item.employeeName}
+                      </div>
+                      <div className="text-[11px] text-gray-500">
+                        {reasonLabel} · Client: {item.clientName || "—"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMedicalCart((prev) =>
+                          prev.filter((c) => c.employeeId !== item.employeeId),
+                        )
+                      }
+                      title="เอาออกจากคำขอ"
+                      className="shrink-0 cursor-pointer border-none bg-transparent px-1 text-sm text-[#dc3545]"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <div className={MODAL_FOOT}>
+            <button
+              type="button"
+              onClick={() => setMedicalCart([])}
+              disabled={medicalCart.length === 0}
+              className="cursor-pointer border-none bg-transparent text-[13px] text-[#dc3545] disabled:cursor-default disabled:text-gray-400"
+            >
+              ล้างทั้งหมด
+            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMedicalCartReviewOpen(false)}
+                className={BTN_OUTLINE}
+              >
+                ปิด
+              </button>
+              <button
+                type="button"
+                onClick={handleSendMedicalCart}
+                disabled={medicalCart.length === 0 || sendingMedicalCart}
+                className="cursor-pointer rounded-lg border-none bg-[#7c2d12] px-5 py-2 text-[13px] font-semibold text-white hover:bg-[#6a260f] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {sendingMedicalCart ? "กำลังส่ง..." : "แจ้ง HR →"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── กำลังโหลด Eligibility ── */}
+      {eligibilityLoading && (
+        <div className="fixed left-1/2 top-5 z-[1000002] -translate-x-1/2 rounded-lg bg-gray-900/85 px-4 py-2 text-[13px] text-white shadow-lg">
+          กำลังโหลดข้อมูล Eligibility...
         </div>
       )}
-      {trainingCart.length > 0 && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: "20px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "#1e3a5f",
-            color: "#fff",
-            borderRadius: "12px",
-            padding: "12px 20px",
-            display: "flex",
-            alignItems: "center",
-            gap: "14px",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-            zIndex: 1000000,
-          }}
-        >
-          <span
-            onClick={() => setCartReviewOpen(true)}
-            style={{
-              fontSize: "13px",
-              cursor: "pointer",
-              textDecoration: "underline",
-            }}
-            title="ดูรายการทั้งหมดในตะกร้า"
-          >
-            📦 {trainingCart.length} รายการในตะกร้า
-          </span>
-          <button
-            onClick={() => setCartReviewOpen(true)}
-            style={{
-              background: "none",
-              border: "1px solid #6c8fb0",
-              color: "#fff",
-              borderRadius: "8px",
-              padding: "6px 14px",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            👁 ดูรายละเอียด
-          </button>
-          <button
-            onClick={handleSendCart}
-            disabled={sendingCart}
-            style={{
-              background: "#198754",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              padding: "6px 16px",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            {sendingCart ? "กำลังส่ง..." : "แจ้ง HR ให้จัด Training →"}
-          </button>
-          <button
-            onClick={() => setTrainingCart([])}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#adb5bd",
-              cursor: "pointer",
-              fontSize: "13px",
-            }}
-          >
-            ล้างตะกร้า
-          </button>
+
+      {/* ── Floating bars: Medical อยู่บน, Training อยู่ล่าง — ซ้อนกันเองไม่ทับ ── */}
+      {hasCart && (
+        <div className="fixed bottom-3 left-1/2 z-[1000000] flex w-[calc(100vw-24px)] -translate-x-1/2 flex-col items-center gap-2 sm:bottom-5 sm:w-auto">
+          {medicalCart.length > 0 && (
+            <div className="flex w-full flex-wrap items-center justify-center gap-x-3.5 gap-y-2 rounded-xl bg-[#7c2d12] px-4 py-3 text-white shadow-[0_8px_24px_rgba(0,0,0,0.25)] sm:w-auto sm:px-5">
+              <button
+                type="button"
+                onClick={() => setMedicalCartReviewOpen(true)}
+                className="cursor-pointer border-none bg-transparent p-0 text-[13px] text-white underline"
+                title="ดูรายการทั้งหมด"
+              >
+                🏥 {medicalCart.length} คนในคำขอ Medical
+              </button>
+              <button
+                type="button"
+                onClick={() => setMedicalCartReviewOpen(true)}
+                className="cursor-pointer rounded-lg border border-[#d4a373] bg-transparent px-3.5 py-1.5 text-[13px] font-semibold text-white"
+              >
+                👁 ดูรายละเอียด
+              </button>
+              <button
+                type="button"
+                onClick={handleSendMedicalCart}
+                disabled={sendingMedicalCart}
+                className="cursor-pointer rounded-lg border-none bg-white px-4 py-1.5 text-[13px] font-semibold text-[#7c2d12] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {sendingMedicalCart
+                  ? "กำลังส่ง..."
+                  : "แจ้ง HR ให้จัด Medical →"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMedicalCart([])}
+                className="cursor-pointer border-none bg-transparent text-[13px] text-[#f5deb3]"
+              >
+                ล้าง
+              </button>
+            </div>
+          )}
+
+          {trainingCart.length > 0 && (
+            <div className="flex w-full flex-wrap items-center justify-center gap-x-3.5 gap-y-2 rounded-xl bg-[#1e3a5f] px-4 py-3 text-white shadow-[0_8px_24px_rgba(0,0,0,0.25)] sm:w-auto sm:px-5">
+              <button
+                type="button"
+                onClick={() => setCartReviewOpen(true)}
+                className="cursor-pointer border-none bg-transparent p-0 text-[13px] text-white underline"
+                title="ดูรายการทั้งหมดในตะกร้า"
+              >
+                📦 {trainingCart.length} รายการในตะกร้า
+              </button>
+              <button
+                type="button"
+                onClick={() => setCartReviewOpen(true)}
+                className="cursor-pointer rounded-lg border border-[#6c8fb0] bg-transparent px-3.5 py-1.5 text-[13px] font-semibold text-white"
+              >
+                👁 ดูรายละเอียด
+              </button>
+              <button
+                type="button"
+                onClick={handleSendCart}
+                disabled={sendingCart}
+                className="cursor-pointer rounded-lg border-none bg-[#198754] px-4 py-1.5 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {sendingCart ? "กำลังส่ง..." : "แจ้ง HR ให้จัด Training →"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setTrainingCart([])}
+                className="cursor-pointer border-none bg-transparent text-[13px] text-gray-400"
+              >
+                ล้างตะกร้า
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
