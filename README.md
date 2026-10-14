@@ -38,6 +38,10 @@ mobilization/demobilization, and post-project review.
 
 ### Workforce
 
+#### 👥 Workers
+Worker list with search and filters by department, position, status, availability, and mobilization.
+![Workers](screenshots/workers.png)
+
 #### 👷 Worker Detail
 Full profile with compact sticky header, roster, and document export.
 ![Worker Detail](screenshots/worker-detail.png)
@@ -101,8 +105,13 @@ Who did what and when, with filters, before/after changes, and CSV export.
 <table>
   <tr>
     <td align="center"><img src="screenshots/worker-app-login.png" width="240" alt="Worker App login"><br><sub>Login (Employee ID + PIN)</sub></td>
-    <td align="center"><img src="screenshots/worker-app-readiness.png" width="240" alt="Worker App readiness"><br><sub>Readiness</sub></td>
-    <td align="center"><img src="screenshots/worker-app-change-pin.png" width="240" alt="Worker App change PIN"><br><sub>Change PIN</sub></td>
+    <td align="center"><img src="screenshots/worker-app-change-pin.png" width="240" alt="Worker App set new PIN"><br><sub>Set new PIN (first login)</sub></td>
+    <td align="center"><img src="screenshots/worker-app-pending.png" width="240" alt="Worker App pending confirmation"><br><sub>Job offer: confirm / decline</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="screenshots/worker-app-job-timeline.png" width="240" alt="Worker App job timeline"><br><sub>My job: progress timeline</sub></td>
+    <td align="center"><img src="screenshots/worker-app-readiness.png" width="240" alt="Worker App readiness"><br><sub>My readiness: medical &amp; training</sub></td>
+    <td></td>
   </tr>
 </table>
 
