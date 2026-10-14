@@ -1177,7 +1177,7 @@ export default function EditWorker() {
   // ===========================================================
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-[1400px]">
+      <div className="mx-auto w-full max-w-[1800px]">
         <div className="rounded-[10px] border border-gray-200 bg-white p-10 text-center text-sm text-gray-500">
           Loading worker data...
         </div>
@@ -1236,7 +1236,7 @@ export default function EditWorker() {
   // Render
   // ===========================================================
   return (
-    <div className="mx-auto w-full min-w-0 max-w-[1400px]">
+    <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
       <div className="mb-4 flex flex-col gap-3 rounded-[10px] border border-gray-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div className="min-w-0">

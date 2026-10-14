@@ -260,7 +260,7 @@ export default function PEApprovals() {
   };
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-[1400px]">
+    <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
       <div className={`${CARD} mb-4 px-4 py-4 sm:px-6`}>
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
