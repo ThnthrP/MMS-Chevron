@@ -38,6 +38,10 @@ mobilization/demobilization, and post-project review.
 
 ### Workforce
 
+#### 👥 Workers
+Worker list with search and filters by department, position, status, availability, and mobilization.
+![Workers](screenshots/workers.png)
+
 #### 👷 Worker Detail
 Full profile with compact sticky header, roster, and document export.
 ![Worker Detail](screenshots/worker-detail.png)
