@@ -656,9 +656,9 @@ export default function BulkAddCertification() {
         </div>
       )}
 
-      {/* ════════ Sticky Apply bar ════════ */}
+      {/* ════════ Sticky Apply bar — ชิดขอบล่างจอ (แบบเดียวกับ AddWorker / EditWorker) ════════ */}
       {selectedTraining && (
-        <div className="sticky bottom-3 z-[2] overflow-hidden rounded-[10px] border border-gray-200 bg-white shadow-[0_4px_16px_rgba(0,0,0,0.1)] sm:bottom-5">
+        <div className="sticky bottom-0 z-20 -mx-4 mt-4 overflow-hidden border-t border-gray-200 bg-white/95 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur sm:mx-0 sm:rounded-t-[10px] sm:border-x">
           {applying && (
             <div className="h-1 bg-gray-100">
               <div
