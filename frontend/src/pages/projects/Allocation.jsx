@@ -1708,9 +1708,55 @@ export default function Allocation() {
                               (opts || []).map((o) => o.worker),
                             )
                           }
-                          placeholder="🔍 ค้นหาด้วย Employee ID หรือชื่อ..."
+                          // ไม่แสดง badge คนที่เลือกในช่องค้นหา — ดู/ลบได้ที่ตารางด้านล่าง
+                          // (เดิมช่องค้นหาสูงขึ้นเรื่อยๆ ตามจำนวนคนที่เลือก)
+                          controlShouldRenderValue={false}
+                          isClearable={false}
+                          backspaceRemovesValue={false}
+                          // เลือกต่อได้หลายคนโดยเมนูไม่ปิด · คลิกคนที่ติ๊กไว้ซ้ำ = เอาออก
+                          hideSelectedOptions={false}
+                          closeMenuOnSelect={false}
+                          formatOptionLabel={(o, { context }) =>
+                            context === "menu" ? (
+                              <span className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  readOnly
+                                  tabIndex={-1}
+                                  checked={quickPickedWorkers.some(
+                                    (w) => w.id === o.value,
+                                  )}
+                                  className="pointer-events-none h-3.5 w-3.5 shrink-0"
+                                />
+                                <span>{o.label}</span>
+                              </span>
+                            ) : (
+                              o.label
+                            )
+                          }
+                          placeholder={
+                            quickPickedWorkers.length > 0
+                              ? `🔍 ค้นหาเพิ่ม... (เลือกแล้ว ${quickPickedWorkers.length} คน)`
+                              : "🔍 ค้นหาด้วย Employee ID หรือชื่อ..."
+                          }
                           noOptionsMessage={() => "ไม่พบ worker"}
-                          styles={quickSelectStyles}
+                          styles={{
+                            ...quickSelectStyles,
+                            option: (b, s) => ({
+                              ...b,
+                              fontSize: "13px",
+                              cursor: "pointer",
+                              backgroundColor: s.isSelected
+                                ? s.isFocused
+                                  ? "#dbeafe"
+                                  : "#eff6ff"
+                                : s.isFocused
+                                  ? "#f3f4f6"
+                                  : "white",
+                              color: s.isSelected ? "#1d4ed8" : "#111827",
+                              fontWeight: s.isSelected ? 600 : 400,
+                            }),
+                          }}
                         />
                       </div>
                     </div>
@@ -1718,8 +1764,15 @@ export default function Allocation() {
                     {quickPickedWorkers.length > 0 && (
                       <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
                         <div className="flex flex-wrap items-center justify-between gap-1.5 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">
-                          <span>
+                          <span className="flex items-center gap-2">
                             ✅ เลือกแล้ว {quickPickedWorkers.length} คน
+                            <button
+                              type="button"
+                              onClick={() => setQuickPickedWorkers([])}
+                              className="cursor-pointer border-none bg-transparent p-0 text-[11px] font-normal text-[#dc3545] underline hover:text-[#a71d2a]"
+                            >
+                              ล้างทั้งหมด
+                            </button>
                           </span>
                           {!selectedRequest && (
                             <span className="text-[11px] font-normal text-[#664d03]">
