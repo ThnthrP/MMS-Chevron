@@ -975,7 +975,7 @@ export default function ProjectDetail() {
               )
             </label>
 
-            <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[1fr_220px] sm:gap-5">
+            <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[1fr_260px] sm:gap-5">
               {/* ── ช่องค้นหา/dropdown ── */}
               <div className="min-w-0">
                 <Select
@@ -995,6 +995,23 @@ export default function ProjectDetail() {
                   hideSelectedOptions={false}
                   closeMenuOnSelect={false}
                   components={{ MultiValue: () => null }}
+                  // ช่องติ๊กหน้าแต่ละรายการ — บอกว่าเลือกอยู่ และคลิกซ้ำเพื่อเอาออกได้
+                  formatOptionLabel={(o, { context }) =>
+                    context === "menu" ? (
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          readOnly
+                          tabIndex={-1}
+                          checked={selectedPositionIds.includes(o.value)}
+                          className="pointer-events-none h-3.5 w-3.5 shrink-0"
+                        />
+                        <span>{o.label}</span>
+                      </span>
+                    ) : (
+                      o.label
+                    )
+                  }
                   styles={{
                     menuPortal: (b) => ({ ...b, zIndex: 1000000 }),
                     control: (b) => ({
@@ -1002,7 +1019,21 @@ export default function ProjectDetail() {
                       fontSize: "13px",
                       minHeight: "38px",
                     }),
-                    option: (b) => ({ ...b, fontSize: "13px" }),
+                    // รายการที่เลือกแล้ว = พื้นฟ้าอ่อน + ตัวหนา (แยกจากแถบ hover ชัดขึ้น)
+                    option: (b, s) => ({
+                      ...b,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                      backgroundColor: s.isSelected
+                        ? s.isFocused
+                          ? "#dbeafe"
+                          : "#eff6ff"
+                        : s.isFocused
+                          ? "#f3f4f6"
+                          : "white",
+                      color: s.isSelected ? "#1d4ed8" : "#111827",
+                      fontWeight: s.isSelected ? 600 : 400,
+                    }),
                     valueContainer: (b) => ({ ...b, flexWrap: "nowrap" }),
                   }}
                   noOptionsMessage={() =>
@@ -1012,8 +1043,8 @@ export default function ProjectDetail() {
                   }
                 />
                 <div className="mt-2.5 text-[11px] text-gray-400">
-                  Headcount เริ่มต้น = 1 คนต่อตำแหน่ง
-                  ปรับได้ในตารางหลังเพิ่มแล้ว
+                  คลิกรายการที่ติ๊กไว้อีกครั้งเพื่อเอาออก · Headcount เริ่มต้น =
+                  1 คนต่อตำแหน่ง ปรับได้ในตารางหลังเพิ่มแล้ว
                 </div>
               </div>
 
@@ -1034,10 +1065,14 @@ export default function ProjectDetail() {
                       return (
                         <div
                           key={posId}
-                          className="flex items-center justify-between gap-1.5 rounded-md bg-blue-50 px-2 py-[5px] text-xs font-semibold text-blue-600"
+                          className="flex items-start justify-between gap-1.5 rounded-md bg-blue-50 px-2 py-[5px] text-xs font-semibold text-blue-600"
                         >
-                          <span className="truncate">{opt.label}</span>
+                          {/* ชื่อยาวขึ้นบรรทัดใหม่ — ไม่ตัดเป็น … */}
+                          <span className="min-w-0 break-words leading-snug">
+                            {opt.label}
+                          </span>
                           <button
+                            title="เอาออก"
                             onClick={() =>
                               setSelectedPositionIds((prev) =>
                                 prev.filter((pid) => pid !== posId),
