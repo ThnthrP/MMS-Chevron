@@ -63,6 +63,9 @@ const fmtDateTime = (d) =>
     minute: "2-digit",
   });
 
+// role ที่ส่งข้อความใน Discussion ได้ — ต้องตรงกับ POST_ROLES ใน backend/routes/projectMessageRoutes.js
+const DISCUSSION_POST_ROLES = ["admin", "project_engineer", "manpower_supply"];
+
 const fmtDate = (d) => (d ? new Date(d).toISOString().split("T")[0] : "—");
 
 // ── กรอบ modal: onClose ไม่ส่ง = คลิกพื้นหลังแล้วไม่ปิด ──
@@ -92,6 +95,7 @@ export default function ProjectDetail() {
 
   const canManageProjects = true;
   const canDiscuss = true;
+  const canPostMessage = DISCUSSION_POST_ROLES.includes(userData?.role?.name);
 
   const [showAddPosition, setShowAddPosition] = useState(false);
   const [positions, setPositions] = useState([]);
@@ -774,10 +778,10 @@ export default function ProjectDetail() {
           {canDiscuss && (
             <div
               ref={discussionRef}
-              onDragEnter={handleDragEnter}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
+              onDragEnter={canPostMessage ? handleDragEnter : undefined}
+              onDragOver={canPostMessage ? handleDragOver : undefined}
+              onDragLeave={canPostMessage ? handleDragLeave : undefined}
+              onDrop={canPostMessage ? handleDrop : undefined}
               className={`relative scroll-mt-20 overflow-hidden rounded-[10px] bg-white transition-[border] duration-150 ${
                 isDragging
                   ? "border-2 border-dashed border-blue-600"
@@ -885,7 +889,12 @@ export default function ProjectDetail() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input area */}
+              {/* Input area — role อื่นดูได้อย่างเดียว */}
+              {!canPostMessage ? (
+                <div className="border-t border-gray-200 px-4 py-3 text-center text-[11px] text-gray-400 sm:px-[18px]">
+                  ดูได้อย่างเดียว — ส่งข้อความได้เฉพาะ PE และ Manpower
+                </div>
+              ) : (
               <div className="border-t border-gray-200 px-3 py-3 sm:px-[18px]">
                 {newFiles.length > 0 && (
                   <div className="mb-2 flex flex-wrap gap-1.5">
@@ -949,6 +958,7 @@ export default function ProjectDetail() {
                   </button>
                 </div>
               </div>
+              )}
             </div>
           )}
         </div>
