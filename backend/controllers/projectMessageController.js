@@ -1,7 +1,17 @@
 import * as service from "../services/projectMessageService.js";
 import { notifyRole } from "../services/notificationService.js";
-import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
+// ใช้ prisma client ตัวกลางของระบบ (เดิม new PrismaClient() ในไฟล์นี้ = เปิด connection pool เพิ่มอีกชุด)
+import prisma from "../config/prisma.js";
+
+// แจ้งเตือนอีกฝั่งของ Discussion — role ปัจจุบัน (ชื่อเก่า pe / manpower ถูกลบออกจากระบบแล้ว)
+//   PE ส่ง      → แจ้ง Manpower
+//   Manpower ส่ง → แจ้ง PE
+//   admin ส่ง   → แจ้งทั้งสองฝั่ง
+const NOTIFY_TARGETS = {
+  project_engineer: ["manpower_supply"],
+  manpower_supply: ["project_engineer"],
+  admin: ["project_engineer", "manpower_supply"],
+};
 
 export async function getMessages(req, res) {
   try {
@@ -33,22 +43,32 @@ export async function createMessage(req, res) {
       files,
     );
 
-    // แจ้งเตือนอีกฝั่ง — ถ้า MP ส่ง แจ้ง PE, ถ้า PE ส่ง แจ้ง MP
-    const senderRole = req.user.role?.name;
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      select: { name: true },
-    });
+    // ดึง role ของผู้ส่งจาก DB — req.user จาก userAuth อาจมีแค่ id
+    const [sender, project] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { role: { select: { name: true } } },
+      }),
+      prisma.project.findUnique({
+        where: { id: projectId },
+        select: { name: true },
+      }),
+    ]);
 
-    const notifyTargetRole = senderRole === "pe" ? "manpower" : "pe";
-    notifyRole(notifyTargetRole, {
+    const targets = NOTIFY_TARGETS[sender?.role?.name] || [];
+    const payload = {
       type: "project_discussion",
       title: `ข้อความใหม่ใน ${project?.name || "โปรเจกต์"}`,
       message: content?.trim()
         ? content.slice(0, 100)
         : `แนบไฟล์ ${files.length} ไฟล์`,
       link: `/projects/${projectId}?tab=discussion`,
-    }).catch((err) => console.error("notifyRole failed:", err));
+    };
+    for (const role of targets) {
+      notifyRole(role, payload).catch((err) =>
+        console.error(`notifyRole(${role}) failed:`, err),
+      );
+    }
 
     res.status(201).json(message);
   } catch (error) {
