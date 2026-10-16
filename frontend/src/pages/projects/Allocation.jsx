@@ -1074,11 +1074,17 @@ export default function Allocation() {
   const requestsWithCandidates = shortlist.filter(
     (r) => (r.candidates?.length ?? 0) > 0,
   );
-  const allApproved =
+  // คนที่ยังรอ PE อนุมัติ (% Match ไม่ครบ) — ยังไม่อยู่ใน candidates แต่ต้องรอให้จบก่อน
+  const totalPendingPe = shortlist.reduce(
+    (sum, r) => sum + (r.peExceptions?.pending?.length ?? 0),
+    0,
+  );
+  const everyCandidateApproved =
     requestsWithCandidates.length > 0 &&
     requestsWithCandidates.every((r) =>
       r.candidates.every((c) => c.status === "approved"),
     );
+  const allApproved = everyCandidateApproved && totalPendingPe === 0;
 
   const currentRequestShortlisted = selectedRequest
     ? (shortlist.find((s) => s.requestId === selectedRequest.id)?.candidates
@@ -2364,6 +2370,11 @@ export default function Allocation() {
                   >
                     🚀 ทุกคน Approve แล้ว — ไป Mobilization →
                   </button>
+                )}
+                {everyCandidateApproved && totalPendingPe > 0 && (
+                  <div className="rounded-lg border border-[#ffe69c] bg-[#fff8e1] px-3 py-2.5 text-center text-xs font-semibold text-[#664d03]">
+                    ⏳ รอ PE อนุมัติอีก {totalPendingPe} คน — ครบแล้วจึงไป Mobilization ได้
+                  </div>
                 )}
 
                 <button
