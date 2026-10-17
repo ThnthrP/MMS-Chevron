@@ -3,6 +3,12 @@ import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import {
+  buildWorkerOptions,
+  filterWorkerOption,
+  nameEN,
+  nameTH,
+} from "../../utils/workerSearch";
 
 // ══════════════════════════════════════════════════════════
 // constants
@@ -276,13 +282,10 @@ export default function Certifications() {
 
   const workerOptions = [
     { value: "", label: "All Workers" },
-    ...(data?.workers || [])
-      .slice()
-      .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || ""))
-      .map((w) => ({
-        value: w.employeeId,
-        label: w.empId ? `${w.empId} : ${w.fullName}` : w.fullName,
-      })),
+    // API นี้ใช้ employeeId แทน id
+    ...buildWorkerOptions(
+      (data?.workers || []).map((w) => ({ ...w, id: w.employeeId })),
+    ),
   ];
 
   const positionOptions = [
@@ -341,7 +344,7 @@ export default function Certifications() {
           🔍 Search &amp; Filter
         </div>
         <div className="flex flex-wrap gap-3 sm:gap-4">
-          <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[320px] sm:flex-[1_1_220px]">
+          <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[560px] sm:flex-[1_1_420px]">
             <label className={FILTER_LABEL}>Training / Certification</label>
             <Select
               options={trainingOptions}
@@ -355,9 +358,9 @@ export default function Certifications() {
 
           {selectedTraining && (
             <>
-              <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[340px] sm:flex-[1_1_240px]">
+              <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[440px] sm:flex-[1_1_300px]">
                 <label className={FILTER_LABEL}>
-                  Worker (Employee ID / Name)
+                  Worker (Employee ID / ชื่อไทย / ชื่ออังกฤษ)
                 </label>
                 <Select
                   options={workerOptions}
@@ -365,7 +368,8 @@ export default function Certifications() {
                     workerOptions.find((o) => o.value === workerFilter) || null
                   }
                   onChange={(o) => setWorkerFilter(o ? o.value : "")}
-                  placeholder="🔍 ค้นหาด้วย ID หรือชื่อ..."
+                  filterOption={filterWorkerOption}
+                  placeholder="🔍 ค้นหาด้วย ID หรือชื่อ (ไทย/อังกฤษ)..."
                   isClearable
                   styles={customSelectStyles}
                   noOptionsMessage={() => "ไม่พบ worker"}
@@ -520,7 +524,12 @@ export default function Certifications() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <div className="font-semibold">{w.fullName}</div>
+                            <div className="font-semibold">{nameEN(w)}</div>
+                            {nameTH(w) && (
+                              <div className="text-xs text-gray-600">
+                                {nameTH(w)}
+                              </div>
+                            )}
                             <div className="text-[11px] text-gray-500">
                               {w.empId}
                             </div>
@@ -618,7 +627,12 @@ export default function Certifications() {
                           </td>
                         )}
                         <td className="px-3.5 py-3">
-                          <div className="font-semibold">{w.fullName}</div>
+                          <div className="font-semibold">{nameEN(w)}</div>
+                          {nameTH(w) && (
+                            <div className="text-xs text-gray-600">
+                              {nameTH(w)}
+                            </div>
+                          )}
                           <div className="text-[11px] text-gray-500">
                             {w.empId}
                           </div>

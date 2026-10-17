@@ -3,6 +3,12 @@ import axios from "axios";
 import { Link } from "react-router-dom";
 import { AppContent } from "../../context/AppContext";
 import Select from "react-select";
+import {
+  buildWorkerOptions,
+  filterWorkerOption,
+  nameEN,
+  nameTH,
+} from "../../utils/workerSearch";
 
 // ── badge: [tone, label] ต่อค่าสถานะ ──
 const TONE = {
@@ -42,16 +48,18 @@ function Badge({ map, value, fixedWidth = false }) {
   );
 }
 
+// [หัวคอลัมน์, ชิด, ความกว้าง]
+// ตาราง table-fixed: คอลัมน์อื่นกว้างคงที่ · NAME กับ POSITION ไม่กำหนด → แบ่งพื้นที่ที่เหลือเท่ากัน
 const TABLE_HEADERS = [
-  ["EMP CODE", "left"],
-  ["EMPLOYEE ID", "left"],
-  ["NAME", "left"],
-  ["POSITION", "left"],
-  ["DEPARTMENT", "left"],
-  ["STATUS", "center"],
-  ["AVAILABILITY", "center"],
-  ["MOBILIZATION", "center"],
-  ["ACTIONS", "center"],
+  ["EMP CODE", "left", "w-[105px]"],
+  ["EMPLOYEE ID", "left", "w-[120px]"],
+  ["NAME", "left", ""],
+  ["POSITION", "left", ""],
+  ["DEPARTMENT", "left", "w-[120px]"],
+  ["STATUS", "center", "w-[120px]"],
+  ["AVAILABILITY", "center", "w-[135px]"],
+  ["MOBILIZATION", "center", "w-[135px]"],
+  ["ACTIONS", "center", "w-[120px]"],
 ];
 
 const ICON_BTN =
@@ -62,6 +70,7 @@ const LIFT_RED =
   "bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.15),0_1px_2px_rgba(0,0,0,0.06)] hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(220,53,69,0.25),0_2px_3px_rgba(0,0,0,0.08)]";
 const BTN_DISABLED = "bg-gray-100 opacity-50 shadow-none";
 const CARD = "rounded-[10px] border border-gray-200 bg-white";
+const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
 
 const customSelectStyles = {
   control: (provided) => ({
@@ -79,10 +88,18 @@ const customSelectStyles = {
     fontSize: "13px",
     color: "#6c757d",
   }),
+  // dropdown ลอยเหนือทุกอย่าง (หัวตาราง sticky เคยบังอยู่)
+  menuPortal: (provided) => ({ ...provided, zIndex: 50 }),
+};
+
+// render dropdown ไว้ที่ <body> — ไม่ถูกการ์ด/ตารางด้านล่างบัง
+const MENU_PORTAL = {
+  menuPortalTarget: typeof document !== "undefined" ? document.body : null,
+  menuPosition: "fixed",
 };
 
 export default function Workers() {
-  const [search, setSearch] = useState("");
+  const [workerFilter, setWorkerFilter] = useState(""); // worker.id
   const [status, setStatus] = useState("");
   const [department, setDepartment] = useState("");
   const [position, setPosition] = useState("");
@@ -103,6 +120,10 @@ export default function Workers() {
     ...new Set(workers.map((w) => w.position?.name).filter(Boolean)),
   ];
 
+  const workerOptions = [
+    { value: "", label: "All Workers" },
+    ...buildWorkerOptions(workers),
+  ];
   const departmentOptions = [
     { value: "", label: "All Departments" },
     ...departments.map((dept) => ({ value: dept, label: dept })),
@@ -128,14 +149,9 @@ export default function Workers() {
     { value: "on_site", label: "On-Site" },
   ];
 
-  const q = search.toLowerCase();
   const filteredWorkers = workers
     .filter((worker) => {
-      const matchSearch =
-        (worker.fullName || "").toLowerCase().includes(q) ||
-        (worker.empCode || "").toLowerCase().includes(q) ||
-        (worker.empId || "").toLowerCase().includes(q) ||
-        (worker.position?.name || "").toLowerCase().includes(q); // ← ตาม placeholder ที่บอกว่าค้นตำแหน่งได้
+      const matchSearch = !workerFilter || worker.id === workerFilter;
       const matchStatus = !status || worker.status === status;
       const matchDepartment = !department || worker.division === department;
       const matchPosition = !position || worker.position?.name === position;
@@ -164,10 +180,15 @@ export default function Workers() {
   const inactiveWorkers = workers.filter((w) => w.status !== "active").length;
 
   const hasFilter =
-    search || department || position || status || availability || mobilization;
+    workerFilter ||
+    department ||
+    position ||
+    status ||
+    availability ||
+    mobilization;
 
   const clearFilters = () => {
-    setSearch("");
+    setWorkerFilter("");
     setDepartment("");
     setPosition("");
     setStatus("");
@@ -277,54 +298,72 @@ export default function Workers() {
           </div>
         </div>
 
-        {/* Search & Filter Card */}
+        {/* Search & Filter Card — มือถือ 1 / sm 2 / lg 3 ช่องต่อแถว */}
         <div className={`${CARD} mb-4 px-4 py-3.5 sm:px-5`}>
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Search — มือถือเต็มแถว */}
-            <div className="relative min-w-[180px] flex-[1_1_100%] sm:flex-[1_1_220px]">
-              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">
-                🔍
-              </span>
-              <input
-                type="text"
-                placeholder="Search name, ID, or position..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="box-border w-full rounded-lg border border-gray-200 py-[7px] pl-[34px] pr-3 text-[13px] outline-none focus:border-blue-400"
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <span className="text-[13px] font-bold text-gray-900">
+              🔍 Search &amp; Filter
+            </span>
+            {hasFilter && (
+              <button
+                onClick={clearFilters}
+                className="shrink-0 cursor-pointer whitespace-nowrap rounded-lg border border-red-200 bg-white px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+              >
+                ✕ Clear
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="min-w-0">
+              <label className={FILTER_LABEL}>
+                Worker (Employee ID / ชื่อไทย / ชื่ออังกฤษ)
+              </label>
+              <Select
+                options={workerOptions}
+                styles={customSelectStyles}
+                {...MENU_PORTAL}
+                value={
+                  workerOptions.find((o) => o.value === workerFilter) || null
+                }
+                onChange={(o) => setWorkerFilter(o ? o.value : "")}
+                filterOption={filterWorkerOption}
+                placeholder="🔍 ค้นหาด้วย ID หรือชื่อ (ไทย/อังกฤษ)..."
+                isClearable
+                noOptionsMessage={() => "ไม่พบ worker"}
               />
             </div>
-
-            {/* Filters — มือถือ 2 ตัวต่อแถว */}
-            <div className="min-w-[130px] flex-[1_1_40%] sm:flex-[1_1_150px]">
+            <div className="min-w-0">
+              <label className={FILTER_LABEL}>Department</label>
               <Select
                 options={departmentOptions}
                 styles={customSelectStyles}
-                value={
-                  departmentOptions.find((o) => o.value === department) || null
-                }
+                {...MENU_PORTAL}
+                value={departmentOptions.find((o) => o.value === department) || null}
                 onChange={(o) => setDepartment(o ? o.value : "")}
                 placeholder="All Departments"
                 isClearable
                 noOptionsMessage={() => "No departments found"}
               />
             </div>
-            <div className="min-w-[130px] flex-[1_1_40%] sm:flex-[1_1_150px]">
+            <div className="min-w-0">
+              <label className={FILTER_LABEL}>Position</label>
               <Select
                 options={positionOptions}
                 styles={customSelectStyles}
-                value={
-                  positionOptions.find((o) => o.value === position) || null
-                }
+                {...MENU_PORTAL}
+                value={positionOptions.find((o) => o.value === position) || null}
                 onChange={(o) => setPosition(o ? o.value : "")}
                 placeholder="All Positions"
                 isClearable
                 noOptionsMessage={() => "No positions found"}
               />
             </div>
-            <div className="min-w-[110px] flex-[1_1_40%] sm:flex-[1_1_120px]">
+            <div className="min-w-0">
+              <label className={FILTER_LABEL}>Status</label>
               <Select
                 options={statusOptions}
                 styles={customSelectStyles}
+                {...MENU_PORTAL}
                 value={statusOptions.find((o) => o.value === status) || null}
                 onChange={(o) => setStatus(o ? o.value : "")}
                 placeholder="All Status"
@@ -332,43 +371,32 @@ export default function Workers() {
                 isSearchable={false}
               />
             </div>
-            <div className="min-w-[120px] flex-[1_1_40%] sm:flex-[1_1_130px]">
+            <div className="min-w-0">
+              <label className={FILTER_LABEL}>Availability</label>
               <Select
                 options={availabilityOptions}
                 styles={customSelectStyles}
-                value={
-                  availabilityOptions.find((o) => o.value === availability) ||
-                  null
-                }
+                {...MENU_PORTAL}
+                value={availabilityOptions.find((o) => o.value === availability) || null}
                 onChange={(o) => setAvailability(o ? o.value : "")}
                 placeholder="All Availability"
                 isClearable
                 isSearchable={false}
               />
             </div>
-            <div className="min-w-[120px] flex-[1_1_40%] sm:flex-[1_1_130px]">
+            <div className="min-w-0">
+              <label className={FILTER_LABEL}>Mobilization</label>
               <Select
                 options={mobilizationOptions}
                 styles={customSelectStyles}
-                value={
-                  mobilizationOptions.find((o) => o.value === mobilization) ||
-                  null
-                }
+                {...MENU_PORTAL}
+                value={mobilizationOptions.find((o) => o.value === mobilization) || null}
                 onChange={(o) => setMobilization(o ? o.value : "")}
                 placeholder="All Mobilization"
                 isClearable
                 isSearchable={false}
               />
             </div>
-
-            {hasFilter && (
-              <button
-                onClick={clearFilters}
-                className="shrink-0 cursor-pointer whitespace-nowrap rounded-lg border border-red-200 bg-white px-3.5 py-[7px] text-xs font-semibold text-red-600 hover:bg-red-50"
-              >
-                ✕ Clear
-              </button>
-            )}
           </div>
         </div>
 
@@ -413,8 +441,13 @@ export default function Workers() {
                           to={`/workers/${worker.id}`}
                           className="break-words text-[13px] font-semibold text-blue-600 no-underline hover:underline"
                         >
-                          {worker.fullName}
+                          {nameEN(worker)}
                         </Link>
+                        {nameTH(worker) && (
+                          <div className="text-xs text-gray-600">
+                            {nameTH(worker)}
+                          </div>
+                        )}
                         <div className="text-[11px] text-gray-500">
                           <span className="font-semibold text-gray-700">
                             {worker.empId || "—"}
@@ -461,15 +494,15 @@ export default function Workers() {
 
           {/* ── xl+: ตาราง ── */}
           <div className="hidden min-h-0 flex-1 overflow-auto xl:block">
-            <table className="w-full border-collapse text-[13px]">
+            <table className="w-full min-w-[1250px] table-fixed border-collapse text-[13px]">
               <thead>
                 <tr>
-                  {TABLE_HEADERS.map(([h, align]) => (
+                  {TABLE_HEADERS.map(([h, align, width]) => (
                     <th
                       key={h}
                       className={`sticky top-0 z-[1] whitespace-nowrap bg-white px-4 py-2.5 text-[11px] font-semibold tracking-[0.5px] text-gray-500 shadow-[inset_0_-1px_0_#dee2e6] ${
                         align === "center" ? "text-center" : "text-left"
-                      } ${h === "ACTIONS" ? "w-[200px]" : ""}`}
+                      } ${width}`}
                     >
                       {h === "EMP CODE" ? (
                         <span title="เลขอ้างอิงพนักงานในระบบ เรียงตามลำดับที่สร้าง ไม่มีนัยสำคัญอื่น">
@@ -508,18 +541,23 @@ export default function Workers() {
                       <td className="whitespace-nowrap px-4 py-[11px] font-semibold text-gray-700">
                         {worker.empId || "—"}
                       </td>
-                      <td className="px-4 py-[11px]">
+                      <td className="break-words px-4 py-[11px]">
                         <Link
                           to={`/workers/${worker.id}`}
                           className="font-semibold text-blue-600 no-underline hover:underline"
                         >
-                          {worker.fullName}
+                          {nameEN(worker)}
                         </Link>
+                        {nameTH(worker) && (
+                          <div className="text-xs text-gray-500">
+                            {nameTH(worker)}
+                          </div>
+                        )}
                       </td>
-                      <td className="px-4 py-[11px]">
+                      <td className="break-words px-4 py-[11px]">
                         {worker.position?.name || "—"}
                       </td>
-                      <td className="px-4 py-[11px] text-gray-500">
+                      <td className="truncate px-4 py-[11px] text-gray-500" title={worker.division || ""}>
                         {worker.division || "—"}
                       </td>
                       <td className="px-4 py-[11px] text-center">
@@ -551,7 +589,7 @@ export default function Workers() {
                           />
                         )}
                       </td>
-                      <td className="px-4 py-[11px] text-center">
+                      <td className="px-2 py-[11px] text-center">
                         {renderActions(worker)}
                       </td>
                     </tr>

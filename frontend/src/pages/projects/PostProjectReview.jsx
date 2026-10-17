@@ -29,6 +29,12 @@ const REHIRE = [
 ];
 
 const CARD = "rounded-[10px] border border-gray-200 bg-white";
+const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const STATUS_FILTERS = [
+  ["all", "ทั้งหมด"],
+  ["active", "Active"],
+  ["completed", "Completed"],
+];
 const TH =
   "whitespace-nowrap border-b border-gray-200 px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.3px] text-gray-500";
 const TD = "border-b border-gray-100 px-3 py-2.5 align-middle text-[13px]";
@@ -168,6 +174,7 @@ export default function PostProjectReview() {
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState(null);
   const [completing, setCompleting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all"); // กรองรายการโปรเจกต์ใน dropdown
 
   const fetchProjects = () =>
     axios
@@ -288,7 +295,23 @@ export default function PostProjectReview() {
     }
   };
 
-  const projectOptions = projects.map((p) => {
+  const isProjectCompleted = (p) => p.status === "completed";
+  const countBy = (key) =>
+    key === "all"
+      ? projects.length
+      : projects.filter((p) =>
+          key === "completed" ? isProjectCompleted(p) : !isProjectCompleted(p),
+        ).length;
+
+  const projectOptions = projects
+    .filter(
+      (p) =>
+        statusFilter === "all" ||
+        (statusFilter === "completed"
+          ? isProjectCompleted(p)
+          : !isProjectCompleted(p)),
+    )
+    .map((p) => {
     const codePart = p.masterProjectRecord?.projectCode
       ? `[${p.masterProjectRecord.projectCode}] `
       : "";
@@ -304,7 +327,14 @@ export default function PostProjectReview() {
       value: p.id,
       label: `${codePart}${p.name}${clientPart} · ${disambiguator}${statusPart}`,
     };
-  });
+    });
+
+  // โปรเจกต์ที่เลือกไว้อาจถูกกรองออกจาก dropdown — ยังแสดงค่าเดิมไว้
+  const selectedOption =
+    projectOptions.find((o) => o.value === selectedProjectId) ||
+    (project && project.id === selectedProjectId
+      ? { value: project.id, label: project.name }
+      : null);
 
   const isCompleted = project?.status === "completed";
   const canComplete = canManageReview && project && !isCompleted && !completing;
@@ -379,35 +409,86 @@ export default function PostProjectReview() {
         </div>
       </div>
 
-      {/* ════════ Project select + Complete ════════ */}
-      <div
-        className={`${CARD} mt-4 flex flex-col gap-3 px-4 py-4 sm:px-[18px] lg:flex-row lg:items-center`}
-      >
-        <div className="w-full min-w-0 lg:max-w-[700px] lg:flex-1">
-          <Select
-            options={projectOptions}
-            styles={projectSelectStyles}
-            menuPortalTarget={
-              typeof document !== "undefined" ? document.body : null
-            }
-            menuPosition="fixed"
-            value={
-              projectOptions.find((o) => o.value === selectedProjectId) || null
-            }
-            onChange={(o) => setSelectedProjectId(o ? o.value : "")}
-            placeholder="-- Select Active / Completed Project --"
-            isClearable
-            noOptionsMessage={() => "No projects found"}
-          />
+      {/* ════════ เลือกโปรเจกต์ ════════ */}
+      <div className={`${CARD} mt-4 px-4 py-3.5 sm:px-[18px]`}>
+        <div className="mb-3 text-[13px] font-bold text-gray-900">
+          🔍 เลือกโปรเจกต์
         </div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <div className="shrink-0">
+            <label className={FILTER_LABEL}>สถานะโปรเจกต์</label>
+            <div className="flex flex-wrap gap-1.5">
+              {STATUS_FILTERS.map(([key, label]) => {
+                const active = statusFilter === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setStatusFilter(key)}
+                    className={`h-10 cursor-pointer whitespace-nowrap rounded-md border px-3.5 text-xs ${
+                      active
+                        ? "border-blue-600 bg-blue-600 font-bold text-white"
+                        : "border-gray-200 bg-white font-medium text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {label} ({countBy(key)})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="w-full min-w-0 lg:max-w-[760px] lg:flex-1">
+            <label className={FILTER_LABEL}>
+              Project (ON Number / ชื่องาน / Client / Location)
+            </label>
+            <Select
+              options={projectOptions}
+              styles={projectSelectStyles}
+              menuPortalTarget={
+                typeof document !== "undefined" ? document.body : null
+              }
+              menuPosition="fixed"
+              value={selectedOption}
+              onChange={(o) => setSelectedProjectId(o ? o.value : "")}
+              placeholder="🔍 พิมพ์ค้นหา หรือเลือกโปรเจกต์..."
+              isClearable
+              noOptionsMessage={() => "ไม่พบโปรเจกต์"}
+            />
+          </div>
+        </div>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {canManageReview && (
+      {/* ════════ สรุปโปรเจกต์ที่เลือก + ปิดโปรเจกต์ ════════ */}
+      {project && (
+        <div
+          className={`${CARD} mt-4 flex flex-col gap-3 px-4 py-3 sm:px-[18px] md:flex-row md:items-center md:justify-between`}
+        >
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="min-w-0 break-words text-[14px] font-bold">
+              {project.name}
+            </span>
+            <StatusBadge completed={isCompleted} />
+            {rows.length > 0 && (
+              <span className="text-xs text-gray-500">
+                Reviewed{" "}
+                <strong
+                  className={
+                    reviewedCount === rows.length
+                      ? "text-[#198754]"
+                      : "text-gray-900"
+                  }
+                >
+                  {reviewedCount}/{rows.length}
+                </strong>
+              </span>
+            )}
+          </div>
+          {canManageReview && !isCompleted && (
             <button
               type="button"
               onClick={markCompleted}
               disabled={!canComplete}
-              className={`whitespace-nowrap rounded-lg border px-4 py-[9px] text-[13px] font-bold transition-all ${
+              className={`shrink-0 whitespace-nowrap rounded-lg border px-4 py-[9px] text-[13px] font-bold transition-all ${
                 canComplete
                   ? "cursor-pointer border-[#198754] bg-[#198754] text-white shadow-[0_2px_5px_rgba(25,135,84,0.35)] hover:-translate-y-px hover:shadow-[0_4px_8px_rgba(25,135,84,0.45)]"
                   : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
@@ -416,23 +497,8 @@ export default function PostProjectReview() {
               {completing ? "กำลังปิดโปรเจกต์…" : "✔ Mark Project Completed"}
             </button>
           )}
-          {project && <StatusBadge completed={isCompleted} />}
-          {project && rows.length > 0 && (
-            <span className="text-xs text-gray-500">
-              Reviewed{" "}
-              <strong
-                className={
-                  reviewedCount === rows.length
-                    ? "text-[#198754]"
-                    : "text-gray-900"
-                }
-              >
-                {reviewedCount}/{rows.length}
-              </strong>
-            </span>
-          )}
         </div>
-      </div>
+      )}
 
       {/* ════════ Workers + Review ════════ */}
       <div className={`${CARD} mt-4 overflow-hidden`}>

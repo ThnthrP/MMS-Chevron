@@ -636,39 +636,47 @@ export default function Project() {
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="mb-4 flex gap-2">
-          <input
-            type="text"
-            placeholder="ค้นหา ON Number / ชื่องาน / ลูกค้า / Engineer..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") runSearch();
-            }}
-            className={`${INPUT} min-w-0 flex-1`}
-          />
-          <button
-            onClick={runSearch}
-            className={`${BTN} shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 sm:px-5`}
-          >
-            🔍 ค้นหา
-          </button>
-          {searchQuery && (
+        {/* ════════ Search & Filter ════════ */}
+        <div className="mb-4 shrink-0 rounded-[10px] border border-gray-200 bg-white px-4 py-3.5">
+          <div className="mb-3 text-[13px] font-bold text-gray-900">
+            🔍 Search &amp; Filter
+          </div>
+          <label className="mb-1 block text-[11px] font-semibold text-gray-500">
+            ค้นหา (ON Number / ชื่องาน / ลูกค้า / Engineer)
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="เช่น ON/018-01/2026, Hydraulic, K.Pakorn..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") runSearch();
+              }}
+              className={`${INPUT} min-w-0 max-w-[720px] flex-1`}
+            />
             <button
-              onClick={clearSearch}
-              className={`${BTN} shrink-0 rounded-lg border border-solid border-gray-200 bg-white px-3 py-2 text-gray-500 hover:bg-gray-50 sm:px-4`}
+              onClick={runSearch}
+              className={`${BTN} shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 sm:px-5`}
             >
-              ✕ ล้าง
+              🔍 ค้นหา
             </button>
+            {searchQuery && (
+              <button
+                onClick={clearSearch}
+                className={`${BTN} shrink-0 rounded-lg border border-solid border-gray-200 bg-white px-3 py-2 text-gray-500 hover:bg-gray-50 sm:px-4`}
+              >
+                ✕ ล้าง
+              </button>
+            )}
+          </div>
+          {searchQuery && (
+            <div className="mt-2 text-xs text-gray-500">
+              ผลค้นหา "{searchQuery}" ในปี {activeYear} — พบ{" "}
+              <strong className="text-gray-900">{data.total}</strong> รายการ
+            </div>
           )}
         </div>
-
-        {searchQuery && (
-          <div className="mb-3 text-xs text-gray-500">
-            ผลค้นหา "{searchQuery}" ในปี {activeYear} — พบ {data.total} รายการ
-          </div>
-        )}
 
         {/* Year Tabs — มือถือเลื่อนแนวนอนได้ถ้าปีเยอะ */}
         <div className="mb-3 flex shrink-0 gap-2 overflow-x-auto border-b border-gray-200">

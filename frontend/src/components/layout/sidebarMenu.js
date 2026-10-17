@@ -119,7 +119,7 @@ export const APP_MENU = [
         ],
       },
       {
-        name: "Requests from MP",
+        name: "Requests for Training & Medical", // คำขอถึง HR (เดิม: Requests from MP)
         path: "/requests-history",
         roles: [
           "admin",

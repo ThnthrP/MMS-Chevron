@@ -57,6 +57,9 @@ const BTN_PRIMARY =
   "cursor-pointer rounded-lg border-none bg-blue-600 px-4 py-2 text-[13px] font-bold text-white hover:bg-blue-700 disabled:cursor-default disabled:bg-gray-400";
 const BTN_GHOST =
   "cursor-pointer rounded-lg border border-gray-200 bg-white px-4 py-2 text-[13px] font-semibold text-gray-500 hover:bg-gray-50";
+const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const FIELD =
+  "box-border h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500";
 const TH =
   "whitespace-nowrap border-b border-gray-200 px-3.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.3px] text-gray-500";
 const TD = "border-b border-gray-100 px-3.5 py-3 align-middle text-[13px]";
@@ -199,6 +202,8 @@ export default function AdminUsers() {
   const [availableEmps, setAvailableEmps] = useState([]);
   const [roleDraft, setRoleDraft] = useState({}); // { userId: roleId } — แก้ค้างก่อน Save
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState(""); // role.id
+  const [linkFilter, setLinkFilter] = useState(""); // "" | "linked" | "unlinked"
   const [loading, setLoading] = useState(true);
   const [savingRoleUserId, setSavingRoleUserId] = useState(null);
   const [linkingUserId, setLinkingUserId] = useState(null);
@@ -569,14 +574,35 @@ export default function AdminUsers() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter(
-      (u) =>
-        (u.name || "").toLowerCase().includes(q) ||
-        (u.email || "").toLowerCase().includes(q) ||
-        (u.role?.name || "").toLowerCase().includes(q),
-    );
-  }, [users, search]);
+    return users.filter((u) => {
+      if (roleFilter && u.role?.id !== roleFilter) return false;
+      if (linkFilter === "linked" && !u.employee) return false;
+      if (linkFilter === "unlinked" && u.employee) return false;
+      if (!q) return true;
+      return [
+        u.name,
+        u.titlePrefix ? `${u.titlePrefix}${u.name}` : "",
+        u.email,
+        u.employee?.fullName,
+        u.employee?.empCode,
+      ].some((v) =>
+        String(v || "")
+          .toLowerCase()
+          .includes(q),
+      );
+    });
+  }, [users, search, roleFilter, linkFilter]);
+
+  // จำนวนผู้ใช้ต่อ role — แสดงใน dropdown
+  const roleCount = (roleId) =>
+    users.filter((u) => u.role?.id === roleId).length;
+
+  const hasFilter = search || roleFilter || linkFilter;
+  const resetFilters = () => {
+    setSearch("");
+    setRoleFilter("");
+    setLinkFilter("");
+  };
 
   // ── ส่วนที่ใช้ทั้งตารางและการ์ด ──
   const displayName = (u) =>
@@ -733,23 +759,73 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      {/* ════════ Search ════════ */}
-      <div
-        className={`${CARD} mb-4 flex flex-wrap items-center gap-3 px-3.5 py-3`}
-      >
-        <input
-          type="text"
-          placeholder="🔍 ค้นหาชื่อ, email หรือ role…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className={`${INPUT} sm:max-w-[360px]`}
-        />
-        {!loading && (
-          <span className="text-xs text-gray-500">
-            {search
-              ? `พบ ${filtered.length} จาก ${users.length} คน`
-              : `ทั้งหมด ${users.length} คน`}
+      {/* ════════ Search & Filter ════════ */}
+      <div className={`${CARD} mb-4 px-4 py-3.5`}>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <span className="text-[13px] font-bold text-gray-900">
+            🔍 Search &amp; Filter
           </span>
+          {hasFilter && (
+            <button
+              onClick={resetFilters}
+              className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#dc3545] underline hover:text-[#a71d2a]"
+            >
+              ✕ ล้าง filter
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr]">
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>
+              ค้นหา (ชื่อ / Email / Worker ที่ผูก)
+            </label>
+            <input
+              type="text"
+              placeholder="เช่น สมชาย, hr@experteam.co.th..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={FIELD}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>Role</label>
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className={FIELD}
+            >
+              <option value="">ทั้งหมด</option>
+              {roleList.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} ({roleCount(r.id)})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>Linked Worker</label>
+            <select
+              value={linkFilter}
+              onChange={(e) => setLinkFilter(e.target.value)}
+              className={FIELD}
+            >
+              <option value="">ทั้งหมด</option>
+              <option value="linked">ผูก worker แล้ว</option>
+              <option value="unlinked">ยังไม่ผูก (None)</option>
+            </select>
+          </div>
+        </div>
+        {!loading && (
+          <div className="mt-2.5 text-xs text-gray-500">
+            {hasFilter ? (
+              <>
+                พบ <strong className="text-gray-900">{filtered.length}</strong>{" "}
+                จาก {users.length} คน
+              </>
+            ) : (
+              <>ทั้งหมด {users.length} คน</>
+            )}
+          </div>
         )}
       </div>
 
@@ -758,7 +834,9 @@ export default function AdminUsers() {
         {loading ? (
           <div className="p-7 text-center text-gray-500">Loading…</div>
         ) : filtered.length === 0 ? (
-          <div className="p-7 text-center text-gray-500">ไม่พบผู้ใช้</div>
+          <div className="p-7 text-center text-gray-500">
+            {hasFilter ? "ไม่พบผู้ใช้ตามเงื่อนไขที่เลือก" : "ไม่พบผู้ใช้"}
+          </div>
         ) : (
           <>
             {/* ── ต่ำกว่า lg: การ์ด ── */}

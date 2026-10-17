@@ -45,6 +45,9 @@ const ICON_BTN =
 const ICON_VIEW = `${ICON_BTN} bg-white shadow-[0_1px_3px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.08)] hover:shadow-[0_3px_6px_rgba(0,0,0,0.2),0_2px_3px_rgba(0,0,0,0.1)]`;
 const ICON_EDIT = `${ICON_BTN} bg-[#e7f1ff] text-blue-600 shadow-[0_1px_3px_rgba(13,110,253,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(13,110,253,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
 const ICON_DELETE = `${ICON_BTN} bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(220,53,69,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
+const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const FIELD =
+  "box-border h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500";
 const TH =
   "sticky top-0 z-[1] bg-white px-4 py-2.5 text-[11px] font-semibold text-gray-500 shadow-[inset_0_-1px_0_#f1f3f5]";
 const DASH = <span className="text-gray-400">—</span>;
@@ -133,6 +136,11 @@ export default function ManageTrainings() {
   const [listMsg, setListMsg] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const firstLoadRef = useRef(true);
+  // filter ฝั่ง frontend (รายการโหลดมาครบแล้ว)
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [setupFilter, setSetupFilter] = useState(""); // "" | "set" | "unset"
+  const [certFilter, setCertFilter] = useState(""); // "" | "has" | "none"
+  const [chevronFilter, setChevronFilter] = useState(""); // "" | "used" | "unused"
 
   // ----- clients -----
   const [clients, setClients] = useState([]);
@@ -552,6 +560,31 @@ export default function ManageTrainings() {
     });
   };
 
+  const shownTrainings = trainings.filter((t) => {
+    const isSet = (t._count?.trainingStandards ?? 0) > 0;
+    const certs = t._count?.employeeTrainings ?? 0;
+    const chevron = !!t.clientUsage?.find(
+      (u) => (u.name || "").toUpperCase() === "CHEVRON",
+    );
+    if (sourceFilter && t.standard?.sourceName !== sourceFilter) return false;
+    if (setupFilter === "set" && !isSet) return false;
+    if (setupFilter === "unset" && isSet) return false;
+    if (certFilter === "has" && certs === 0) return false;
+    if (certFilter === "none" && certs > 0) return false;
+    if (chevronFilter === "used" && !chevron) return false;
+    if (chevronFilter === "unused" && chevron) return false;
+    return true;
+  });
+  const hasFilter =
+    search || sourceFilter || setupFilter || certFilter || chevronFilter;
+  const resetFilters = () => {
+    setSearch("");
+    setSourceFilter("");
+    setSetupFilter("");
+    setCertFilter("");
+    setChevronFilter("");
+  };
+
   const panelOpen = selectedId !== null;
   const isEditing = mode === "edit";
 
@@ -585,8 +618,10 @@ export default function ManageTrainings() {
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
-      <div className={`${CARD} mb-4 px-4 py-4 sm:px-6`}>
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+      <div
+        className={`${CARD} mb-4 flex flex-col gap-3 px-4 py-4 sm:px-6 md:flex-row md:items-center md:justify-between`}
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
           <span className="text-xl">🎓</span>
           <span className="text-lg font-bold">Manage Trainings</span>
           <span className="basis-full text-xs text-gray-500 lg:basis-auto">
@@ -594,43 +629,127 @@ export default function ManageTrainings() {
             1 standard
           </span>
         </div>
+        <button
+          className={`${BTN_PRIMARY} w-full shrink-0 md:w-auto`}
+          onClick={openNewTraining}
+        >
+          + Add Training
+        </button>
+      </div>
+
+      {/* ════════ Search & Filter ════════ */}
+      <div className={`${CARD} mb-4 px-4 py-3.5`}>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <span className="text-[13px] font-bold text-gray-900">
+            🔍 Search &amp; Filter
+          </span>
+          {hasFilter && (
+            <button
+              onClick={resetFilters}
+              className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#dc3545] underline hover:text-[#a71d2a]"
+            >
+              ✕ ล้าง filter
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr]">
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>
+              ค้นหา training (ชื่อกลาง / ชื่อในไฟล์ HR)
+            </label>
+            <input
+              type="text"
+              placeholder="เช่น Rigging, H2S, First Aid..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={FIELD}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>Source</label>
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className={FIELD}
+            >
+              <option value="">ทั้งหมด</option>
+              {sources.map((src) => (
+                <option key={src.id} value={src.name}>
+                  {src.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>Set up?</label>
+            <select
+              value={setupFilter}
+              onChange={(e) => setSetupFilter(e.target.value)}
+              className={FIELD}
+            >
+              <option value="">ทั้งหมด</option>
+              <option value="set">Set</option>
+              <option value="unset">⚠ Not set</option>
+            </select>
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>พนักงานที่มี cert</label>
+            <select
+              value={certFilter}
+              onChange={(e) => setCertFilter(e.target.value)}
+              className={FIELD}
+            >
+              <option value="">ทั้งหมด</option>
+              <option value="has">มีพนักงานถือ cert</option>
+              <option value="none">ไม่มีใครถือ (0 คน)</option>
+            </select>
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>Chevron</label>
+            <select
+              value={chevronFilter}
+              onChange={(e) => setChevronFilter(e.target.value)}
+              className={FIELD}
+            >
+              <option value="">ทั้งหมด</option>
+              <option value="used">ใช้ใน Chevron</option>
+              <option value="unused">ไม่ได้ใช้</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <MessageBanner msg={listMsg} />
 
       {/* ════════ List ════════ */}
       <div className={`${CARD} overflow-hidden`}>
-        <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <div className="flex items-center gap-3">
-            <input
-              type="text"
-              placeholder="🔍 ค้นหา training..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className={`${INPUT} sm:w-[260px]`}
-            />
-            {!loadingList && (
-              <span className="shrink-0 text-xs text-gray-500">
-                {trainings.length} รายการ
-              </span>
+        {!loadingList && (
+          <div className="border-b border-gray-100 px-4 py-2.5 text-xs text-gray-500 sm:px-5">
+            {hasFilter ? (
+              <>
+                พบ{" "}
+                <strong className="text-gray-900">
+                  {shownTrainings.length}
+                </strong>{" "}
+                รายการ
+              </>
+            ) : (
+              <>ทั้งหมด {trainings.length} รายการ</>
             )}
           </div>
-          <button className={BTN_PRIMARY} onClick={openNewTraining}>
-            + Add Training
-          </button>
-        </div>
+        )}
 
         {loadingList ? (
           <div className="p-10 text-center text-gray-500">Loading...</div>
-        ) : trainings.length === 0 ? (
+        ) : shownTrainings.length === 0 ? (
           <div className="p-10 text-center text-[13px] text-gray-500">
-            {debouncedSearch ? `ไม่พบ "${debouncedSearch}"` : "ไม่พบ training"}
+            {hasFilter ? "ไม่พบ training ตามเงื่อนไขที่เลือก" : "ไม่พบ training"}
           </div>
         ) : (
           <>
             {/* ── ต่ำกว่า lg: การ์ด ── */}
             <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2 lg:hidden">
-              {trainings.map((t) => (
+              {shownTrainings.map((t) => (
                 <div
                   key={t.id}
                   className="rounded-lg border border-gray-200 bg-white p-3 text-[13px]"
@@ -722,7 +841,7 @@ export default function ManageTrainings() {
                   </tr>
                 </thead>
                 <tbody>
-                  {trainings.map((t) => (
+                  {shownTrainings.map((t) => (
                     <tr
                       key={t.id}
                       className={`border-b border-gray-50 hover:bg-gray-50 ${

@@ -3,6 +3,12 @@ import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import Select from "react-select";
 import { Link } from "react-router-dom";
+import {
+  buildWorkerOptions,
+  filterWorkerOption,
+  nameEN,
+  nameTH,
+} from "../../utils/workerSearch";
 
 // ══════════════════════════════════════════════════════════
 // constants
@@ -419,6 +425,34 @@ export default function ComplianceDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Export PE Tracking (.xlsx) — ผลตรวจสุขภาพรายคน ตาม layout Excel เดิมของ HR
+  // (ย้ายมาจากหน้า Analytics & Reports — endpoint เดิม)
+  const [exportingPE, setExportingPE] = useState(false);
+  const exportPETracking = async () => {
+    setExportingPE(true);
+    try {
+      const res = await axios.get(
+        `${backendUrl}/api/analytics/export-pe-tracking`,
+        { withCredentials: true, responseType: "blob" },
+      );
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `PE-tracking-export-${new Date().toLocaleDateString("en-CA")}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert(
+        err.response?.status === 403
+          ? "ไม่มีสิทธิ์ Export ผลตรวจสุขภาพ"
+          : "Export PE Tracking ไม่สำเร็จ ลองใหม่อีกครั้ง",
+      );
+    } finally {
+      setExportingPE(false);
+    }
+  };
+
   const handleViewGap = async (workerId) => {
     try {
       const res = await axios.get(
@@ -456,13 +490,7 @@ export default function ComplianceDashboard() {
 
   const workerOptions = [
     { value: "", label: "All Workers" },
-    ...workers
-      .slice()
-      .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || ""))
-      .map((w) => ({
-        value: w.id,
-        label: w.empId ? `${w.empId} : ${w.fullName}` : w.fullName,
-      })),
+    ...buildWorkerOptions(workers),
   ];
 
   const positionOptions = [
@@ -480,8 +508,11 @@ export default function ComplianceDashboard() {
         to={`/workers/${w.id}`}
         className="font-semibold text-gray-900 no-underline hover:text-blue-600 hover:underline"
       >
-        {w.fullName}
+        {nameEN(w)}
       </Link>
+      {nameTH(w) && (
+        <div className="text-xs text-gray-600">{nameTH(w)}</div>
+      )}
       {w.empId ? (
         <div className="font-mono text-[11px] text-gray-500">{w.empId}</div>
       ) : (
@@ -623,21 +654,33 @@ export default function ComplianceDashboard() {
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
-      <div className={`${CARD} mb-4 px-4 py-4 sm:px-6`}>
-        <div className="mb-1 flex flex-wrap items-center gap-2.5">
-          <span className="text-xl">🛡️</span>
-          <span className="text-lg font-bold">Compliance Center</span>
-          <span className="rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600">
-            Phase 2
-          </span>
+      <div
+        className={`${CARD} mb-4 flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6`}
+      >
+        <div className="min-w-0">
+          <div className="mb-1 flex flex-wrap items-center gap-2.5">
+            <span className="text-xl">🛡️</span>
+            <span className="text-lg font-bold">Compliance Center</span>
+            <span className="rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600">
+              Phase 2
+            </span>
+          </div>
+          <div className="text-[13px] text-gray-500">
+            Certification Monitoring, Gap Analysis & Position Matching
+          </div>
+          <div className="mt-1 text-[11px] text-gray-400">
+            ตัวเลขการ์ดด้านล่างและคอลัมน์ Training Alerts นับเฉพาะใบรับรอง
+            training · ผลตรวจสุขภาพดูที่คอลัมน์ Medical
+          </div>
         </div>
-        <div className="text-[13px] text-gray-500">
-          Certification Monitoring, Gap Analysis & Position Matching
-        </div>
-        <div className="mt-1 text-[11px] text-gray-400">
-          ตัวเลขการ์ดด้านล่างและคอลัมน์ Training Alerts นับเฉพาะใบรับรอง
-          training · ผลตรวจสุขภาพดูที่คอลัมน์ Medical
-        </div>
+        <button
+          onClick={exportPETracking}
+          disabled={exportingPE}
+          title="ผลตรวจสุขภาพรายคน (Physical Examination) ตาม layout PE tracking ของ HR"
+          className="w-full shrink-0 cursor-pointer whitespace-nowrap rounded-lg border-none bg-[#1e3a5f] px-4 py-[9px] text-[13px] font-bold text-white hover:bg-[#162c48] disabled:cursor-default disabled:bg-gray-400 sm:w-auto"
+        >
+          {exportingPE ? "Exporting…" : "⬇ Export PE Tracking (.xlsx)"}
+        </button>
       </div>
 
       {/* ════════ Stats Cards — คลิกเพื่อกรอง ════════ */}
@@ -681,21 +724,24 @@ export default function ComplianceDashboard() {
           🔍 Search &amp; Filter
         </div>
         <div className="flex flex-wrap gap-3 sm:gap-4">
-          <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[340px] sm:flex-[1_1_240px]">
-            <label className={FILTER_LABEL}>Worker (Employee ID / Name)</label>
+          <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[440px] sm:flex-[1_1_300px]">
+            <label className={FILTER_LABEL}>
+              Worker (Employee ID / ชื่อไทย / ชื่ออังกฤษ)
+            </label>
             <Select
               options={workerOptions}
               value={
                 workerOptions.find((o) => o.value === workerFilter) || null
               }
               onChange={(o) => setWorkerFilter(o ? o.value : "")}
-              placeholder="🔍 ค้นหาด้วย ID หรือชื่อ..."
+              filterOption={filterWorkerOption}
+              placeholder="🔍 ค้นหาด้วย ID หรือชื่อ (ไทย/อังกฤษ)..."
               isClearable
               styles={customSelectStyles}
               noOptionsMessage={() => "ไม่พบ worker"}
             />
           </div>
-          <div className="min-w-[160px] flex-[1_1_45%] sm:max-w-[280px] sm:flex-[1_1_200px]">
+          <div className="min-w-[160px] flex-[1_1_45%] sm:max-w-[560px] sm:flex-[1_1_340px]">
             <label className={FILTER_LABEL}>Position</label>
             <Select
               options={positionOptions}

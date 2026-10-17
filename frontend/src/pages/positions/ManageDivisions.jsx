@@ -17,6 +17,7 @@ const BTN_CANCEL = `${BTN} bg-gray-100 text-gray-700 shadow-[0_1px_3px_rgba(0,0,
 const BTN_RENAME = `${BTN} bg-[#e7f1ff] text-blue-600 shadow-[0_1px_3px_rgba(13,110,253,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(13,110,253,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
 const BTN_DELETE = `${BTN} bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(220,53,69,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
 
+const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
 const TH =
   "sticky top-0 z-[1] bg-white px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-[0.3px] text-gray-500 shadow-[inset_0_-1px_0_#e9ecef]";
 
@@ -148,40 +149,46 @@ export default function ManageDivisions() {
         </div>
       </div>
 
-      {/* ════════ เนื้อหา — กว้างไม่เกิน 900px (มีแค่คอลัมน์ชื่อ) ════════ */}
-      <div className="max-w-[900px] space-y-4">
+      {/* ════════ เนื้อหา — กว้างไม่เกิน 1100px (มีแค่คอลัมน์ชื่อ) ════════ */}
+      <div className="max-w-[1100px] space-y-4">
         {/* Add + Search */}
         <div
-          className={`${CARD} flex flex-col gap-2.5 px-4 py-3.5 sm:flex-row sm:items-center`}
+          className={`${CARD} flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-end`}
         >
-          <div className="flex flex-1 gap-2.5">
-            <input
-              type="text"
-              placeholder="ชื่อ department ใหม่…"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-              className={`${INPUT} min-w-0 flex-1`}
-            />
-            <button
-              onClick={handleAdd}
-              disabled={adding}
-              className="shrink-0 cursor-pointer whitespace-nowrap rounded-lg border-none bg-blue-600 px-[18px] py-[9px] text-[13px] font-semibold text-white shadow-[0_2px_5px_rgba(13,110,253,0.35)] transition-all hover:-translate-y-px hover:shadow-[0_4px_8px_rgba(13,110,253,0.45)] disabled:cursor-not-allowed disabled:bg-gray-400 disabled:shadow-none disabled:hover:translate-y-0"
-            >
-              {adding ? "Adding…" : "＋ Add"}
-            </button>
+          <div className="min-w-0 flex-1">
+            <label className={FILTER_LABEL}>เพิ่ม Department ใหม่</label>
+            <div className="flex gap-2.5">
+              <input
+                type="text"
+                placeholder="ชื่อ department ใหม่…"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                className={`${INPUT} min-w-0 flex-1`}
+              />
+              <button
+                onClick={handleAdd}
+                disabled={adding}
+                className="shrink-0 cursor-pointer whitespace-nowrap rounded-lg border-none bg-blue-600 px-[18px] py-[9px] text-[13px] font-semibold text-white shadow-[0_2px_5px_rgba(13,110,253,0.35)] transition-all hover:-translate-y-px hover:shadow-[0_4px_8px_rgba(13,110,253,0.45)] disabled:cursor-not-allowed disabled:bg-gray-400 disabled:shadow-none disabled:hover:translate-y-0"
+              >
+                {adding ? "Adding…" : "＋ Add"}
+              </button>
+            </div>
           </div>
 
           {/* เส้นคั่น — เฉพาะจอ sm+ */}
           <div className="mx-1 hidden w-px self-stretch bg-gray-200 sm:block" />
 
-          <input
-            type="text"
-            placeholder="🔍 ค้นหา…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className={`${INPUT} w-full sm:w-[260px]`}
-          />
+          <div className="min-w-0 sm:w-[340px]">
+            <label className={FILTER_LABEL}>ค้นหา Department</label>
+            <input
+              type="text"
+              placeholder="🔍 พิมพ์ชื่อ department…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={`${INPUT} w-full`}
+            />
+          </div>
         </div>
 
         {/* Table */}

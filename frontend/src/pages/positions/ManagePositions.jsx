@@ -35,6 +35,9 @@ const CARD = "rounded-[10px] border border-gray-200 bg-white";
 const INPUT =
   "box-border w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-blue-400";
 const LABEL = "mb-1.5 block text-[13px] font-semibold";
+const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const FIELD =
+  "box-border h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500";
 const TH =
   "sticky top-0 z-[1] whitespace-nowrap bg-white px-4 py-2.5 text-[11px] font-semibold tracking-[0.5px] text-gray-500 shadow-[inset_0_-1px_0_#dee2e6]";
 const ICON_BTN =
@@ -89,6 +92,9 @@ export default function ManagePositions() {
   const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [matrixFilter, setMatrixFilter] = useState(""); // "" | "has" | "none"
+  const [respFilter, setRespFilter] = useState(""); // "" | "set" | "unset"
+  const [workerFilter, setWorkerFilter] = useState(""); // "" | "has" | "none"
 
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null); // position object | null (create)
@@ -213,12 +219,29 @@ export default function ManagePositions() {
 
   // ── derived ──
   const q = search.trim().toLowerCase();
-  const filtered = positions.filter(
-    (p) =>
+  const filtered = positions.filter((p) => {
+    const matrix = p._count?.requirements ?? 0;
+    const workers = p._count?.employees ?? 0;
+    const resp = toItems(p.responsibilities).length;
+    if (matrixFilter === "has" && matrix === 0) return false;
+    if (matrixFilter === "none" && matrix > 0) return false;
+    if (respFilter === "set" && resp === 0) return false;
+    if (respFilter === "unset" && resp > 0) return false;
+    if (workerFilter === "has" && workers === 0) return false;
+    if (workerFilter === "none" && workers > 0) return false;
+    return (
       !q ||
       (p.name || "").toLowerCase().includes(q) ||
-      (p.nameTH || "").toLowerCase().includes(q),
-  );
+      (p.nameTH || "").toLowerCase().includes(q)
+    );
+  });
+  const hasFilter = q || matrixFilter || respFilter || workerFilter;
+  const resetFilters = () => {
+    setSearch("");
+    setMatrixFilter("");
+    setRespFilter("");
+    setWorkerFilter("");
+  };
   const totalWorkers = filtered.reduce(
     (sum, p) => sum + (p._count?.employees ?? 0),
     0,
@@ -227,8 +250,8 @@ export default function ManagePositions() {
 
   const emptyText = loading
     ? "Loading..."
-    : q
-      ? `ไม่พบตำแหน่ง "${search}"`
+    : hasFilter
+      ? "ไม่พบตำแหน่งตามเงื่อนไขที่เลือก"
       : "No positions yet — click + New Position";
 
   const renderActions = (p) => (
@@ -268,19 +291,74 @@ export default function ManagePositions() {
         </button>
       </div>
 
-      {/* ════════ Search ════════ */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <input
-          type="text"
-          placeholder="🔍 ค้นหาตำแหน่ง (EN / TH)..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className={`${INPUT} sm:max-w-[320px]`}
-        />
-        {q && (
-          <span className="text-xs text-gray-500">
-            พบ {filtered.length} จาก {positions.length} ตำแหน่ง
+      {/* ════════ Search & Filter ════════ */}
+      <div className={`${CARD} mb-4 px-4 py-3.5`}>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <span className="text-[13px] font-bold text-gray-900">
+            🔍 Search &amp; Filter
           </span>
+          {hasFilter && (
+            <button
+              onClick={resetFilters}
+              className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#dc3545] underline hover:text-[#a71d2a]"
+            >
+              ✕ ล้าง filter
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>ค้นหาตำแหน่ง (EN / TH)</label>
+            <input
+              type="text"
+              placeholder="เช่น Rigger, Pipe Fitter, ช่างเชื่อม..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={FIELD}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>Workers</label>
+            <select
+              value={workerFilter}
+              onChange={(e) => setWorkerFilter(e.target.value)}
+              className={FIELD}
+            >
+              <option value="">ทั้งหมด</option>
+              <option value="has">มีพนักงาน</option>
+              <option value="none">ยังไม่มีพนักงาน (0 คน)</option>
+            </select>
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>Matrix</label>
+            <select
+              value={matrixFilter}
+              onChange={(e) => setMatrixFilter(e.target.value)}
+              className={FIELD}
+            >
+              <option value="">ทั้งหมด</option>
+              <option value="has">มี matrix แล้ว</option>
+              <option value="none">⚠ no matrix</option>
+            </select>
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>CV Responsibility</label>
+            <select
+              value={respFilter}
+              onChange={(e) => setRespFilter(e.target.value)}
+              className={FIELD}
+            >
+              <option value="">ทั้งหมด</option>
+              <option value="set">กรอกแล้ว</option>
+              <option value="unset">not set</option>
+            </select>
+          </div>
+        </div>
+        {hasFilter && (
+          <div className="mt-2.5 text-xs text-gray-500">
+            พบ <strong className="text-gray-900">{filtered.length}</strong>{" "}
+            จาก {positions.length} ตำแหน่ง
+          </div>
         )}
       </div>
 

@@ -48,6 +48,23 @@ const fmtDateTime = (d) =>
     minute: "2-digit",
   });
 
+// วันที่แบบ local "YYYY-MM-DD" (ใช้กับ <input type="date">)
+const toYMD = (d) => {
+  const x = new Date(d);
+  if (isNaN(x.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+};
+const daysAgoYMD = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return toYMD(d);
+};
+
+// เรียงค่าไม่ซ้ำ (ใช้สร้างตัวเลือกใน dropdown)
+const uniqSorted = (arr) =>
+  [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
 const getPageNumbers = (current, total) => {
   const delta = 2;
   const range = [];
@@ -79,6 +96,15 @@ const TYPE_TABS = [
   ["training", "🎓 Training"],
   ["medical", "🏥 Medical"],
 ];
+// ช่วงวันที่สำเร็จรูป — days = null คือไม่จำกัด
+const DATE_PRESETS = [
+  ["all", "ทั้งหมด", null],
+  ["today", "วันนี้", 0],
+  ["7d", "7 วัน", 6],
+  ["30d", "30 วัน", 29],
+  ["90d", "90 วัน", 89],
+];
+
 const STATUS_TABS = [
   ["pending", "🟡 รอดำเนินการ"],
   ["completed", "✅ เสร็จแล้ว"],
@@ -88,6 +114,13 @@ const STATUS_TABS = [
 const TH =
   "whitespace-nowrap bg-white px-4 py-2.5 text-left text-[11px] font-semibold tracking-[0.5px] text-gray-500";
 const TD = "px-4 py-3 text-[13px]";
+const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const FIELD_BASE =
+  "box-border h-9 rounded-lg border border-gray-200 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500";
+const FIELD = `${FIELD_BASE} w-full`;
+const DATE_FIELD = `${FIELD_BASE} w-[150px]`;
+const CHIP =
+  "cursor-pointer whitespace-nowrap rounded-full border px-3 py-1 text-xs";
 const PAGE_BTN =
   "min-w-[30px] cursor-pointer rounded-md border px-2.5 py-[5px] text-xs disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -146,6 +179,12 @@ export default function TrainingRequestHistory() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("pending");
+  const [datePreset, setDatePreset] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [requesterFilter, setRequesterFilter] = useState("");
+  const [trainingFilter, setTrainingFilter] = useState("");
+  const [clientFilter, setClientFilter] = useState("");
   const [page, setPage] = useState(1);
   const [deletingId, setDeletingId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
@@ -175,11 +214,42 @@ export default function TrainingRequestHistory() {
     return () => clearInterval(interval);
   }, []);
 
+  // ล้าง filter ทั้งหมด (ยกเว้นสถานะ)
+  const resetFilters = () => {
+    setSearch("");
+    setDatePreset("all");
+    setDateFrom("");
+    setDateTo("");
+    setRequesterFilter("");
+    setTrainingFilter("");
+    setClientFilter("");
+    setPage(1);
+  };
+
   const switchType = (key) => {
     setRequestType(key);
-    setPage(1);
     setStatusFilter("pending");
-    setSearch("");
+    resetFilters();
+  };
+
+  const applyPreset = (key, days) => {
+    setDatePreset(key);
+    setDateFrom(days === null ? "" : daysAgoYMD(days));
+    setDateTo(days === null ? "" : toYMD(new Date()));
+    setPage(1);
+  };
+
+  // แก้วันที่เอง → ไม่ใช่ preset แล้ว
+  const setDate = (setter) => (e) => {
+    setter(e.target.value);
+    setDatePreset("");
+    setPage(1);
+  };
+
+  // wrapper: เปลี่ยน filter แล้วกลับไปหน้า 1
+  const onFilter = (setter) => (e) => {
+    setter(e.target.value);
+    setPage(1);
   };
 
   const requestPath = (id) =>
@@ -239,11 +309,43 @@ export default function TrainingRequestHistory() {
     }
   };
 
-  const filtered = requests.filter((r) => {
-    if (statusFilter !== "all" && r.status !== statusFilter) return false;
+  // ตัวเลือก dropdown — สร้างจากข้อมูลจริงของ tab ปัจจุบัน
+  const requesterOptions = uniqSorted(requests.map((r) => r.requestedByName));
+  const trainingOptions = uniqSorted(
+    requests.flatMap((r) => r.trainingNames || []),
+  );
+  const clientOptions = uniqSorted(requests.flatMap((r) => r.clientNames || []));
+
+  // กรองทุกอย่าง "ยกเว้นสถานะ" — ใช้นับตัวเลขบนปุ่มสถานะให้ตรงกับ filter อื่น
+  const baseFiltered = requests.filter((r) => {
+    const ymd = toYMD(r.createdAt);
+    if (dateFrom && ymd < dateFrom) return false;
+    if (dateTo && ymd > dateTo) return false;
+    if (requesterFilter && r.requestedByName !== requesterFilter) return false;
+    if (trainingFilter && !(r.trainingNames || []).includes(trainingFilter))
+      return false;
+    if (clientFilter && !(r.clientNames || []).includes(clientFilter))
+      return false;
     const q = search.trim().toLowerCase();
-    return !q || (r.requestedByName || "").toLowerCase().includes(q);
+    if (!q) return true;
+    return [
+      r.requestedByName,
+      ...(r.trainingNames || []),
+      ...(r.clientNames || []),
+    ].some((v) => String(v || "").toLowerCase().includes(q));
   });
+
+  const filtered = baseFiltered.filter(
+    (r) => statusFilter === "all" || r.status === statusFilter,
+  );
+
+  const hasFilter =
+    search ||
+    dateFrom ||
+    dateTo ||
+    requesterFilter ||
+    trainingFilter ||
+    clientFilter;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   // กันหน้าเกินจำนวนจริง เช่นลบ/ทำเสร็จรายการสุดท้ายของหน้าสุดท้าย
@@ -255,8 +357,8 @@ export default function TrainingRequestHistory() {
 
   const emptyText = loading
     ? "Loading..."
-    : search
-      ? `ไม่พบคำขอจาก "${search}"`
+    : hasFilter
+      ? "ไม่พบคำขอตามเงื่อนไขที่เลือก"
       : isTraining
         ? "ยังไม่มีคำขอ training"
         : "ยังไม่มีคำขอ medical check-up";
@@ -341,7 +443,13 @@ export default function TrainingRequestHistory() {
       <div className="mb-4 rounded-[10px] border border-gray-200 bg-white px-4 py-4 sm:px-6">
         <div className="flex items-center gap-2.5">
           <span className="text-xl">📢</span>
-          <span className="text-lg font-bold">คำขอ จาก MP</span>
+          <span className="text-lg font-bold">
+            Requests for Training &amp; Medical
+          </span>
+        </div>
+        <div className="mt-1 text-[13px] text-gray-500">
+          คำขอถึง HR — จัด training และนัดตรวจสุขภาพ สำหรับ worker ที่ยังขาด
+          หมดอายุ หรือใกล้หมดอายุ
         </div>
       </div>
 
@@ -362,14 +470,136 @@ export default function TrainingRequestHistory() {
         ))}
       </div>
 
-      {/* ════════ Status filter + Search ════════ */}
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {STATUS_TABS.map(([key, label]) => {
+      {/* ════════ Search & Filter ════════ */}
+      <div className="mb-4 rounded-[10px] border border-gray-200 bg-white px-4 py-3.5">
+        {/* แถว 1: ช่วงวันที่ */}
+        <div>
+          <label className={FILTER_LABEL}>ช่วงวันที่ (วันที่ส่งคำขอ)</label>
+          <div className="flex flex-wrap items-center gap-2">
+            {DATE_PRESETS.map(([key, label, days]) => (
+              <button
+                key={key}
+                onClick={() => applyPreset(key, days)}
+                className={`${CHIP} ${
+                  datePreset === key
+                    ? "border-blue-600 bg-blue-600 font-bold text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            <span className="hidden text-gray-300 sm:inline">|</span>
+            <input
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={setDate(setDateFrom)}
+              className={DATE_FIELD}
+              title="ตั้งแต่วันที่"
+            />
+            <span className="text-xs text-gray-400">ถึง</span>
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={setDate(setDateTo)}
+              className={DATE_FIELD}
+              title="ถึงวันที่"
+            />
+          </div>
+        </div>
+
+        {/* แถว 2: ค้นหา · ผู้ขอ · Training · Client */}
+        <div
+          className={`mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 ${
+            isTraining ? "lg:grid-cols-[2fr_1fr_1.5fr_1fr]" : "lg:grid-cols-[2fr_1fr_1fr]"
+          }`}
+        >
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>ค้นหา</label>
+            <input
+              type="text"
+              placeholder={
+                isTraining
+                  ? "ชื่อผู้ขอ / ชื่อ training / client..."
+                  : "ชื่อผู้ขอ / client..."
+              }
+              value={search}
+              onChange={onFilter(setSearch)}
+              className={FIELD}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>ผู้ขอ</label>
+            <select
+              value={requesterFilter}
+              onChange={onFilter(setRequesterFilter)}
+              className={FIELD}
+            >
+              <option value="">ทั้งหมด</option>
+              {requesterOptions.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+          {isTraining && (
+            <div className="min-w-0">
+              <label className={FILTER_LABEL}>Training</label>
+              <select
+                value={trainingFilter}
+                onChange={onFilter(setTrainingFilter)}
+                className={FIELD}
+              >
+                <option value="">ทั้งหมด</option>
+                {trainingOptions.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>Client</label>
+            <select
+              value={clientFilter}
+              onChange={onFilter(setClientFilter)}
+              className={FIELD}
+            >
+              <option value="">ทั้งหมด</option>
+              {clientOptions.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {hasFilter && (
+          <div className="mt-2.5 text-right">
+            <button
+              onClick={resetFilters}
+              className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#dc3545] underline hover:text-[#a71d2a]"
+            >
+              ✕ ล้าง filter
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ════════ List — แถบสถานะอยู่หัวการ์ด ════════ */}
+      <div className="overflow-hidden rounded-[10px] border border-gray-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
+          <div className="flex flex-wrap gap-2">
+            {STATUS_TABS.map(([key, label]) => {
             const count =
               key === "all"
-                ? requests.length
-                : requests.filter((r) => r.status === key).length;
+                ? baseFiltered.length
+                : baseFiltered.filter((r) => r.status === key).length;
             const active = statusFilter === key;
             return (
               <button
@@ -388,22 +618,12 @@ export default function TrainingRequestHistory() {
               </button>
             );
           })}
+          </div>
+          <span className="text-xs text-gray-500">
+            พบ <strong className="text-gray-900">{filtered.length}</strong>{" "}
+            รายการ
+          </span>
         </div>
-
-        <input
-          type="text"
-          placeholder="ค้นหาผู้ขอ..."
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          className="box-border w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10 sm:w-[300px]"
-        />
-      </div>
-
-      {/* ════════ List ════════ */}
-      <div className="overflow-hidden rounded-[10px] border border-gray-200 bg-white">
         {/* ── ต่ำกว่า lg: การ์ด ── */}
         <div className="lg:hidden">
           {paged.length === 0 ? (

@@ -145,7 +145,6 @@ export default function AnalyticsReports() {
   const { backendUrl } = useContext(AppContent);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [exportingPE, setExportingPE] = useState(false);
 
   // ── Deployment report (Position / Onshore-Offshore / Project) ──
   const currentYear = new Date().getFullYear();
@@ -198,22 +197,7 @@ export default function AnalyticsReports() {
     );
   };
 
-  // Export PE Tracking (.xlsx) — backend สร้างไฟล์ตาม layout เดิมจาก MedicalExamRecord
-  const exportPETracking = async () => {
-    setExportingPE(true);
-    try {
-      const res = await axios.get(
-        `${backendUrl}/api/analytics/export-pe-tracking`,
-        { withCredentials: true, responseType: "blob" },
-      );
-      downloadBlob(new Blob([res.data]), `PE-tracking-export-${today()}.xlsx`);
-    } catch (err) {
-      console.error(err);
-      alert("Export PE Tracking failed. Please try again.");
-    } finally {
-      setExportingPE(false);
-    }
-  };
+  // Export PE Tracking (.xlsx) ย้ายไปหน้า Compliance Center แล้ว (ข้อมูลผลตรวจสุขภาพรายคน)
 
   if (loading || !data) {
     return (
@@ -270,13 +254,6 @@ export default function AnalyticsReports() {
           </div>
         </div>
         <div className="flex flex-col gap-2.5 sm:flex-row">
-          <button
-            onClick={exportPETracking}
-            disabled={exportingPE}
-            className="cursor-pointer whitespace-nowrap rounded-lg border-none bg-[#1e3a5f] px-4 py-[9px] text-[13px] font-bold text-white hover:bg-[#162c48] disabled:cursor-default disabled:bg-gray-400"
-          >
-            {exportingPE ? "Exporting…" : "⬇ Export PE Tracking (.xlsx)"}
-          </button>
           <button
             onClick={exportCSV}
             className="cursor-pointer whitespace-nowrap rounded-lg border-none bg-[#198754] px-4 py-[9px] text-[13px] font-bold text-white hover:bg-[#157347]"
