@@ -1,49 +1,26 @@
 // ============================================================
-// scripts/chevron/lib/peTrackingColumns.js
+// scripts/common/lib/peTrackingColumns.js
 //
-// Single source of truth for the 41 PE-tracking columns (A..AO),
-// their 3-line (TH / EN / ZH) header text, and how each column's
-// value is derived when exporting back OUT of the database.
+// คอลัมน์ไฟล์ PE tracking (layout ใหม่ A..AU — 47 คอลัมน์) + หัวคอลัมน์ 3 ภาษา
+// ใช้โดย:
+//   - scripts/common/exportMedicalExamRecordsToPETracking.js (CLI)
+//   - controllers/analyticsController.js (ปุ่ม ⬇ Export PE Tracking ในหน้า Compliance Center)
 //
-// Used by:
-//   - scripts/chevron/exportMedicalExamRecordsToPETracking.js (CLI)
-//   - controllers/analyticsController.js (download-from-browser)
+// ตัวนำเข้า (services/peTrackingImportService.js) หาคอลัมน์จาก "คำในหัว" ไม่ใช่ตำแหน่ง
+// → ไฟล์ที่ export ออกไปแล้ว HR แก้ไข สามารถนำเข้ากลับได้
 //
-// ── RESOLVED (previously gaps, now wired) ──
-//   col E  (สถานที่ทำงานในพื้นที่เชฟรอน / Chevron Workplace)
-//     → Now stored in Employee.workplace (added via
-//       prisma/PATCH-schema-add-workplace.prisma — run the migration first).
-//       Captured by addMissingEmployeesFromPETracking.js at employee-creation
-//       time. NOTE: only set once, at creation — if an employee's workplace
-//       changes in a later year's PE tracking file, this script does not
-//       currently update it (importMedicalExamRecords.js doesn't touch it
-//       either). Ask if you want re-imports to sync col E going forward.
-//   col AL/AM/AN/AO (follow-up date / days-to-update / expiry status / days-to-expiry)
-//     → Computed at export time in buildPeTrackingWorkbook.js using the real
-//       formulas confirmed from the live Excel file:
-//         AN/AO from col K (examDate) — matches utils/expiryStatus.js's
-//         getMedicalExpiryBucket() (criticalDays=30, warningDays=90).
-//         AL/AM from col AK (commentDate) with a 90-day interval — NOTE this
-//         is the interval taken from the actual Excel formula
-//         `(AK2+90)-TODAY()`; the docstring/default in
-//         utils/expiryStatus.js's getFollowUpStatus() says 180 days, which is
-//         stale relative to the real spreadsheet. We pass 90 explicitly to
-//         match reality — worth fixing the util's default/docstring too.
-//   col D (บริษัท / Company)
-//     → No Company model since schema v5.5 (single-company system).
-//       Hardcoded to COMPANY_NAME below — change if this is ever not true.
-//   col B/C (ชื่อ / นามสกุล ภาษาอังกฤษ)
-//     → DB only stores combined Employee.fullNameEN ("First Last"). Split is
-//       best-effort: first word = first name, remainder = surname. If a
-//       surname legitimately has a space in it, this will mis-split — the
-//       only fix is to store first/last EN separately going forward.
+// ค่าคำนวณ (ไม่เก็บใน DB):
+//   AL/AM  จากวันที่ลง Comment (AK) + 90 วัน   → ใส่เป็นค่า
+//   AS/AT  จากวันที่ตรวจ (K) + 364 วัน          → ใส่เป็นสูตร Excel เดิมของ HR (ค่าอัปเดตเองทุกวัน)
+// col D (บริษัท) → ระบบเป็น single-company — ใช้ COMPANY_NAME
+// col B/C → DB เก็บ fullNameEN รวม — แยกคำแรกเป็นชื่อ ที่เหลือเป็นนามสกุล
 // ============================================================
 
 export const COMPANY_NAME = "Experteam Co.Ltd.";
 
-// [excelColumnLetter, header lines (joined with \n for the wrapped cell)]
+// [excelColumnLetter, header (บรรทัดคั่นด้วย \n)]
 export const PE_TRACKING_COLUMNS = [
-  ["A", "ชื่อ\nFirst Name and Middle Name\n名字"],
+  ["A", "ชื่อ-นามสกุล"],
   ["B", "ชื่อ\nFirst Name and Middle Name\n名字"],
   ["C", "นามสกุลเต็ม\nFull Surname\n全姓"],
   ["D", "บริษัท\nCompany\n公司"],
@@ -53,10 +30,7 @@ export const PE_TRACKING_COLUMNS = [
   ["H", "วัน เดือน ปี เกิด\nDate of Birth (MM/DD/YYYY)\n出生日期"],
   ["I", "อายุ (ปี)\nAge (year)\n年龄 (年)"],
   ["J", "โรคประจำตัว\nUnderlying disease\n基础疾病"],
-  [
-    "K",
-    "วันที่ตรวจร่างกาย\nDate of physical examination (MM/DD/YYYY)\n体检日期",
-  ],
+  ["K", "วันที่ตรวจร่างกาย\nDate of physical examination (MM/DD/YYYY)\n体检日期"],
   ["L", "ส่วนสูง (เซนติเมตร)\nHeight (cm)\n身高 (厘米)"],
   ["M", "น้ำหนัก (กิโลกรัม)\nWeight (kg)\n体重 (公斤)"],
   ["N", "ดัชนีมวลกาย\nBody mass index (BMI)\n身体质量指数"],
@@ -69,13 +43,13 @@ export const PE_TRACKING_COLUMNS = [
   ["U", "ไขมันไม่ดี\nLDL-Cholesterol\n低密度脂蛋白胆固醇"],
   ["V", "ไขมันไตรกลีเซอไรด์\nTriglyceride\n甘油三酸酯"],
   ["W", "เอ็นไซม์ตับ SGOT (AST)\n血清天门冬氨酸氨基转移酶"],
-  ["X", "เอ็นไซม์ตับ\nSGPT (ALT)\n血清丙氨酸氨基转移酶"],
+  ["X", "เอ็นไซม์ตับ SGPT (ALT)\n血清丙氨酸氨基转移酶"],
   ["Y", "กรดยูริค\nUric acid\n血清尿酸"],
   ["Z", "คลื่นไฟฟ้าหัวใจ\nElectrocardiogram (EKG, ECG)\n心电图"],
   ["AA", "รายละเอียดความผิดปกติของคลื่นไฟฟ้าหัวใจ"],
   ["AB", "เอ็กซ์เรย์ปอด\nChest x-ray\n胸部X光片"],
   ["AC", "รายละเอียดความผิดปกติของเอ็กซเรย์ปอด"],
-  ["AD", "ผลตรวจฟัน\nDental examination result\nผลตรวจฟัน\n牙科检查结果"],
+  ["AD", "ผลตรวจฟัน\nDental examination result\n牙科检查结果"],
   ["AE", "รายละเอียดความผิดปกติของผลตรวจฟัน"],
   ["AF", "EST (อายุ55ปี)"],
   ["AG", "รายละเอียดความผิดปกติของ EST"],
@@ -85,8 +59,24 @@ export const PE_TRACKING_COLUMNS = [
   ["AK", "วันที่ลง Comment"],
   ["AL", "วันที่ต้องติดตาม"],
   ["AM", "ระยะเวลาที่ต้องอัพเดท (วัน)"],
-  ["AN", "สถานะวันหมดอายุ"],
-  ["AO", "ระยะเวลาที่จะหมดอายุ (วัน)"],
+  ["AN", "เรื่องที่ต้องติดตาม"],
+  ["AO", "แจ้งเมื่อมีให้ติดตาม"],
+  ["AP", "แจ้งซ้ำก่อนกำหนด 1 เดือน ติดตาม"],
+  ["AQ", "แจ้งซ้ำเมื่อเลยกำหนดติดตาม"],
+  ["AR", "กำหนดการติดตาม"],
+  ["AS", "สถานะวันหมดอายุ"],
+  ["AT", "ระยะเวลาที่จะหมดอายุ (วัน)"],
+  ["AU", "กำหนดการตรวจครั้งถัดไป"],
 ];
 
 export const DATE_FMT = "dd-mmm-yyyy";
+export const DATE_COLS = ["H", "K", "AK", "AU"];
+
+// healthRisk ในระบบ ("moderate") → ข้อความแบบในไฟล์ HR ("Moderate health risk")
+export const HEALTH_RISK_EXPORT = {
+  low: "Low health risk",
+  moderate: "Moderate health risk",
+  high: "High health risk",
+  significant: "Significant health risk",
+  pending: "Pending",
+};

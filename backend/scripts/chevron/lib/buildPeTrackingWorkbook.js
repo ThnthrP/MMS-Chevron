@@ -1,26 +1,14 @@
 // ============================================================
-// scripts/chevron/lib/buildPeTrackingWorkbook.js
+// scripts/common/lib/buildPeTrackingWorkbook.js
 //
-// Reverse of importMedicalExamRecords.js: reads EVERY Employee (not
-// just ones with an exam on file) and left-joins their latest
-// MedicalExamRecord if one exists, building an ExcelJS workbook that
-// reproduces the original "PE tracking" file layout — 41 columns
-// (A..AO), 3-line wrapped headers (TH/EN/ZH), autofilter, frozen
-// header row.
+// สร้างไฟล์ PE tracking (layout ใหม่ A..AU) จาก DB:
+// พนักงานทุกคน 1 แถว + PE record ล่าสุด (ถ้ามี) — คนที่ยังไม่มีผลตรวจ
+// ช่องผลตรวจจะว่าง (ไม่ตัดทิ้ง) เพื่อให้เห็นว่าใครยังขาดข้อมูล
 //
-// One row per Employee, period. If an employee has no exam record on
-// file, every exam-related column (J, K, L..AG, AH..AO) is simply
-// left BLANK rather than the employee being excluded — the point is
-// so whoever opens this file can immediately see which people are
-// missing data and go get it, instead of those people silently
-// vanishing from the export.
+// เรียงเหมือนไฟล์ HR: พนักงานประจำก่อน → แถว "New SSE" → คนที่เป็น NEW SSE
+// (ไฟล์นี้นำเข้ากลับได้ — ตัวนำเข้าใช้แถว "New SSE" แบ่งส่วนเหมือนกัน)
 //
-// Similarly, missing birthDate, position, division, or workplace just
-// produce a blank cell for that one field — nothing here requires a
-// "complete" employee record to appear in the output.
-//
-// See lib/peTrackingColumns.js for the full column list and any
-// remaining documented gaps.
+// คอลัมน์/หัวคอลัมน์ดูที่ lib/peTrackingColumns.js
 // ============================================================
 
 import ExcelJS from "exceljs";
@@ -28,21 +16,15 @@ import {
   PE_TRACKING_COLUMNS,
   COMPANY_NAME,
   DATE_FMT,
+  DATE_COLS,
+  HEALTH_RISK_EXPORT,
 } from "./peTrackingColumns.js";
-import {
-  getMedicalExpiryBucket,
-  getFollowUpStatus,
-  getDaysLeft,
-  EXPIRY_LABEL_TH,
-} from "../../../utils/expiryStatus.js";
+import { getFollowUpStatus } from "../../../utils/expiryStatus.js";
 
-// Real Excel formula for col AL/AM uses a 90-day follow-up interval
-// (`=IF((AK2+90)<TODAY(), ...)`), NOT the 180-day value that
-// utils/expiryStatus.js's getFollowUpStatus() defaults to / documents.
-// Passed explicitly here so the export matches the live spreadsheet;
-// worth reconciling the util's default separately.
+// สูตร AL/AM ในไฟล์จริงใช้รอบติดตาม 90 วันจากวันที่ลง Comment
 const FOLLOWUP_INTERVAL_DAYS = 90;
 const FOLLOWUP_WARNING_DAYS = 30;
+const DAY = 86400000;
 
 function splitEnglishName(fullNameEN) {
   if (!fullNameEN) return { first: null, last: null };
@@ -63,95 +45,80 @@ function calcAge(birthDate, asOf) {
   return age;
 }
 
-// ── cols AN / AO — driven by col K (examDate) via MedicalCheck.expiryDate ──
-// Returns all-null (blank cells) if there's no medicalCheck at all —
-// i.e. this employee has never had an exam imported.
-function computeExpiryFields(medicalCheck) {
-  const expiryDate = medicalCheck?.expiryDate || null;
-  if (!expiryDate) return { expiryStatus: null, daysToExpiry: null };
-
-  const bucket = getMedicalExpiryBucket(expiryDate); // "expired"|"critical"|"warning"|"valid"
-  const expiryStatus = EXPIRY_LABEL_TH.medical[bucket];
-  const daysToExpiry = Math.max(0, getDaysLeft(expiryDate) ?? 0);
-
-  return { expiryStatus, daysToExpiry };
-}
-
-// ── cols AL / AM — driven by col AK (commentDate), 90-day follow-up interval ──
-// Returns all-null (blank cells) if there's no commentDate.
+// AL / AM — จากวันที่ลง Comment
 function computeFollowUpFields(commentDate) {
-  const followUp = getFollowUpStatus(
-    commentDate,
-    FOLLOWUP_INTERVAL_DAYS,
-    FOLLOWUP_WARNING_DAYS,
-  );
+  const followUp = getFollowUpStatus(commentDate, FOLLOWUP_INTERVAL_DAYS, FOLLOWUP_WARNING_DAYS);
   if (!followUp) return { followUpStatus: null, daysToUpdate: null };
-
   return {
     followUpStatus: followUp.status, // "เลยกำหนด" | "ใกล้ถึง" | "ยังไม่ถึง"
     daysToUpdate: Math.max(0, followUp.daysLeft),
   };
 }
 
+// AS / AT — ค่าที่สูตรของ HR จะคำนวณได้ ณ วันนี้ (ใช้เป็น cached result ของสูตร)
+function expiryFromExam(examDate) {
+  if (!examDate) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const k = new Date(examDate);
+  k.setHours(0, 0, 0, 0);
+  const left = Math.round((k.getTime() + 365 * DAY - today.getTime()) / DAY);
+  const status =
+    k.getTime() + 364 * DAY < today.getTime()
+      ? "หมดอายุ"
+      : left <= 30
+        ? "ใกล้หมดอายุ 1 เดือน"
+        : left <= 90
+          ? "ใกล้หมด 3 เดือน"
+          : "ยังไม่หมด";
+  return { status, days: Math.max(0, left - 1) };
+}
+
+const colIndex = (letter) => PE_TRACKING_COLUMNS.findIndex(([l]) => l === letter) + 1;
+
 /**
  * @param {import("@prisma/client").PrismaClient} prisma
  * @param {{ sheetName?: string, activeOnly?: boolean }} [options]
- *   activeOnly: if true, only exports Employee.status === "active".
- *   Defaults to false (export everyone) so nobody silently disappears.
  * @returns {Promise<ExcelJS.Workbook>}
  */
 export async function buildPeTrackingWorkbook(prisma, options = {}) {
   const sheetName = options.sheetName || "PE tracking export";
   const activeOnly = options.activeOnly || false;
 
-  // ── every employee, left-joined to their latest exam record (if any) ──
   const employees = await prisma.employee.findMany({
     where: activeOnly ? { status: "active" } : undefined,
     include: {
       position: true,
-      medicalExamRecords: {
-        where: { isLatest: true },
-        take: 1,
-        include: { medicalCheck: true },
-      },
+      medicalExamRecords: { where: { isLatest: true }, take: 1 },
     },
     orderBy: { fullNameTH: "asc" },
   });
 
-  const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet(sheetName, {
-    views: [{ state: "frozen", ySplit: 1 }],
-  });
+  // พนักงานประจำ/อื่นๆ ก่อน แล้วค่อย NEW SSE (ตามไฟล์ HR)
+  const main = employees.filter((e) => e.sseLevel !== "new_sse");
+  const newSse = employees.filter((e) => e.sseLevel === "new_sse");
 
-  // ── header row ──
-  const headerValues = PE_TRACKING_COLUMNS.map(([, text]) => text);
-  const headerRow = sheet.addRow(headerValues);
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet(sheetName, { views: [{ state: "frozen", ySplit: 1 }] });
+
+  const headerRow = sheet.addRow(PE_TRACKING_COLUMNS.map(([, text]) => text));
   headerRow.height = 60;
   headerRow.eachCell((cell) => {
     cell.alignment = { wrapText: true, vertical: "top", horizontal: "left" };
     cell.font = { bold: true };
   });
-
-  sheet.columns = PE_TRACKING_COLUMNS.map(([letter]) => ({
-    key: letter,
-    width: 18,
-  }));
-
+  sheet.columns = PE_TRACKING_COLUMNS.map(([letter]) => ({ key: letter, width: 18 }));
   sheet.autoFilter = {
     from: { row: 1, column: 1 },
     to: { row: 1, column: PE_TRACKING_COLUMNS.length },
   };
 
-  // ── data rows — one per employee, exam fields blank if missing ──
-  for (const e of employees) {
-    const r = e.medicalExamRecords[0] || null; // latest exam record, or null
-    const medicalCheck = r?.medicalCheck || null;
-
-    const { first: engFirst, last: engLast } = splitEnglishName(e.fullNameEN);
-    const { expiryStatus, daysToExpiry } = computeExpiryFields(medicalCheck);
-    const { followUpStatus, daysToUpdate } = computeFollowUpFields(
-      r?.commentDate || null,
-    );
+  const kCol = "K";
+  const addEmployeeRow = (e) => {
+    const r = e.medicalExamRecords[0] || null;
+    const { first: engFirst, last: engLast } = splitEnglishName(e.fullNameEN || e.fullName);
+    const { followUpStatus, daysToUpdate } = computeFollowUpFields(r?.commentDate || null);
+    const exp = expiryFromExam(r?.examDate || null);
 
     const row = {
       A: e.fullNameTH || e.fullName || null,
@@ -188,26 +155,49 @@ export async function buildPeTrackingWorkbook(prisma, options = {}) {
       AF: r?.estResult ?? null,
       AG: r?.estAbnormalNote ?? null,
       AH: r?.note ?? null,
-      AI: r?.healthRisk ?? null,
+      AI: r?.healthRisk ? HEALTH_RISK_EXPORT[r.healthRisk] || r.healthRisk : null,
       AJ: r?.recommendation ?? null,
       AK: r?.commentDate || null,
       AL: followUpStatus,
       AM: daysToUpdate,
-      AN: expiryStatus,
-      AO: daysToExpiry,
+      AN: r?.followUpTopic ?? null,
+      AO: r?.followUpNotice ?? null,
+      AP: r?.followUpRemindBefore ?? null,
+      AQ: r?.followUpRemindOverdue ?? null,
+      AR: r?.followUpSchedule ?? null,
+      AS: null, // สูตร — ใส่ด้านล่าง
+      AT: null,
+      AU: r?.nextExamDate || null,
     };
 
-    const rowValues = PE_TRACKING_COLUMNS.map(([letter]) => row[letter]);
-    const excelRow = sheet.addRow(rowValues);
+    const excelRow = sheet.addRow(PE_TRACKING_COLUMNS.map(([letter]) => row[letter]));
+    const n = excelRow.number;
 
-    // date formatting
-    const dateCols = ["H", "K", "AK"];
-    for (const col of dateCols) {
-      const idx =
-        PE_TRACKING_COLUMNS.findIndex(([letter]) => letter === col) + 1;
-      const cell = excelRow.getCell(idx);
+    // AS / AT — สูตรเดียวกับไฟล์ HR (อัปเดตเองตามวันที่เปิดไฟล์)
+    if (exp) {
+      excelRow.getCell(colIndex("AS")).value = {
+        formula: `IF(${kCol}${n}+364<TODAY(),"หมดอายุ",IF(${kCol}${n}+365-TODAY()<=30,"ใกล้หมดอายุ 1 เดือน",IF(${kCol}${n}+365-TODAY()<=90,"ใกล้หมด 3 เดือน","ยังไม่หมด")))`,
+        result: exp.status,
+      };
+      excelRow.getCell(colIndex("AT")).value = {
+        formula: `MAX(0,(${kCol}${n}+364)-TODAY())`,
+        result: exp.days,
+      };
+    }
+
+    for (const col of DATE_COLS) {
+      const cell = excelRow.getCell(colIndex(col));
       if (cell.value instanceof Date) cell.numFmt = DATE_FMT;
     }
+  };
+
+  main.forEach(addEmployeeRow);
+  if (newSse.length) {
+    sheet.addRow([]);
+    const marker = sheet.addRow(["New SSE"]);
+    marker.getCell(1).font = { bold: true };
+    marker.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF00FF" } };
+    newSse.forEach(addEmployeeRow);
   }
 
   return workbook;

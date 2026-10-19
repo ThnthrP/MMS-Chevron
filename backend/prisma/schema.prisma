@@ -756,6 +756,15 @@ model MedicalExamRecord {
   recommendation String?     @db.Text // col AJ
   commentDate    DateTime? // col AK — base date สำหรับ getFollowUpStatus() runtime
 
+  // ── การติดตามผล (PE tracking layout ใหม่ col AN..AR, AU) ──
+  // AL/AM/AS/AT เป็นค่าคำนวณ — ไม่เก็บ (คำนวณจาก commentDate / examDate)
+  followUpTopic         String?   @db.Text // col AN เรื่องที่ต้องติดตาม
+  followUpNotice        String? // col AO แจ้งเมื่อมีให้ติดตาม (เช่น "แจ้งแล้ว")
+  followUpRemindBefore  String? // col AP แจ้งซ้ำก่อนกำหนด 1 เดือน ติดตาม
+  followUpRemindOverdue String? // col AQ แจ้งซ้ำเมื่อเลยกำหนดติดตาม
+  followUpSchedule      String? // col AR กำหนดการติดตาม (ข้อความ/วันที่ตามที่ HR กรอก)
+  nextExamDate          DateTime? // col AU กำหนดการตรวจครั้งถัดไป
+
   // ── version history — เหมือน EmployeeTraining ──
   version  Int     @default(1)
   isLatest Boolean @default(true)
