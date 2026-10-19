@@ -119,7 +119,7 @@ export const APP_MENU = [
         ],
       },
       {
-        name: "Requests for Training & Medical", // คำขอถึง HR (เดิม: Requests from MP)
+        name: "Requests", // ชื่อเต็มที่หัวเพจ: Requests for Training & Medical (เดิม: Requests from MP)
         path: "/requests-history",
         roles: [
           "admin",
@@ -330,6 +330,11 @@ export const APP_MENU = [
       {
         name: "Audit Log",
         path: "/audit-logs",
+        roles: ["admin"],
+      },
+      {
+        name: "Data Import",
+        path: "/data-import",
         roles: ["admin"],
       },
     ],
