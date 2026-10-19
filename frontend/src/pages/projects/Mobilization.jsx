@@ -1735,8 +1735,11 @@ export default function Mobilization() {
 
       {/* ════════ เลือก Project ════════ */}
       <div className={`${CARD} px-4 py-4 sm:px-6`}>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <div className="w-full sm:min-w-[280px] sm:max-w-[700px] sm:flex-1">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500">
+              Select Project
+            </label>
             <Select
               options={projectOptions}
               styles={projectSelectStyles}

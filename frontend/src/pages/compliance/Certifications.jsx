@@ -344,7 +344,8 @@ export default function Certifications() {
           🔍 Search &amp; Filter
         </div>
         <div className="flex flex-wrap gap-3 sm:gap-4">
-          <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[560px] sm:flex-[1_1_420px]">
+          {/* ชื่อ training บางตัวยาวมาก → ให้ช่องนี้กว้างที่สุดในแถว */}
+          <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[960px] sm:flex-[2_1_640px]">
             <label className={FILTER_LABEL}>Training / Certification</label>
             <Select
               options={trainingOptions}
