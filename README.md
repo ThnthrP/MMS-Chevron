@@ -62,9 +62,9 @@ Tabbed form with sticky tabs and save bar.
 Position-to-training requirements per contract (Mandatory / Assigned).
 ![Training Matrix](screenshots/training-matrix.png)
 
-#### 📢 Requests from MP
-Training and medical check-up requests raised by Manpower.
-![Requests from MP](screenshots/requests-from-mp.png)
+#### 📢 Requests
+Training and medical check-up requests for workers with missing, expired, or expiring records.
+![Requests](screenshots/requests-from-mp.png)
 
 #### 🎓 Manage Trainings
 ![Manage Trainings](screenshots/manage-trainings.png)
@@ -99,6 +99,10 @@ Workers below 100% match, grouped by project and position, approved or rejected 
 #### 🕵️ Audit Log
 Who did what and when, with filters, before/after changes, and CSV export.
 ![Audit Log](screenshots/audit-log.png)
+
+#### 📥 Data Import
+Upload HR Excel files (Training Record or PE Tracking), preview what will change, then confirm.
+![Data Import](screenshots/data-import.png)
 
 ### 📱 Worker App
 
@@ -154,8 +158,8 @@ Who did what and when, with filters, before/after changes, and CSV export.
   status), including bulk certificate entry
 - **Medical records:** annual check-up and Confined Space records, hospital,
   exam/expiry dates, fitness status, and detailed PE exam results
-- **Requests from MP:** training and medical check-up requests raised by
-  Manpower, tracked as pending / completed
+- **Requests:** training and medical check-up requests for workers with
+  missing, expired, or expiring records, tracked as pending / completed
 
 ### Operations
 - **Projects:** Master Project Register (ON Number), project activation per
@@ -195,6 +199,15 @@ Who did what and when, with filters, before/after changes, and CSV export.
   approve, upload, login/logout, failed login) across the MMS and the
   Worker App. Passwords, PINs, and tokens are redacted. The admin page has
   filters, a detail view with before/after changes, and CSV export
+- **Data Import (admin):** upload HR Excel files from the browser, with a
+  preview step before anything is saved
+  - *Training Record* (sheet "Record"): trainings, medical check-ups, and
+    passports; matches workers by Employee ID, then by name
+  - *PE Tracking*: annual health-exam results and follow-up fields; matches
+    workers by Thai name, then English name; rows before / after the
+    "New SSE" marker set Permanent Worker / SSE Level
+  - Columns are found by header text, unchanged dates are skipped, blank
+    cells never erase existing data, and files are processed in memory only
 - **Notifications:** in-app notification bell with links to related pages
 - **Standard links:** navigation uses real links, so right-click
   "Open link in new tab" works throughout the app
@@ -271,7 +284,7 @@ MMS/
 │   │   │   │                      #   PEApprovals, Mobilization, ProjectsOverview,
 │   │   │   │                      #   PostProjectReview, AnalyticsReports
 │   │   │   ├── worker/            # Worker App pages (login, readiness, PIN change, ...)
-│   │   │   └── admin/             # AdminUsers, AuditLogs
+│   │   │   └── admin/             # AdminUsers, AuditLogs, DataImport
 │   │   ├── routes/                # AppRouter, WorkerAppRouter
 │   │   └── App.jsx
 │   └── vite.config.js
@@ -354,6 +367,10 @@ npm run build
 ```
 
 Skip `migrate deploy` / `generate` when `schema.prisma` has not changed.
+
+> Data Import uploads Excel files up to 20 MB. If nginx sits in front of the
+> backend, set `client_max_body_size 20M;` in the server block, otherwise
+> uploads fail with HTTP 413.
 
 ---
 
