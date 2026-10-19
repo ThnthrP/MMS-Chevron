@@ -1367,7 +1367,7 @@ export default function AddWorker() {
                     />
                   </div>
                 </div>
-                <div className={`${GRID3} mb-4`}>
+                <div className={`${GRID2} mb-4`}>
                   <div>
                     <label className={LABEL}>Religion</label>
                     <input
@@ -1390,17 +1390,18 @@ export default function AddWorker() {
                       className={INPUT}
                     />
                   </div>
-                  <div>
-                    <label className={LABEL}>Education</label>
-                    <input
-                      type="text"
-                      name="education"
-                      placeholder="e.g., Secondary School"
-                      value={formData.education}
-                      onChange={handleChange}
-                      className={INPUT}
-                    />
-                  </div>
+                </div>
+                {/* Education — ข้อความยาว (วุฒิ + สาขา + สถาบัน) → เต็มแถว ขยายได้ */}
+                <div className="mb-4">
+                  <label className={LABEL}>Education</label>
+                  <textarea
+                    name="education"
+                    rows={2}
+                    placeholder={"e.g., Vocational Certificate, Industrial , Automotive Technology Major\nBy Wichianburi Industrial And Community Education College"}
+                    value={formData.education}
+                    onChange={handleChange}
+                    className={`${INPUT} resize-y`}
+                  />
                 </div>
 
                 {/* Photo */}

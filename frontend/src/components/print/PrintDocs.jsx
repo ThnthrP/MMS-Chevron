@@ -237,7 +237,7 @@ export function ResumePage({
             </tr>
             <tr>
               <td className={RESUME_TD1}>Address :</td>
-              <td className={RESUME_TD2} colSpan={3}>
+              <td className={`${RESUME_TD2} whitespace-pre-line`} colSpan={3}>
                 {p.address || "—"}
               </td>
             </tr>
@@ -281,7 +281,7 @@ export function ResumePage({
             </tr>
             <tr>
               <td className={RESUME_TD1}>Education :</td>
-              <td className={RESUME_TD2} colSpan={3}>
+              <td className={`${RESUME_TD2} whitespace-pre-line`} colSpan={3}>
                 {p.education || "—"}
               </td>
             </tr>
