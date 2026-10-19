@@ -151,7 +151,20 @@ const RESUME_SECTION =
 const RESUME_TD1 =
   "whitespace-nowrap px-2 py-1 align-top text-xs font-bold text-[#1e3a5f]";
 const RESUME_TD2 = "px-2 py-1 align-top text-xs text-gray-900";
-const RESUME_KEY = "pr-2 align-top font-bold";
+const RESUME_KEY = "whitespace-nowrap pr-2 align-top font-bold";
+// คอลัมน์ ":" แยกจากหัวข้อ → ":" ตรงแนวเดียวกันทุกบรรทัด และค่าเริ่มต่อจาก ":" ทันที
+const RESUME_COLON = "pr-2 align-top";
+
+// แถว "หัวข้อ : ค่า" ของ Professional Experience
+function KeyRow({ label, children, keyClass = "" }) {
+  return (
+    <tr>
+      <td className={`${RESUME_KEY} ${keyClass}`}>{label}</td>
+      <td className={RESUME_COLON}>:</td>
+      <td className="align-top">{children}</td>
+    </tr>
+  );
+}
 
 export function ResumePage({
   cvData,
@@ -217,57 +230,57 @@ export function ResumePage({
         <table className="flex-1 border-collapse">
           <tbody>
             <tr>
-              <td className={RESUME_TD1}>Name</td>
+              <td className={RESUME_TD1}>Name :</td>
               <td className={RESUME_TD2} colSpan={3}>
                 {cvData.fullName}
               </td>
             </tr>
             <tr>
-              <td className={RESUME_TD1}>Address</td>
+              <td className={RESUME_TD1}>Address :</td>
               <td className={RESUME_TD2} colSpan={3}>
                 {p.address || "—"}
               </td>
             </tr>
             <tr>
-              <td className={RESUME_TD1}>Telephone</td>
+              <td className={RESUME_TD1}>Telephone :</td>
               <td className={RESUME_TD2}>{p.phone || "—"}</td>
-              <td className={RESUME_TD1}>Email</td>
+              <td className={RESUME_TD1}>Email :</td>
               <td className={RESUME_TD2}>{p.email || "—"}</td>
             </tr>
             <tr>
-              <td className={RESUME_TD1}>Date of Birth</td>
+              <td className={RESUME_TD1}>Date of Birth :</td>
               <td className={RESUME_TD2}>{fmtResumeDate(cvData.birthDate)}</td>
-              <td className={RESUME_TD1}>Age</td>
+              <td className={RESUME_TD1}>Age :</td>
               <td className={RESUME_TD2}>
                 {age !== null ? `${age} years` : "—"}
               </td>
             </tr>
             <tr>
-              <td className={RESUME_TD1}>Sex</td>
+              <td className={RESUME_TD1}>Sex :</td>
               <td className={RESUME_TD2}>{GENDER_LABEL[p.gender] || "—"}</td>
-              <td className={RESUME_TD1}>Nationality</td>
+              <td className={RESUME_TD1}>Nationality :</td>
               <td className={RESUME_TD2}>
                 {p.nationality || cvData.nationality || "—"}
               </td>
             </tr>
             <tr>
-              <td className={RESUME_TD1}>Height</td>
+              <td className={RESUME_TD1}>Height :</td>
               <td className={RESUME_TD2}>
                 {p.height != null ? `${p.height} cm.` : "—"}
               </td>
-              <td className={RESUME_TD1}>Weight</td>
+              <td className={RESUME_TD1}>Weight :</td>
               <td className={RESUME_TD2}>
                 {p.weight != null ? `${p.weight} kg.` : "—"}
               </td>
             </tr>
             <tr>
-              <td className={RESUME_TD1}>Religion</td>
+              <td className={RESUME_TD1}>Religion :</td>
               <td className={RESUME_TD2}>{p.religion || "—"}</td>
-              <td className={RESUME_TD1}>Language</td>
+              <td className={RESUME_TD1}>Language :</td>
               <td className={RESUME_TD2}>{p.language || "—"}</td>
             </tr>
             <tr>
-              <td className={RESUME_TD1}>Education</td>
+              <td className={RESUME_TD1}>Education :</td>
               <td className={RESUME_TD2} colSpan={3}>
                 {p.education || "—"}
               </td>
@@ -321,26 +334,18 @@ export function ResumePage({
         <div className="mb-2 text-xs font-bold underline">Present</div>
         <table className="mb-4 text-xs">
           <tbody>
-            <tr>
-              <td className={RESUME_KEY}>Company</td>
-              <td>:&nbsp;&nbsp;{pro.company || "—"}</td>
-            </tr>
-            <tr>
-              <td className={RESUME_KEY}>Position</td>
-              <td>:&nbsp;&nbsp;{pro.currentPosition || "—"}</td>
-            </tr>
+            <KeyRow label="Company">{pro.company || "—"}</KeyRow>
+            <KeyRow label="Position">{pro.currentPosition || "—"}</KeyRow>
             {pro.responsibilities?.length > 0 && (
-              <tr>
-                <td className={RESUME_KEY}>Responsibility</td>
-                <td>
-                  :&nbsp;&nbsp;
-                  {pro.responsibilities.map((r, ri) => (
-                    <div key={ri}>
-                      {ri + 1}. {r}
-                    </div>
-                  ))}
-                </td>
-              </tr>
+              <KeyRow label="Responsibility">
+                {/* ข้อ 1. อยู่บรรทัดเดียวกับ ":" — ข้อถัดไปเรียงลงมาตรงแนวเดียวกัน */}
+                {pro.responsibilities.map((r, ri) => (
+                  <div key={ri} className="flex gap-1">
+                    <span className="shrink-0">{ri + 1}.</span>
+                    <span>{r}</span>
+                  </div>
+                ))}
+              </KeyRow>
             )}
           </tbody>
         </table>
@@ -354,21 +359,14 @@ export function ResumePage({
           projectReferences.map((pr, pi) => (
             <table key={pi} className="mb-2.5 text-xs">
               <tbody>
-                <tr>
-                  <td className={`${RESUME_KEY} w-[70px]`}>Project</td>
-                  <td>:&nbsp;&nbsp;{pr.projectLabel}</td>
-                </tr>
-                <tr>
-                  <td className={RESUME_KEY}>Position</td>
-                  <td>:&nbsp;&nbsp;{pr.position || "—"}</td>
-                </tr>
-                <tr>
-                  <td className={RESUME_KEY}>Period</td>
-                  <td>
-                    :&nbsp;&nbsp;{fmtResumeDate(pr.mobDate)}
-                    {pr.demobDate ? ` to ${fmtResumeDate(pr.demobDate)}` : ""}
-                  </td>
-                </tr>
+                <KeyRow label="Project" keyClass="w-[70px]">
+                  {pr.projectLabel}
+                </KeyRow>
+                <KeyRow label="Position">{pr.position || "—"}</KeyRow>
+                <KeyRow label="Period">
+                  {fmtResumeDate(pr.mobDate)}
+                  {pr.demobDate ? ` to ${fmtResumeDate(pr.demobDate)}` : ""}
+                </KeyRow>
               </tbody>
             </table>
           ))

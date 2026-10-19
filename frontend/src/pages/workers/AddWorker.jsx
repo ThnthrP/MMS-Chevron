@@ -70,75 +70,119 @@ const EXAM_TEXT_FIELDS = [
   "note",
   "healthRisk",
   "recommendation",
+  // การติดตามผล (PE tracking col AN..AR)
+  "followUpTopic",
+  "followUpNotice",
+  "followUpRemindBefore",
+  "followUpRemindOverdue",
+  "followUpSchedule",
 ];
 
+// ช่องวันที่ของ PE record (นอกจาก examDate / commentDate)
+const EXAM_DATE_FIELDS = ["nextExamDate"];
+
 // [key, label, type, placeholder?, step?]
+// label = "ชื่อไทย / English" ตามหัวคอลัมน์ในไฟล์ PE tracking ของ HR
 const EXAM_SECTIONS = [
   {
-    title: "📅 EXAM INFO",
+    title: "📅 ข้อมูลการตรวจ / EXAM INFO",
     grid: "grid grid-cols-1 gap-4 sm:grid-cols-2",
     fields: [
-      ["examDate", "Exam Date", "date"],
-      ["chronicDisease", "Chronic Disease", "text", "e.g., ไม่มี (No)"],
+      ["examDate", "วันที่ตรวจร่างกาย / Exam Date", "date"],
+      ["chronicDisease", "โรคประจำตัว / Underlying Disease", "text", "เช่น ไม่มี (No)"],
     ],
   },
   {
-    title: "💓 VITALS",
+    title: "💓 สัญญาณชีพ / VITALS",
     grid: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3",
     fields: [
-      ["height", "Height (cm)", "number", "", "0.1"],
-      ["weight", "Weight (kg)", "number", "", "0.1"],
-      ["bmi", "BMI", "number", "", "0.01"],
-      ["bpSystolic", "BP Systolic", "number"],
-      ["bpDiastolic", "BP Diastolic", "number"],
-      ["hematocritPct", "Hematocrit (%)", "number", "", "0.1"],
+      ["height", "ส่วนสูง / Height (cm)", "number", "", "0.1"],
+      ["weight", "น้ำหนัก / Weight (kg)", "number", "", "0.1"],
+      ["bmi", "ดัชนีมวลกาย / BMI", "number", "", "0.01"],
+      ["bpSystolic", "ความดันตัวบน / Systolic BP (SBP)", "number"],
+      ["bpDiastolic", "ความดันตัวล่าง / Diastolic BP (DBP)", "number"],
+      ["hematocritPct", "ความเข้มข้นของเลือด / Hematocrit (Hct) (%)", "number", "", "0.1"],
     ],
   },
   {
-    title: "🧪 URINE",
+    title: "🧪 ปัสสาวะ / URINE",
     grid: "grid grid-cols-1 gap-4 sm:grid-cols-2",
     fields: [
-      [
-        "urineResult",
-        "Urine Result",
-        "text",
-        "ปกติ (Normal) / ผิดปกติ (Abnormal)",
-      ],
-      ["urineAbnormalNote", "Urine Abnormal Note", "text"],
+      ["urineResult", "ผลตรวจปัสสาวะ / Urine Analysis (UA)", "text", "ปกติ (Normal) / ผิดปกติ (Abnormal)"],
+      ["urineAbnormalNote", "รายละเอียดความผิดปกติ / Urine Abnormal Note", "text"],
     ],
   },
   {
-    title: "🩸 BLOOD CHEMISTRY",
+    title: "🩸 เคมีในเลือด / BLOOD CHEMISTRY",
     grid: "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3",
     fields: [
-      ["bloodSugar", "Blood Sugar", "number"],
-      ["ldl", "LDL", "number"],
-      ["triglyceride", "Triglyceride", "number"],
-      ["sgot", "SGOT (AST)", "number"],
-      ["sgpt", "SGPT (ALT)", "number"],
-      ["uricAcid", "Uric Acid", "number", "", "0.1"],
+      ["bloodSugar", "น้ำตาลในเลือด / Fasting Blood Sugar (FBS)", "number"],
+      ["ldl", "ไขมันไม่ดี / LDL-Cholesterol", "number"],
+      ["triglyceride", "ไขมันไตรกลีเซอไรด์ / Triglyceride", "number"],
+      ["sgot", "เอนไซม์ตับ / SGOT (AST)", "number"],
+      ["sgpt", "เอนไซม์ตับ / SGPT (ALT)", "number"],
+      ["uricAcid", "กรดยูริค / Uric Acid", "number", "", "0.1"],
     ],
   },
   {
-    title: "📋 EKG / X-RAY / DENTAL / EST",
+    title: "📋 คลื่นหัวใจ / เอ็กซเรย์ / ฟัน / EST",
     grid: "grid grid-cols-1 gap-4 sm:grid-cols-2",
     fields: [
-      ["ekgResult", "EKG Result", "text"],
-      ["ekgAbnormalNote", "EKG Note", "text"],
-      ["chestXrayResult", "Chest X-ray Result", "text"],
-      ["chestXrayAbnormalNote", "Chest X-ray Note", "text"],
-      ["dentalResult", "Dental Result", "text"],
-      ["dentalAbnormalNote", "Dental Note", "text"],
-      ["estResult", "EST Result", "text"],
-      ["estAbnormalNote", "EST Note", "text"],
+      ["ekgResult", "คลื่นไฟฟ้าหัวใจ / Electrocardiogram (EKG)", "text"],
+      ["ekgAbnormalNote", "รายละเอียดความผิดปกติ / EKG Note", "text"],
+      ["chestXrayResult", "เอ็กซเรย์ปอด / Chest X-ray", "text"],
+      ["chestXrayAbnormalNote", "รายละเอียดความผิดปกติ / Chest X-ray Note", "text"],
+      ["dentalResult", "ผลตรวจฟัน / Dental Examination", "text"],
+      ["dentalAbnormalNote", "รายละเอียดความผิดปกติ / Dental Note", "text"],
+      ["estResult", "EST (อายุ 55 ปี) / Exercise Stress Test", "text"],
+      ["estAbnormalNote", "รายละเอียดความผิดปกติ / EST Note", "text"],
     ],
   },
 ];
+
+// การติดตามผล — แสดงต่อจาก "สรุปผล" (PE tracking col AN..AR, AU)
+const EXAM_FOLLOWUP_SECTION = {
+  title: "🔔 การติดตามผล / FOLLOW-UP",
+  grid: "grid grid-cols-1 gap-4 sm:grid-cols-2",
+  fields: [
+    ["followUpTopic", "เรื่องที่ต้องติดตาม / Follow-up Topic", "text", "เช่น ตรวจระดับไตรกลีเซอไรด์อีกครั้งภายใน 3 เดือน"],
+    ["followUpNotice", "แจ้งเมื่อมีให้ติดตาม / Notified", "text", "เช่น แจ้งแล้ว"],
+    ["followUpRemindBefore", "แจ้งซ้ำก่อนกำหนด 1 เดือน / Reminder Before Due", "text"],
+    ["followUpRemindOverdue", "แจ้งซ้ำเมื่อเลยกำหนด / Reminder When Overdue", "text"],
+    ["followUpSchedule", "กำหนดการติดตาม / Follow-up Schedule", "text"],
+    ["nextExamDate", "กำหนดการตรวจครั้งถัดไป / Next Exam Date", "date"],
+  ],
+};
+
+// กลุ่มช่องกรอกของ PE record 1 กลุ่ม (ใช้ทั้ง EXAM_SECTIONS และ Follow-up)
+function ExamFieldGroup({ sec, exam, onChange }) {
+  return (
+    <div className="mb-3">
+      <div className={SUBSECTION}>{sec.title}</div>
+      <div className={sec.grid}>
+        {sec.fields.map(([key, label, type, placeholder, step]) => (
+          <div key={key}>
+            <label className={LABEL}>{label}</label>
+            <input
+              type={type}
+              step={step}
+              placeholder={placeholder || undefined}
+              value={exam[key] ?? ""}
+              onChange={(e) => onChange(exam.id, key, e.target.value)}
+              className={INPUT}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const emptyExam = (id) => ({
   id,
   examDate: "",
   commentDate: "",
+  nextExamDate: "",
   ...Object.fromEntries(
     [...EXAM_NUMERIC_FIELDS, ...EXAM_TEXT_FIELDS].map((k) => [k, ""]),
   ),
@@ -703,6 +747,13 @@ export default function AddWorker() {
           {
             examDate: exam.examDate,
             commentDate: exam.commentDate || null,
+            // ส่งเป็น ISO เต็ม — backend ส่งต่อเข้า Prisma ตรงๆ (DateTime ไม่รับ "YYYY-MM-DD")
+            ...Object.fromEntries(
+              EXAM_DATE_FIELDS.map((k) => [
+                k,
+                exam[k] ? new Date(exam[k]).toISOString() : null,
+              ]),
+            ),
             ...Object.fromEntries(
               EXAM_NUMERIC_FIELDS.map((k) => [k, toNumOrNull(exam[k])]),
             ),
@@ -1994,49 +2045,17 @@ export default function AddWorker() {
                                 />
 
                                 {EXAM_SECTIONS.map((sec) => (
-                                  <div key={sec.title} className="mb-3">
-                                    <div className={SUBSECTION}>
-                                      {sec.title}
-                                    </div>
-                                    <div className={sec.grid}>
-                                      {sec.fields.map(
-                                        ([
-                                          key,
-                                          label,
-                                          type,
-                                          placeholder,
-                                          step,
-                                        ]) => (
-                                          <div key={key}>
-                                            <label className={LABEL}>
-                                              {label}
-                                            </label>
-                                            <input
-                                              type={type}
-                                              step={step}
-                                              placeholder={
-                                                placeholder || undefined
-                                              }
-                                              value={exam[key]}
-                                              onChange={(e) =>
-                                                handleMedicalExamChange(
-                                                  exam.id,
-                                                  key,
-                                                  e.target.value,
-                                                )
-                                              }
-                                              className={INPUT}
-                                            />
-                                          </div>
-                                        ),
-                                      )}
-                                    </div>
-                                  </div>
+                                  <ExamFieldGroup
+                                    key={sec.title}
+                                    sec={sec}
+                                    exam={exam}
+                                    onChange={handleMedicalExamChange}
+                                  />
                                 ))}
 
-                                <div className={SUBSECTION}>📝 SUMMARY</div>
+                                <div className={SUBSECTION}>📝 สรุปผล / SUMMARY</div>
                                 <div className="mb-3">
-                                  <label className={LABEL}>Note</label>
+                                  <label className={LABEL}>หมายเหตุ / Note</label>
                                   <textarea
                                     rows={2}
                                     value={exam.note}
@@ -2050,9 +2069,11 @@ export default function AddWorker() {
                                     className={`${INPUT} resize-y`}
                                   />
                                 </div>
-                                <div className={GRID3}>
+                                <div className={`${GRID2} mb-3`}>
                                   <div>
-                                    <label className={LABEL}>Health Risk</label>
+                                    <label className={LABEL}>
+                                      ความเสี่ยงสุขภาพ / Health Risk
+                                    </label>
                                     <CreatableSelect
                                       {...SELECT_PROPS}
                                       options={healthRiskSelectOptions}
@@ -2080,24 +2101,7 @@ export default function AddWorker() {
                                   </div>
                                   <div>
                                     <label className={LABEL}>
-                                      Recommendation
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={exam.recommendation}
-                                      onChange={(e) =>
-                                        handleMedicalExamChange(
-                                          exam.id,
-                                          "recommendation",
-                                          e.target.value,
-                                        )
-                                      }
-                                      className={INPUT}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={LABEL}>
-                                      Comment Date
+                                      วันที่ลง Comment / Comment Date
                                     </label>
                                     <input
                                       type="date"
@@ -2112,6 +2116,31 @@ export default function AddWorker() {
                                       className={INPUT}
                                     />
                                   </div>
+                                </div>
+                                <div>
+                                  <label className={LABEL}>
+                                    คำแนะนำ / Recommendation
+                                  </label>
+                                  <textarea
+                                    rows={3}
+                                    value={exam.recommendation}
+                                    onChange={(e) =>
+                                      handleMedicalExamChange(
+                                        exam.id,
+                                        "recommendation",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className={`${INPUT} resize-y`}
+                                  />
+                                </div>
+
+                                <div className="mt-3">
+                                  <ExamFieldGroup
+                                    sec={EXAM_FOLLOWUP_SECTION}
+                                    exam={exam}
+                                    onChange={handleMedicalExamChange}
+                                  />
                                 </div>
                               </div>
                             </td>
