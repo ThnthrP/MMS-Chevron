@@ -24,6 +24,9 @@ const roleTone = (name) => {
   return hit ? hit[1] : "bg-gray-100 text-gray-500";
 };
 
+// role ที่ตั้งเป็น role เสริมไม่ได้ (ต้องเป็น role หลักเท่านั้น) — ตรงกับ PRIMARY_ONLY_ROLES ฝั่ง backend
+const PRIMARY_ONLY_ROLES = ["admin"];
+
 // คำนำหน้าชื่อ — เก็บแยกจาก name เสมอ (field titlePrefix ใน schema)
 const TITLE_PREFIX_OPTIONS = ["", "นาย", "นาง", "นางสาว", "Mr.", "Mrs.", "Ms."];
 
@@ -207,6 +210,7 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [savingRoleUserId, setSavingRoleUserId] = useState(null);
   const [linkingUserId, setLinkingUserId] = useState(null);
+  const [savingExtraUserId, setSavingExtraUserId] = useState(null);
 
   // ── roles modal ──
   const [showRoles, setShowRoles] = useState(false);
@@ -404,6 +408,29 @@ export default function AdminUsers() {
     }
   };
 
+  // role เสริม — ส่งทั้งชุด (roleIds) ไปแทนที่ของเดิม บันทึกทันที
+  const handleSaveExtraRoles = async (u, roleIds) => {
+    try {
+      setSavingExtraUserId(u.id);
+      const res = await axios.put(
+        `${backendUrl}/api/user/${u.id}/extra-roles`,
+        { roleIds },
+        { withCredentials: true },
+      );
+      if (res.data.success) {
+        toast.success("อัปเดต role เสริมแล้ว");
+        fetchAll({ keepDrafts: true });
+      } else {
+        toast.error(res.data.message || "อัปเดตไม่สำเร็จ");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(errMsg(error, "เกิดข้อผิดพลาด"));
+    } finally {
+      setSavingExtraUserId(null);
+    }
+  };
+
   const resetRoleDraft = (u) =>
     setRoleDraft((p) => ({ ...p, [u.id]: u.role?.id }));
 
@@ -575,7 +602,12 @@ export default function AdminUsers() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return users.filter((u) => {
-      if (roleFilter && u.role?.id !== roleFilter) return false;
+      if (
+        roleFilter &&
+        u.role?.id !== roleFilter &&
+        !(u.extraRoles || []).some((r) => r.id === roleFilter)
+      )
+        return false;
       if (linkFilter === "linked" && !u.employee) return false;
       if (linkFilter === "unlinked" && u.employee) return false;
       if (!q) return true;
@@ -583,6 +615,7 @@ export default function AdminUsers() {
         u.name,
         u.titlePrefix ? `${u.titlePrefix}${u.name}` : "",
         u.email,
+        ...(u.extraRoles || []).map((r) => r.name),
         u.employee?.fullName,
         u.employee?.empCode,
       ].some((v) =>
@@ -593,9 +626,13 @@ export default function AdminUsers() {
     });
   }, [users, search, roleFilter, linkFilter]);
 
-  // จำนวนผู้ใช้ต่อ role — แสดงใน dropdown
+  // จำนวนผู้ใช้ต่อ role (หลัก + เสริม) — แสดงใน dropdown
   const roleCount = (roleId) =>
-    users.filter((u) => u.role?.id === roleId).length;
+    users.filter(
+      (u) =>
+        u.role?.id === roleId ||
+        (u.extraRoles || []).some((r) => r.id === roleId),
+    ).length;
 
   const hasFilter = search || roleFilter || linkFilter;
   const resetFilters = () => {
@@ -664,6 +701,74 @@ export default function AdminUsers() {
               ↺
             </button>
           </>
+        )}
+      </div>
+    );
+  };
+
+  // Role เสริม: ป้าย + ✕ เอาออก / dropdown "＋ เพิ่ม" — บันทึกทันที
+  // ตัวเอง = ป้ายอย่างเดียว (เปลี่ยน role ตัวเองไม่ได้)
+  const renderExtraRoles = (u) => {
+    const extras = u.extraRoles || [];
+    const extraIds = extras.map((r) => r.id);
+    const self = isSelf(u.id);
+    const saving = savingExtraUserId === u.id;
+    const addable = roleList.filter(
+      (r) =>
+        r.id !== u.role?.id &&
+        !extraIds.includes(r.id) &&
+        !PRIMARY_ONLY_ROLES.includes(r.name),
+    );
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {extras.length === 0 && self && (
+          <span className="text-xs text-gray-400">—</span>
+        )}
+        {extras.map((r) => (
+          <span
+            key={r.id}
+            className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md py-0.5 pl-2.5 text-[11px] font-bold capitalize ${
+              self ? "pr-2.5" : "pr-1"
+            } ${roleTone(r.name)}`}
+          >
+            {r.name}
+            {!self && (
+              <button
+                type="button"
+                disabled={saving}
+                title={`เอา ${r.name} ออก`}
+                onClick={() => {
+                  if (!window.confirm(`เอา role เสริม "${r.name}" ออกจาก ${u.name}?`)) return;
+                  handleSaveExtraRoles(
+                    u,
+                    extraIds.filter((id) => id !== r.id),
+                  );
+                }}
+                className="cursor-pointer rounded border-none bg-transparent px-1 text-[11px] leading-none opacity-60 hover:opacity-100 disabled:cursor-not-allowed"
+              >
+                ✕
+              </button>
+            )}
+          </span>
+        ))}
+        {!self && addable.length > 0 && (
+          <select
+            value=""
+            disabled={saving}
+            onChange={(e) =>
+              e.target.value &&
+              handleSaveExtraRoles(u, [...extraIds, e.target.value])
+            }
+            title="เพิ่ม role เสริม"
+            className={`${SELECT_SM} max-w-[120px] cursor-pointer text-gray-500`}
+          >
+            <option value="">{saving ? "…" : "＋ เพิ่ม"}</option>
+            {addable.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
         )}
       </div>
     );
@@ -864,6 +969,12 @@ export default function AdminUsers() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="w-[52px] shrink-0 text-[10px] font-semibold uppercase text-gray-400">
+                        เสริม
+                      </span>
+                      {renderExtraRoles(u)}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-[52px] shrink-0 text-[10px] font-semibold uppercase text-gray-400">
                         Worker
                       </span>
                       <div className="min-w-0 flex-1">
@@ -883,6 +994,7 @@ export default function AdminUsers() {
                     <th className={TH}>Name</th>
                     <th className={TH}>Email</th>
                     <th className={TH}>Role</th>
+                    <th className={TH}>Role เสริม</th>
                     <th className={TH}>Linked Worker</th>
                     <th className={TH}>Actions</th>
                   </tr>
@@ -893,6 +1005,7 @@ export default function AdminUsers() {
                       <td className={TD}>{renderName(u)}</td>
                       <td className={`${TD} text-gray-500`}>{u.email}</td>
                       <td className={TD}>{renderRole(u)}</td>
+                      <td className={TD}>{renderExtraRoles(u)}</td>
                       <td className={TD}>{renderLinkedWorker(u)}</td>
                       <td className={TD}>{renderActions(u)}</td>
                     </tr>
@@ -1042,7 +1155,7 @@ export default function AdminUsers() {
               />
             </div>
             <div className="text-[11px] leading-normal text-gray-400">
-              เปลี่ยน Role หรือ Linked Worker ได้จากตารางหลักโดยตรง —
+              เปลี่ยน Role, Role เสริม หรือ Linked Worker ได้จากตารางหลักโดยตรง —
               ไม่ต้องเปิด modal นี้
               ส่วนรหัสผ่านผู้ใช้ต้องเปลี่ยนด้วยตัวเองผ่านหน้า Profile
             </div>
@@ -1137,7 +1250,11 @@ export default function AdminUsers() {
                           <RoleBadge name={r.name} />
                           <span className="text-[11px] text-gray-400">
                             {inUse
-                              ? `${r.userCount} user ใช้อยู่`
+                              ? `${r.userCount} user ใช้อยู่${
+                                  r.extraCount
+                                    ? ` (เป็น role เสริม ${r.extraCount})`
+                                    : ""
+                                }`
                               : "ไม่มีคนใช้"}
                           </span>
                         </div>

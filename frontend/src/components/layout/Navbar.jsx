@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import { Bell, Search, ChevronDown, Menu } from "lucide-react";
+import { roleLabel } from "../../utils/roles";
 
 const Navbar = ({ onMenuClick }) => {
   const navigate = useNavigate();
@@ -230,7 +231,7 @@ const Navbar = ({ onMenuClick }) => {
                   : userData?.name}
               </span>
               <span className="text-xs text-gray-500">
-                {userData?.role?.name}
+                {roleLabel(userData)}
               </span>
             </div>
           </div>
@@ -247,7 +248,7 @@ const Navbar = ({ onMenuClick }) => {
                   : userData.name}
               </p>
               <p className="px-3 py-1 text-xs text-gray-500">
-                {userData.role?.name}
+                {roleLabel(userData)}
               </p>
               <hr className="my-2" />
               <button

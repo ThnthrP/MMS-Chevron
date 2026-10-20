@@ -238,7 +238,9 @@ model User {
   department  String?
 
   roleId String
-  role   Role   @relation(fields: [roleId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id]) // role หลัก
+
+  extraRoles UserRole[] // role เสริม — 1 user มีได้หลาย role (เช่น manpower_supply + project_engineer)
 
   employeeId String?   @unique
   employee   Employee? @relation(fields: [employeeId], references: [id])
@@ -277,7 +279,21 @@ model Role {
   id          String           @id @default(uuid())
   name        String           @unique
   users       User[]
+  extraUsers  UserRole[]       // user ที่มี role นี้เป็น role เสริม
   permissions RolePermission[]
+}
+
+// role เสริมของ user — role หลักยังอยู่ที่ User.roleId (โค้ดเดิมที่อ่าน user.role ใช้ได้ต่อ)
+// สิทธิ์ของ user = รวมทุก role (หลัก + เสริม) — admin ต้องเป็น role หลักเท่านั้น
+model UserRole {
+  userId    String
+  roleId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@id([userId, roleId])
+  @@index([roleId])
 }
 
 model Permission {

@@ -8,6 +8,7 @@ import {
   updateProfile,
   changePassword, // ← เพิ่ม
   updateUserRole,
+  updateUserExtraRoles, // ← role เสริม
   updateUserByAdmin,
   getAllRoles,
   getAllUsers,
@@ -68,6 +69,13 @@ userRouter.put(
   userAuth,
   authorize("system", "manage"),
   updateUserEmployee,
+);
+// role เสริม — body: { roleIds: [...] } (ตั้งทั้งชุด)
+userRouter.put(
+  "/:id/extra-roles",
+  userAuth,
+  authorize("system", "manage"),
+  updateUserExtraRoles,
 );
 userRouter.get(
   "/available-employees",

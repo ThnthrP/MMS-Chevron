@@ -7,10 +7,12 @@
 import { PrismaClient } from "@prisma/client";
 import { findWorkers } from "./allocationService.js";
 import { notifyRole } from "./notificationService.js";
+import { USER_ROLES_LIGHT_INCLUDE, hasAnyRole } from "../utils/roles.js";
 
 const prisma = new PrismaClient();
 
-// role ที่กดอนุมัติ / ไม่อนุมัติได้
+// role ที่กดอนุมัติ / ไม่อนุมัติได้ — เช็กทุก role ของ user (หลัก + เสริม)
+// ผู้ขอที่มี role เสริม project_engineer อนุมัติคำขอของตัวเองได้ (ตามที่ตกลงไว้ — Audit Log เก็บทั้งผู้ขอและผู้อนุมัติ)
 export const DECIDER_ROLES = ["project_engineer", "admin"];
 
 const httpError = (status, message) =>
@@ -126,12 +128,17 @@ export async function createRequests({
   }
 
   if (created.length > 0) {
-    await notifyRole("project_engineer", {
-      type: "match_exception_pending",
-      title: `ขออนุมัติพนักงานที่ % Match ไม่ครบ (${created.length} คน)`,
-      message: `${request.position?.name ?? ""} · ${projectLabel(request.project)}`,
-      link: "/pe-approvals",
-    });
+    // ไม่แจ้งตัวผู้ขอเอง (กรณีผู้ขอมี role เสริม project_engineer)
+    await notifyRole(
+      "project_engineer",
+      {
+        type: "match_exception_pending",
+        title: `ขออนุมัติพนักงานที่ % Match ไม่ครบ (${created.length} คน)`,
+        message: `${request.position?.name ?? ""} · ${projectLabel(request.project)}`,
+        link: "/pe-approvals",
+      },
+      { excludeUserIds: [userId] },
+    );
   }
 
   return { created: created.length, skipped };
@@ -206,9 +213,9 @@ export async function decide(id, { decision, note, userId }) {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { role: true },
+    include: USER_ROLES_LIGHT_INCLUDE,
   });
-  if (!DECIDER_ROLES.includes(user?.role?.name)) {
+  if (!hasAnyRole(user, DECIDER_ROLES)) {
     throw httpError(403, "เฉพาะ PE (Project Engineer) เท่านั้นที่อนุมัติได้");
   }
 
@@ -312,8 +319,9 @@ export async function decide(id, { decision, note, userId }) {
     },
   });
 
-  // แจ้งผลกลับคนที่ขอ
+  // แจ้งผลกลับคนที่ขอ (ข้ามถ้าผู้ขอเป็นคนพิจารณาเอง)
   const approved = decision === "approved";
+  if (row.requestedById === userId) return row;
   await prisma.notification.create({
     data: {
       userId: row.requestedById,

@@ -6,6 +6,7 @@
 // GET /api/audit-logs/:id        รายละเอียด 1 รายการ
 // ============================================================
 import prisma from "../config/prisma.js";
+import { USER_ROLES_LIGHT_INCLUDE, roleLabel } from "../utils/roles.js";
 
 const MAX_PAGE_SIZE = 200;
 const MAX_EXPORT = 50000;
@@ -119,7 +120,7 @@ export async function getAuditFilters(req, res) {
   try {
     const [users, modules, actions] = await Promise.all([
       prisma.user.findMany({
-        select: { id: true, name: true, email: true, role: { select: { name: true } } },
+        select: { id: true, name: true, email: true, ...USER_ROLES_LIGHT_INCLUDE },
         orderBy: { name: "asc" },
       }),
       prisma.auditLog.findMany({ distinct: ["module"], select: { module: true }, orderBy: { module: "asc" } }),
@@ -127,7 +128,7 @@ export async function getAuditFilters(req, res) {
     ]);
     res.json({
       success: true,
-      users: users.map((u) => ({ id: u.id, name: u.name || u.email, role: u.role?.name })),
+      users: users.map((u) => ({ id: u.id, name: u.name || u.email, role: roleLabel(u) })),
       modules: modules.map((m) => m.module),
       actions: actions.map((a) => a.action),
     });

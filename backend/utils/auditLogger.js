@@ -5,6 +5,7 @@
 // ============================================================
 import jwt from "jsonwebtoken";
 import prisma from "../config/prisma.js";
+import { USER_ROLES_LIGHT_INCLUDE, roleLabel } from "./roles.js";
 
 // ── field ที่ห้ามเก็บลง log เด็ดขาด (เทียบแบบ lowercase, ตัด _ - ออก) ──
 const SENSITIVE_KEYS = [
@@ -150,6 +151,7 @@ export function clientIp(req) {
 }
 
 // ── ข้อมูลผู้ใช้ (ชื่อ + role) — cache 5 นาที กันยิง DB ทุก request ──
+// role = ทุก role ของ user เช่น "manpower_supply + project_engineer"
 const actorCache = new Map();
 const CACHE_MS = 5 * 60 * 1000;
 
@@ -158,9 +160,9 @@ async function lookupUser(userId) {
   if (hit && hit.exp > Date.now()) return hit.data;
   const u = await prisma.user.findUnique({
     where: { id: userId },
-    select: { name: true, email: true, role: { select: { name: true } } },
+    select: { name: true, email: true, ...USER_ROLES_LIGHT_INCLUDE },
   });
-  const data = u ? { name: u.name || u.email, role: u.role?.name || null } : null;
+  const data = u ? { name: u.name || u.email, role: roleLabel(u) || null } : null;
   actorCache.set(`u:${userId}`, { data, exp: Date.now() + CACHE_MS });
   return data;
 }

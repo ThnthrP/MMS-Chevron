@@ -3,6 +3,7 @@ import axios from "axios";
 import { Link } from "react-router-dom";
 import { AppContent } from "../../context/AppContext";
 import { nameEN, nameTH } from "../../utils/workerSearch";
+import { hasAnyRole } from "../../utils/roles";
 
 // ══════════════════════════════════════════════════════════
 // PE Approvals — คำขอใช้พนักงานที่ % Match ไม่ครบ 100% (ส่งมาจากหน้า Allocation)
@@ -108,7 +109,8 @@ function groupByProject(items) {
 
 export default function PEApprovals() {
   const { backendUrl, userData } = useContext(AppContent);
-  const canDecide = DECIDER_ROLES.includes(userData?.role?.name);
+  // เช็กทุก role (หลัก + เสริม) — เช่น MP ที่มี role เสริม project_engineer อนุมัติได้
+  const canDecide = hasAnyRole(userData, DECIDER_ROLES);
 
   const [tab, setTab] = useState("pending");
   const [items, setItems] = useState([]); // ทุกสถานะ — แยก tab ฝั่ง frontend

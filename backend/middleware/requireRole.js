@@ -1,9 +1,10 @@
 // middleware/requireRole.js
+// ผ่านถ้า role ใด role หนึ่งของ user (หลัก หรือ เสริม) อยู่ใน allowedRoles
+import { hasAnyRole } from "../utils/roles.js";
+
 const requireRole = (...allowedRoles) => {
   return (req, res, next) => {
-    const roleName = req.user?.role?.name;
-
-    if (!roleName || !allowedRoles.includes(roleName)) {
+    if (!hasAnyRole(req.user, allowedRoles)) {
       return res.status(403).json({
         success: false,
         message: "You do not have permission to perform this action",

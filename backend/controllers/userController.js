@@ -1,6 +1,14 @@
 import prisma from "../config/prisma.js";
 // บนสุดของไฟล์ เพิ่ม:
 import bcrypt from "bcryptjs"; // ⚠ ใช้ตัวเดียวกับที่ authController ใช้ตอน login (ดูหมายเหตุ)
+import {
+  USER_ROLES_INCLUDE,
+  USER_ROLES_LIGHT_INCLUDE,
+  PRIMARY_ONLY_ROLES,
+  roleNamesOf,
+  permissionsOf,
+  extraRolesOut,
+} from "../utils/roles.js";
 
 // ประกอบชื่อแสดงผลจาก ชื่อ + นามสกุล (User.name)
 const composeName = (first, last) =>
@@ -10,7 +18,9 @@ const composeName = (first, last) =>
     .join(" ");
 
 // ตัด field ลับออกก่อนส่งกลับ frontend
-const sanitizeUser = ({ password, resetOtp, resetOtpExpireAt, ...u }) => u;
+// extraRoles (ถ้า include มา) แปลงเป็น [{ id, name }]
+const sanitizeUser = ({ password, resetOtp, resetOtpExpireAt, ...u }) =>
+  u.extraRoles ? { ...u, extraRoles: extraRolesOut(u) } : u;
 
 // =====================================================
 // GET CURRENT USER
@@ -26,16 +36,7 @@ export const getUserData = async (req, res) => {
       },
 
       include: {
-        role: {
-          include: {
-            permissions: {
-              include: {
-                permission: true,
-              },
-            },
-          },
-        },
-
+        ...USER_ROLES_INCLUDE, // role หลัก + role เสริม
         employee: true,
       },
     });
@@ -60,17 +61,18 @@ export const getUserData = async (req, res) => {
         phone: user.phone,
         department: user.department,
 
+        // role หลัก — โค้ดเดิมที่อ่าน userData.role ยังใช้ได้
         role: {
           id: user.role?.id,
           name: user.role?.name,
         },
+        // role เสริม + ชื่อ role ทั้งหมด (หลักอยู่ตัวแรก) — เช็กสิทธิ์ด้วย roleNames
+        extraRoles: extraRolesOut(user),
+        roleNames: roleNamesOf(user),
 
         employee: user.employee,
 
-        permissions:
-          user.role?.permissions?.map(
-            (p) => `${p.permission.resource}:${p.permission.action}`,
-          ) || [],
+        permissions: permissionsOf(user),
       },
     });
   } catch (error) {
@@ -176,15 +178,19 @@ export const updateUserRole = async (req, res) => {
       });
     }
 
-    const updatedUser = await prisma.user.update({
-      where: {
-        id: userId,
-      },
+    // role หลักใหม่ซ้ำกับ role เสริม → เอาออกจาก role เสริม
+    const [, updatedUser] = await prisma.$transaction([
+      prisma.userRole.deleteMany({ where: { userId, roleId } }),
+      prisma.user.update({
+        where: {
+          id: userId,
+        },
 
-      data: {
-        roleId,
-      },
-    });
+        data: {
+          roleId,
+        },
+      }),
+    ]);
 
     return res.json({
       success: true,
@@ -206,7 +212,7 @@ export const getAllRoles = async (req, res) => {
   try {
     const roles = await prisma.role.findMany({
       orderBy: { name: "asc" },
-      include: { _count: { select: { users: true } } },
+      include: { _count: { select: { users: true, extraUsers: true } } },
     });
 
     return res.json({
@@ -214,7 +220,9 @@ export const getAllRoles = async (req, res) => {
       roles: roles.map((r) => ({
         id: r.id,
         name: r.name,
-        userCount: r._count.users,
+        userCount: r._count.users + r._count.extraUsers, // นับทั้ง role หลักและ role เสริม
+        primaryCount: r._count.users,
+        extraCount: r._count.extraUsers,
       })),
     });
   } catch (error) {
@@ -230,7 +238,7 @@ export const getAllUsers = async (req, res) => {
   try {
     const users = await prisma.user.findMany({
       include: {
-        role: true,
+        ...USER_ROLES_LIGHT_INCLUDE,
         employee: true,
       },
 
@@ -287,7 +295,7 @@ export const createUser = async (req, res) => {
         employeeId: employeeId || null,
         titlePrefix: titlePrefix || null,
       },
-      include: { role: true, employee: true },
+      include: { ...USER_ROLES_LIGHT_INCLUDE, employee: true },
     });
     return res.json({ success: true, user: sanitizeUser(user) });
   } catch (error) {
@@ -376,7 +384,7 @@ export const updateUserEmployee = async (req, res) => {
     const user = await prisma.user.update({
       where: { id },
       data: { employeeId: employeeId || null },
-      include: { role: true, employee: true },
+      include: { ...USER_ROLES_LIGHT_INCLUDE, employee: true },
     });
     return res.json({ success: true, user: sanitizeUser(user) });
   } catch (error) {
@@ -462,7 +470,9 @@ export const deleteRole = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const userCount = await prisma.user.count({ where: { roleId: id } });
+    const userCount =
+      (await prisma.user.count({ where: { roleId: id } })) +
+      (await prisma.userRole.count({ where: { roleId: id } })); // role เสริมด้วย
     if (userCount > 0) {
       return res.json({
         success: false,
@@ -509,10 +519,72 @@ export const updateUserByAdmin = async (req, res) => {
         email,
         titlePrefix: titlePrefix || null,
       },
-      include: { role: true, employee: true },
+      include: { ...USER_ROLES_LIGHT_INCLUDE, employee: true },
     });
 
     return res.json({ success: true, user: sanitizeUser(updatedUser) });
+  } catch (error) {
+    return res.json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// UPDATE EXTRA ROLES (ADMIN) — ตั้ง role เสริมทั้งชุด
+// body: { roleIds: [...] } — ส่ง [] เพื่อลบ role เสริมทั้งหมด
+// =====================================================
+export const updateUserExtraRoles = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { roleIds } = req.body;
+
+    if (!Array.isArray(roleIds)) {
+      return res.json({ success: false, message: "roleIds ต้องเป็น array" });
+    }
+    if (req.user.id === id) {
+      return res.json({
+        success: false,
+        message: "Cannot change your own role",
+      });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.json({ success: false, message: "User not found" });
+    }
+
+    // ไม่ซ้ำ และไม่ซ้ำกับ role หลัก
+    const wanted = [...new Set(roleIds.filter(Boolean))].filter(
+      (rid) => rid !== user.roleId,
+    );
+
+    const roles = await prisma.role.findMany({ where: { id: { in: wanted } } });
+    if (roles.length !== wanted.length) {
+      return res.json({ success: false, message: "มี role ที่ไม่พบในระบบ" });
+    }
+    const blocked = roles.filter((r) => PRIMARY_ONLY_ROLES.includes(r.name));
+    if (blocked.length) {
+      return res.json({
+        success: false,
+        message: `role "${blocked[0].name}" ต้องตั้งเป็น role หลักเท่านั้น`,
+      });
+    }
+
+    await prisma.$transaction([
+      prisma.userRole.deleteMany({ where: { userId: id } }),
+      ...(wanted.length
+        ? [
+            prisma.userRole.createMany({
+              data: wanted.map((roleId) => ({ userId: id, roleId })),
+            }),
+          ]
+        : []),
+    ]);
+
+    const updated = await prisma.user.findUnique({
+      where: { id },
+      include: { ...USER_ROLES_LIGHT_INCLUDE, employee: true },
+    });
+    return res.json({ success: true, user: sanitizeUser(updated) });
   } catch (error) {
     return res.json({ success: false, message: error.message });
   }
