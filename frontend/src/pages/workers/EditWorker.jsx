@@ -248,7 +248,6 @@ const INPUT =
   "box-border w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-blue-400 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500";
 const READONLY_BOX =
   "box-border flex min-h-[38px] w-full cursor-help flex-wrap items-center gap-x-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[13px]";
-const SYNC_HINT = "text-[11px] text-blue-600";
 const TH =
   "whitespace-nowrap border-b-2 border-gray-200 px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-[0.4px] text-gray-500";
 const TD = "border-b border-gray-100 p-2.5 align-top";
@@ -896,7 +895,7 @@ export default function EditWorker() {
     isOffshore: formData.isOffshore,
     isPermanent: formData.isPermanent,
     healthRisk:
-      medicalExams.length > 0 ? undefined : formData.healthRisk || null,
+      medicalExams.some((e) => e.examDate) ? undefined : formData.healthRisk || null,
     healthNote: formData.healthNote || null,
     sseLevel: formData.sseLevel || null,
     sseCompleted:
@@ -1282,7 +1281,14 @@ export default function EditWorker() {
   const latestExamNote =
     medicalExams.length > 0 ? findLatestExam(medicalExams)?.note || "" : "";
 
-  const hasExams = medicalExams.length > 0;
+  // PE record ล่าสุดที่มีวันที่ตรวจ — มีแล้ว Health Risk / Examination Date / Expiry Date
+  // จะล็อก (อ่านอย่างเดียว) และใช้ค่าจาก record นี้ · ยังไม่มี → กรอกเองได้
+  // (เช่น ผลตรวจที่มาจากไฟล์ Training Record ซึ่งไม่มีรายละเอียด PE)
+  const latestExam = findLatestExam(medicalExams.filter((e) => e.examDate));
+  const hasExams = !!latestExam;
+  const SYNC_LABEL = (
+    <span className="ml-1 font-normal normal-case tracking-normal text-blue-600">(จาก PE / Medical Exam Records ล่าสุด)</span>
+  );
 
   // ===========================================================
   // Render
@@ -1647,20 +1653,19 @@ export default function EditWorker() {
               <div className={BODY}>
                 <div className={`${GRID3} mb-4`}>
                   <div>
-                    <label className={LABEL}>Health Risk</label>
+                    <label className={LABEL}>
+                      Health Risk {hasExams && SYNC_LABEL}
+                    </label>
                     {hasExams ? (
                       <div
-                        title="ค่านี้ sync อัตโนมัติจาก PE / Medical Exam record ล่าสุด — แก้ที่ tab 🏥 PE / Medical Exam"
-                        className={`${READONLY_BOX} ${
-                          formData.healthRisk
+                        title="ล็อกไว้ — ค่านี้มาจาก PE / Medical Exam record ล่าสุด · แก้ที่ tab 🏥 PE / Medical Exam"
+                        className={`${READONLY_BOX} cursor-not-allowed ${
+                          latestExam.healthRisk
                             ? "text-gray-900"
                             : "text-gray-400"
                         }`}
                       >
-                        {formData.healthRisk || "— ไม่มีข้อมูล —"}
-                        <span className={SYNC_HINT}>
-                          (จาก PE record — แก้ที่ tab PE/Medical Exam)
-                        </span>
+                        {latestExam.healthRisk || "— ไม่มีข้อมูล —"}
                       </div>
                     ) : (
                       <CreatableSelect
@@ -2553,11 +2558,13 @@ export default function EditWorker() {
                     />
                   </div>
                   <div>
-                    <label className={LABEL}>Examination Date</label>
+                    <label className={LABEL}>
+                      Examination Date {hasExams && SYNC_LABEL}
+                    </label>
                     {hasExams ? (
                       <div
-                        title="ค่านี้ sync อัตโนมัติจาก Exam Date ของ PE / Medical Exam record ล่าสุดด้านล่าง"
-                        className={`${READONLY_BOX} ${
+                        title="ล็อกไว้ — ค่านี้มาจาก Exam Date ของ PE / Medical Exam record ล่าสุดด้านล่าง"
+                        className={`${READONLY_BOX} cursor-not-allowed ${
                           medicalData.issuedDate
                             ? "text-gray-900"
                             : "text-gray-400"
@@ -2566,9 +2573,6 @@ export default function EditWorker() {
                         {medicalData.issuedDate
                           ? formatDateDisplay(medicalData.issuedDate)
                           : "— ไม่มีข้อมูล —"}
-                        <span className={SYNC_HINT}>
-                          (จาก PE record ล่าสุด)
-                        </span>
                       </div>
                     ) : (
                       <input
@@ -2581,11 +2585,18 @@ export default function EditWorker() {
                     )}
                   </div>
                   <div>
-                    <label className={LABEL}>Expiry Date</label>
+                    <label className={LABEL}>
+                      Expiry Date{" "}
+                      {hasExams && (
+                        <span className="ml-1 font-normal normal-case tracking-normal text-blue-600">
+                          (Examination Date + 1 ปี)
+                        </span>
+                      )}
+                    </label>
                     {hasExams ? (
                       <div
-                        title="ค่านี้คำนวณอัตโนมัติ = Examination Date + 1 ปี"
-                        className={`${READONLY_BOX} ${
+                        title="ล็อกไว้ — คำนวณอัตโนมัติ = Examination Date + 1 ปี"
+                        className={`${READONLY_BOX} cursor-not-allowed ${
                           medicalData.expiryDate
                             ? "text-gray-900"
                             : "text-gray-400"
@@ -2594,7 +2605,6 @@ export default function EditWorker() {
                         {medicalData.expiryDate
                           ? formatDateDisplay(medicalData.expiryDate)
                           : "— ไม่มีข้อมูล —"}
-                        <span className={SYNC_HINT}>(+1 ปีจาก Exam Date)</span>
                       </div>
                     ) : (
                       <input
