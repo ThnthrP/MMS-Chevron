@@ -1257,7 +1257,7 @@ export default function AddWorker() {
                 <div className={`${GRID2} mb-4`}>
                   <div>
                     <label className={LABEL}>
-                      Health Note (หมายเหตุสุขภาพ — แยกจาก Notes ทั่วไป)
+                      Health Note จาก Medic (หมายเหตุสุขภาพ — แยกจาก Notes ทั่วไป)
                     </label>
                     <textarea
                       name="healthNote"
