@@ -3,6 +3,7 @@ import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import { Link, useNavigate } from "react-router-dom";
 import AsyncSelect from "react-select/async";
+import Select from "react-select";
 
 const PAGE_SIZE = 15;
 
@@ -29,6 +30,40 @@ const joinTravel = (f) =>
   f.travelMode === "other"
     ? f.travelOther.trim() || "other"
     : f.travelMode || null;
+
+// แถวตำแหน่งใน New manpower requirement — key ใช้เป็น React key เท่านั้น
+let positionRowSeq = 0;
+const newPositionRow = () => ({
+  key: ++positionRowSeq,
+  positionId: "",
+  quantity: "1",
+});
+
+// ฟอร์มเริ่มต้นของ New manpower requirement
+const emptyStartForm = () => ({
+  location: "",
+  startDate: "",
+  endDate: "",
+  isOffshore: false,
+  travelMode: "",
+  travelOther: "",
+  responseDays: String(DEFAULT_RESPONSE_DAYS),
+  notes: "",
+});
+
+// react-select ให้หน้าตาเท่ากับ input อื่นในฟอร์ม + เมนูลอยเหนือ modal
+const SELECT_STYLES = {
+  control: (base) => ({
+    ...base,
+    borderColor: "#d1d5db",
+    borderRadius: "8px",
+    minHeight: "38px",
+    fontSize: "13px",
+  }),
+  option: (base) => ({ ...base, fontSize: "13px" }),
+  menuPortal: (base) => ({ ...base, zIndex: 1000001 }),
+};
+const MENU_PORTAL = typeof document !== "undefined" ? document.body : null;
 
 // ค่าเริ่มต้น "ตอบกลับภายใน" = วันนี้ + 10 วัน (แก้ได้ในฟอร์ม)
 const DEFAULT_RESPONSE_DAYS = 10;
@@ -184,22 +219,6 @@ function StatusBadge({ linkedCount, large = false }) {
   );
 }
 
-// ── grid label-value สำหรับสรุป record ที่เลือก (ใช้ใน Start modal) ──
-function RecordSummaryGrid({ record }) {
-  return (
-    <div className="grid grid-cols-[110px_1fr] gap-y-1 text-xs">
-      <div className="font-semibold text-gray-500">ON Number</div>
-      <div className="break-words">{record.projectCode}</div>
-      <div className="font-semibold text-gray-500">Project / Job</div>
-      <div className="break-words">{record.jobTitle}</div>
-      <div className="font-semibold text-gray-500">Customer</div>
-      <div className="break-words">{record.customerName || "—"}</div>
-      <div className="font-semibold text-gray-500">Company</div>
-      <div className="break-words">{record.company || "—"}</div>
-    </div>
-  );
-}
-
 export default function Project() {
   const { backendUrl } = useContext(AppContent);
   const navigate = useNavigate();
@@ -234,21 +253,15 @@ export default function Project() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  // ── Start Project modal ──
+  // ── New manpower requirement modal (เดิม: Start New Project) ──
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [selectedMasterRecord, setSelectedMasterRecord] = useState(null);
   const [startContractId, setStartContractId] = useState("");
-  const [startForm, setStartForm] = useState({
-    location: "",
-    startDate: "",
-    endDate: "",
-    isOffshore: false,
-    travelMode: "",
-    travelOther: "",
-    responseDeadline: "",
-    notes: "",
-  });
+  const [startForm, setStartForm] = useState(emptyStartForm);
+  const [startPositions, setStartPositions] = useState(() => [newPositionRow()]);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [positions, setPositions] = useState([]);
 
   const fetchYears = async () => {
     try {
@@ -294,9 +307,29 @@ export default function Project() {
     }
   };
 
+  // รายการตำแหน่งสำหรับเลือกใน New manpower requirement (endpoint เดียวกับหน้า ProjectDetail)
+  const fetchPositions = async () => {
+    try {
+      const res = await axios.get(`${backendUrl}/api/positions/manage`, {
+        withCredentials: true,
+      });
+      setPositions(res.data);
+    } catch {
+      try {
+        const res2 = await axios.get(`${backendUrl}/api/positions`, {
+          withCredentials: true,
+        });
+        setPositions(res2.data);
+      } catch (e2) {
+        console.error(e2);
+      }
+    }
+  };
+
   useEffect(() => {
     fetchYears();
     fetchClients();
+    fetchPositions();
   }, []);
 
   useEffect(() => {
@@ -364,18 +397,9 @@ export default function Project() {
       setSelectedMasterRecord(null);
       setStartContractId("");
     }
-    setStartForm({
-      location: "",
-      startDate: "",
-      endDate: "",
-      isOffshore: false,
-      travelMode: "",
-      travelOther: "",
-      // responseDeadline: "",
-      // responseDeadline: defaultResponseDeadline(),
-      responseDays: String(DEFAULT_RESPONSE_DAYS),
-      notes: "",
-    });
+    setStartForm(emptyStartForm());
+    setStartPositions([newPositionRow()]);
+    setShowMoreOptions(false);
     setStartModalOpen(true);
   };
 
@@ -383,26 +407,46 @@ export default function Project() {
     setStartModalOpen(false);
     setSelectedMasterRecord(null);
     setStartContractId("");
-    setStartForm({
-      location: "",
-      startDate: "",
-      endDate: "",
-      isOffshore: false,
-      travelMode: "",
-      travelOther: "",
-      // responseDeadline: "",
-      responseDays: String(DEFAULT_RESPONSE_DAYS),
-      notes: "",
-    });
+    setStartForm(emptyStartForm());
+    setStartPositions([newPositionRow()]);
+    setShowMoreOptions(false);
   };
 
+  // ── แถวตำแหน่ง ──
+  const updatePositionRow = (key, patch) =>
+    setStartPositions((rows) =>
+      rows.map((r) => (r.key === key ? { ...r, ...patch } : r)),
+    );
+  const addPositionRow = () =>
+    setStartPositions((rows) => [...rows, newPositionRow()]);
+  const removePositionRow = (key) =>
+    setStartPositions((rows) =>
+      rows.length > 1 ? rows.filter((r) => r.key !== key) : [newPositionRow()],
+    );
+
+  const positionName = (pid) => positions.find((p) => p.id === pid)?.name || "";
+
+  // ตำแหน่งที่เลือกแล้ว (ข้ามแถวว่าง)
+  const chosenPositions = startPositions.filter((r) => r.positionId);
+
+  // ข้อความแรกที่ยังขาด — null = ส่งได้
+  const startMissing = (() => {
+    if (!selectedMasterRecord) return "กรุณาเลือก Project (ON Number)";
+    if (!startContractId) return "กรุณาเลือก Client / Contract";
+    if (!startForm.startDate) return "กรุณาระบุ Working start";
+    if (!startForm.endDate) return "กรุณาระบุ Working end";
+    if (startForm.endDate < startForm.startDate)
+      return "Working end ต้องไม่ก่อน Working start";
+    if (!startForm.location.trim()) return "กรุณาระบุ Working location";
+    if (chosenPositions.length === 0) return "กรุณาเลือกตำแหน่งอย่างน้อย 1 ตำแหน่ง";
+    if (chosenPositions.some((r) => !(Number(r.quantity) >= 1)))
+      return "Quantity ต้องเป็น 1 ขึ้นไป";
+    return null;
+  })();
+
   const handleStartSubmit = async () => {
-    if (!selectedMasterRecord) {
-      alert("กรุณาเลือก ON Number ก่อน");
-      return;
-    }
-    if (!startContractId) {
-      alert("กรุณาเลือก Client/Contract");
+    if (startMissing) {
+      alert(startMissing);
       return;
     }
     try {
@@ -412,23 +456,43 @@ export default function Project() {
         {
           masterProjectRecordId: selectedMasterRecord.value,
           contractId: startContractId,
-          location: startForm.location || null,
+          location: startForm.location.trim() || null,
           startDate: startForm.startDate || null,
           endDate: startForm.endDate || null,
           isOffshore: startForm.isOffshore,
-          // travelMode: startForm.travelMode || null,
           travelMode: joinTravel(startForm),
-          // responseDeadline: startForm.responseDeadline || null,
           responseDays: Number(startForm.responseDays) || DEFAULT_RESPONSE_DAYS,
           notes: startForm.notes || null,
         },
         { withCredentials: true },
       );
+      const projectId = res.data.id;
+
+      // สร้าง position request ทีละตำแหน่ง (ลำดับตามที่กรอก) — endpoint เดียวกับ + Add Position ในหน้า ProjectDetail
+      const failed = [];
+      for (const r of chosenPositions) {
+        try {
+          await axios.post(
+            `${backendUrl}/api/projects/${projectId}/requests`,
+            { positionId: r.positionId, quantity: Number(r.quantity) },
+            { withCredentials: true },
+          );
+        } catch (err) {
+          console.error(err);
+          failed.push(positionName(r.positionId) || r.positionId);
+        }
+      }
+      if (failed.length) {
+        alert(
+          `สร้าง requirement แล้ว แต่เพิ่มตำแหน่งไม่สำเร็จ ${failed.length} ตำแหน่ง:\n${failed.join("\n")}\n\nเพิ่มต่อได้ที่ปุ่ม + Add Position ในหน้าถัดไป`,
+        );
+      }
+
       closeStartModal();
-      navigate(`/projects/${res.data.id}`);
+      navigate(`/projects/${projectId}`);
     } catch (error) {
       console.error(error);
-      alert(error.response?.data?.message || "เปิดใช้งาน Project ไม่สำเร็จ");
+      alert(error.response?.data?.message || "สร้าง requirement ไม่สำเร็จ");
     } finally {
       setStarting(false);
     }
@@ -587,7 +651,17 @@ export default function Project() {
       >
         👁 View
       </button>
-      {linkedCount > 0 && (
+      {/* มี requirement เดียว → เข้าไปจัดการได้เลย / หลายอัน → เปิดรายการให้เลือก */}
+      {linkedCount === 1 && (
+        <Link
+          to={`/projects/${r.linkedProjects[0].id}`}
+          title="เปิดหน้าจัดการ requirement"
+          className={`${BTN} ${LIFT_BLUE} min-w-[72px] px-3.5 py-1.5 no-underline`}
+        >
+          Manage →
+        </Link>
+      )}
+      {linkedCount > 1 && (
         <button
           onClick={() => setLinkedProjectsModal(r)}
           className={`${BTN} ${LIFT_BLUE} min-w-[72px] px-3.5 py-1.5`}
@@ -604,7 +678,7 @@ export default function Project() {
     </div>
   );
 
-  const startDisabled = !selectedMasterRecord || !startContractId || starting;
+  const startDisabled = !!startMissing || starting;
 
   return (
     // lg ขึ้นไป: สูงเต็มจอ ตาราง scroll ภายในการ์ด
@@ -628,9 +702,9 @@ export default function Project() {
             {canManageProjects && (
               <button
                 onClick={() => openStartModal(null)}
-                className={`${BTN} w-full rounded-md bg-[#198754] px-[18px] py-2.5 text-[13px] text-white hover:bg-[#157347] sm:w-auto`}
+                className={`${BTN} w-full rounded-md bg-blue-600 px-[18px] py-2.5 text-[13px] text-white hover:bg-blue-700 sm:w-auto`}
               >
-                🚀 Start New Project
+                + New requirement
               </button>
             )}
           </div>
@@ -911,9 +985,9 @@ export default function Project() {
                   setViewingRecord(null);
                   setLinkedProjectsModal(viewingRecord);
                 }}
-                className="cursor-pointer rounded-lg border-none bg-blue-600 px-5 py-2 text-[13px] font-semibold text-white hover:bg-blue-700"
+                className="cursor-pointer rounded-lg border border-blue-600 bg-white px-5 py-2 text-[13px] font-semibold text-blue-600 hover:bg-blue-50"
               >
-                ดูรายการ Project →
+                ดูรายการ requirement →
               </button>
             )}
             {canManageProjects && (
@@ -922,9 +996,9 @@ export default function Project() {
                   setViewingRecord(null);
                   openStartModal(viewingRecord);
                 }}
-                className="cursor-pointer rounded-lg border-none bg-[#198754] px-5 py-2 text-[13px] font-semibold text-white hover:bg-[#157347]"
+                className="cursor-pointer rounded-lg border-none bg-blue-600 px-5 py-2 text-[13px] font-semibold text-white hover:bg-blue-700"
               >
-                🚀 เปิดใช้งาน Project →
+                + New requirement จาก ON นี้
               </button>
             )}
           </div>
@@ -939,7 +1013,7 @@ export default function Project() {
         >
           <div className={MODAL_HEAD}>
             <span className="min-w-0 truncate text-base font-semibold">
-              📂 Projects จาก {linkedProjectsModal.projectCode}
+              📂 Requirements จาก {linkedProjectsModal.projectCode}
             </span>
             <button
               onClick={() => setLinkedProjectsModal(null)}
@@ -1027,7 +1101,7 @@ export default function Project() {
                 }}
                 className="cursor-pointer rounded-lg border border-[#198754] bg-white px-4 py-2 text-[13px] font-semibold text-[#198754] hover:bg-emerald-50"
               >
-                + Start อีกอันจาก ON นี้
+                + New requirement จาก ON นี้
               </button>
             )}
             <button
@@ -1040,12 +1114,12 @@ export default function Project() {
         </ModalShell>
       )}
 
-      {/* ════════ Start New Project Modal ════════ */}
+      {/* ════════ New manpower requirement Modal (เดิม: Start New Project) ════════ */}
       {startModalOpen && canManageProjects && (
         <ModalShell onClose={closeStartModal} maxW="max-w-[600px]">
           <div className={MODAL_HEAD}>
             <span className="text-base font-semibold">
-              🚀 Start New Project
+              New manpower requirement
             </span>
             <button onClick={closeStartModal} className={CLOSE_X}>
               ✕
@@ -1053,9 +1127,8 @@ export default function Project() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-            <label className={LABEL}>
-              ON Number (Master Project Register) *
-            </label>
+            {/* ── Project (ON Number) ── */}
+            <label className={LABEL}>Project *</label>
             <AsyncSelect
               cacheOptions
               defaultOptions
@@ -1074,27 +1147,27 @@ export default function Project() {
                   ? "ไม่พบ ON Number ที่ตรงกัน"
                   : "พิมพ์เพื่อค้นหา ON Number..."
               }
-              styles={{
-                control: (base) => ({
-                  ...base,
-                  borderColor: "#dee2e6",
-                  borderRadius: "8px",
-                  minHeight: "38px",
-                  fontSize: "13px",
-                }),
-                menuPortal: (base) => ({ ...base, zIndex: 1000001 }),
-              }}
-              menuPortalTarget={
-                typeof document !== "undefined" ? document.body : null
-              }
+              styles={SELECT_STYLES}
+              menuPortalTarget={MENU_PORTAL}
             />
-
             {selectedMasterRecord && (
-              <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
-                <RecordSummaryGrid record={selectedMasterRecord.record} />
+              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500">
+                <span>
+                  🏢 Company:{" "}
+                  <strong className="text-gray-700">
+                    {selectedMasterRecord.record.company || "—"}
+                  </strong>
+                </span>
+                <span>
+                  Customer:{" "}
+                  <strong className="text-gray-700">
+                    {selectedMasterRecord.record.customerName || "—"}
+                  </strong>
+                </span>
               </div>
             )}
 
+            {/* ── Client / Contract (เลือกให้อัตโนมัติจาก Company ถ้าเดาได้) ── */}
             <div className="mt-4">
               <label className={LABEL}>Client / Contract *</label>
               <select
@@ -1111,18 +1184,53 @@ export default function Project() {
                   )),
                 )}
               </select>
-              <div className="mt-1.5 text-[11px] text-gray-400">
-                Project Name จะใช้ชื่อจาก "Project / Job" ของ Master Register
-                อัตโนมัติ
+              <div className="mt-1 text-[11px] text-gray-400">
+                ใช้ Training Matrix ของ contract นี้คำนวณ % Match · ชื่อ
+                requirement ใช้ "Project / Job" ของ ON Number อัตโนมัติ
               </div>
             </div>
 
+            {/* ── Working start / end ── */}
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className={LABEL}>Location / Site</label>
+                <label className={LABEL}>Working start *</label>
+                <input
+                  type="date"
+                  value={startForm.startDate}
+                  max={startForm.endDate || undefined}
+                  onChange={(e) =>
+                    setStartForm((prev) => ({
+                      ...prev,
+                      startDate: e.target.value,
+                    }))
+                  }
+                  className={INPUT}
+                />
+              </div>
+              <div>
+                <label className={LABEL}>Working end *</label>
+                <input
+                  type="date"
+                  value={startForm.endDate}
+                  min={startForm.startDate || undefined}
+                  onChange={(e) =>
+                    setStartForm((prev) => ({
+                      ...prev,
+                      endDate: e.target.value,
+                    }))
+                  }
+                  className={INPUT}
+                />
+              </div>
+            </div>
+
+            {/* ── Working location + Onshore/Offshore ── */}
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[1fr_170px]">
+              <div>
+                <label className={LABEL}>Working location *</label>
                 <input
                   type="text"
-                  placeholder="e.g., Offshore Platform A"
+                  placeholder="e.g. Erawan WP-12 / Songkhla Workshop 4"
                   value={startForm.location}
                   onChange={(e) =>
                     setStartForm((prev) => ({
@@ -1133,7 +1241,6 @@ export default function Project() {
                   className={INPUT}
                 />
               </div>
-
               <div>
                 <label className={LABEL}>Onshore / Offshore</label>
                 <select
@@ -1147,89 +1254,89 @@ export default function Project() {
                   className={INPUT}
                 >
                   <option value="onshore">Onshore</option>
-                  <option value="offshore">Offshore (นอกชายฝั่ง)</option>
+                  <option value="offshore">Offshore</option>
                 </select>
-              </div>
-
-              <div>
-                <label className={LABEL}>Start Date</label>
-                <input
-                  type="date"
-                  value={startForm.startDate}
-                  onChange={(e) =>
-                    setStartForm((prev) => ({
-                      ...prev,
-                      startDate: e.target.value,
-                    }))
-                  }
-                  className={INPUT}
-                />
-              </div>
-
-              <div>
-                <label className={LABEL}>End Date</label>
-                <input
-                  type="date"
-                  value={startForm.endDate}
-                  onChange={(e) =>
-                    setStartForm((prev) => ({
-                      ...prev,
-                      endDate: e.target.value,
-                    }))
-                  }
-                  className={INPUT}
-                />
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {/* <div>
-                <label className={LABEL}>ขาไป (วิธีเดินทาง)</label>
-                <select
-                  value={startForm.travelMode}
-                  onChange={(e) =>
-                    setStartForm((prev) => ({
-                      ...prev,
-                      travelMode: e.target.value,
-                    }))
-                  }
-                  className={INPUT}
-                >
-                  <option value="">— ไม่ระบุ —</option>
-                  {TRAVEL_MODE_OPTIONS.map(([v, l]) => (
-                    <option key={v} value={v}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </div> */}
-              <TravelModeField form={startForm} setForm={setStartForm} />
-              <div>
-                <label className={LABEL}>พนักงานต้องตอบรับภายใน (วัน)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={90}
-                  value={startForm.responseDays}
-                  onChange={(e) =>
-                    setStartForm((prev) => ({
-                      ...prev,
-                      responseDays: e.target.value,
-                    }))
-                  }
-                  className={INPUT}
-                />
-                <div className="mt-1 text-[11px] text-gray-400">
-                  นับจากวันที่ approve ที่หน้า Allocation — แสดงให้พนักงานเห็นใน
-                  Worker App
-                </div>
-              </div>
-            </div>
-
+            {/* ── Positions ── */}
             <div className="mt-4">
-              <label className={LABEL}>Notes</label>
+              <div className="mb-1.5 grid grid-cols-[1fr_76px_28px] gap-2">
+                <span className="text-[13px] font-semibold">Position *</span>
+                <span className="text-[13px] font-semibold">Quantity *</span>
+                <span />
+              </div>
+              <div className="flex flex-col gap-2">
+                {startPositions.map((row) => {
+                  // ตำแหน่งที่แถวอื่นเลือกไปแล้ว — ไม่ให้เลือกซ้ำ
+                  const takenElsewhere = new Set(
+                    startPositions
+                      .filter((r) => r.key !== row.key && r.positionId)
+                      .map((r) => r.positionId),
+                  );
+                  const options = positions
+                    .filter((p) => !takenElsewhere.has(p.id))
+                    .map((p) => ({ value: p.id, label: p.name }));
+                  return (
+                    <div
+                      key={row.key}
+                      className="grid grid-cols-[1fr_76px_28px] items-center gap-2"
+                    >
+                      <Select
+                        options={options}
+                        value={
+                          options.find((o) => o.value === row.positionId) ||
+                          null
+                        }
+                        onChange={(o) =>
+                          updatePositionRow(row.key, {
+                            positionId: o?.value || "",
+                          })
+                        }
+                        placeholder="— Select position —"
+                        noOptionsMessage={() => "ไม่พบตำแหน่ง"}
+                        styles={SELECT_STYLES}
+                        menuPortalTarget={MENU_PORTAL}
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        value={row.quantity}
+                        onChange={(e) =>
+                          updatePositionRow(row.key, {
+                            quantity: e.target.value,
+                          })
+                        }
+                        className={`${INPUT} text-center`}
+                      />
+                      <button
+                        type="button"
+                        title="ลบแถวนี้"
+                        onClick={() => removePositionRow(row.key)}
+                        className="h-7 w-7 cursor-pointer rounded-md border-none bg-transparent text-base leading-none text-gray-400 hover:bg-red-50 hover:text-red-600"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={addPositionRow}
+                disabled={startPositions.length >= positions.length}
+                className="mt-2 cursor-pointer border-none bg-transparent p-0 text-[13px] font-semibold text-blue-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+              >
+                + Add another position
+              </button>
+            </div>
+
+            {/* ── Remarks ── */}
+            <div className="mt-4">
+              <label className={LABEL}>Remarks</label>
               <textarea
-                rows={3}
+                rows={2}
+                placeholder="Certificates needed, shift, etc."
                 value={startForm.notes}
                 onChange={(e) =>
                   setStartForm((prev) => ({ ...prev, notes: e.target.value }))
@@ -1237,9 +1344,56 @@ export default function Project() {
                 className={`${INPUT} resize-y`}
               />
             </div>
+
+            {/* ── ตัวเลือกเพิ่มเติม (ใช้ไม่บ่อย — พับไว้, มีค่าเริ่มต้นให้แล้ว) ── */}
+            <div className="mt-4 rounded-lg border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setShowMoreOptions((v) => !v)}
+                className="flex w-full cursor-pointer items-center justify-between border-none bg-gray-50 px-3 py-2 text-left text-xs font-semibold text-gray-600 hover:bg-gray-100"
+              >
+                <span>
+                  ตัวเลือกเพิ่มเติม — วิธีเดินทาง · ตอบรับภายใน{" "}
+                  {startForm.responseDays || DEFAULT_RESPONSE_DAYS} วัน
+                </span>
+                <span>{showMoreOptions ? "▲" : "▼"}</span>
+              </button>
+              {showMoreOptions && (
+                <div className="grid grid-cols-1 gap-4 p-3 sm:grid-cols-2">
+                  <TravelModeField form={startForm} setForm={setStartForm} />
+                  <div>
+                    <label className={LABEL}>
+                      พนักงานต้องตอบรับภายใน (วัน)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={90}
+                      value={startForm.responseDays}
+                      onChange={(e) =>
+                        setStartForm((prev) => ({
+                          ...prev,
+                          responseDays: e.target.value,
+                        }))
+                      }
+                      className={INPUT}
+                    />
+                    <div className="mt-1 text-[11px] text-gray-400">
+                      นับจากวันที่ approve ที่หน้า Allocation — แสดงให้พนักงานเห็นใน
+                      Worker App
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className={MODAL_FOOT}>
+          <div className={`${MODAL_FOOT} items-center`}>
+            {startMissing && !starting && (
+              <span className="mr-auto text-[11px] text-gray-400">
+                {startMissing}
+              </span>
+            )}
             <button onClick={closeStartModal} className={BTN_CANCEL}>
               Cancel
             </button>
@@ -1252,7 +1406,7 @@ export default function Project() {
                   : "cursor-pointer bg-blue-600 hover:bg-blue-700"
               }`}
             >
-              {starting ? "กำลังเปิดใช้งาน..." : "เปิดใช้งาน →"}
+              {starting ? "กำลังบันทึก..." : "Submit requirement"}
             </button>
           </div>
         </ModalShell>
