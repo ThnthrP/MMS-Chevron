@@ -94,12 +94,22 @@ const MEDICAL_STATUS_LABEL = {
 };
 
 const TABLE_HEADERS = [
-  ["WORKER", "text-left", "w-[16%]"],
-  ["POSITION", "text-left", "w-[26%]"],
-  ["TRAINING ALERTS", "text-center", "w-[20%]"],
-  ["MEDICAL", "text-center", "w-[20%]"],
-  ["CHEVRON MATCH", "text-center", "w-[18%]"],
+  ["WORKER", "text-left", "w-[15%]"],
+  ["POSITION", "text-left", "w-[20%]"],
+  ["DEPARTMENT", "text-left", "w-[12%]"],
+  ["TRAINING ALERTS", "text-center", "w-[19%]"],
+  ["MEDICAL", "text-center", "w-[17%]"],
+  ["CHEVRON MATCH", "text-center", "w-[17%]"],
 ];
+
+// key ของ HR request ที่ส่งไปแล้วในรอบนี้ (กันกดซ้ำ)
+const reqKey = (employeeId, trainingId) => `${employeeId}:${trainingId}`;
+
+// ชื่อ client ของ worker สำหรับแนบในคำขอ (dashboard เก็บ key เป็นตัวเล็ก เช่น "chevron")
+const clientNameOf = (w) => {
+  const key = Object.keys(w?.clients || {})[0];
+  return key ? key.charAt(0).toUpperCase() + key.slice(1) : null;
+};
 
 const BUCKET_RANK = {
   valid: 0,
@@ -382,10 +392,13 @@ export default function ComplianceDashboard() {
 
   const [workerFilter, setWorkerFilter] = useState(""); // worker.id
   const [positionFilter, setPositionFilter] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [selectedGap, setSelectedGap] = useState(null);
-  const [selectedAlert, setSelectedAlert] = useState(null);
+  const [selectedAlert, setSelectedAlert] = useState(null); // + workerId, clientName
+  const [requestedKeys, setRequestedKeys] = useState(() => new Set()); // แจ้ง HR แล้ว (รอบนี้)
+  const [sendingKey, setSendingKey] = useState(null); // key ที่กำลังส่ง / "all"
   const [noteModal, setNoteModal] = useState(null); // { name, note }
 
   const anyModalOpen = !!(selectedGap || selectedAlert || noteModal);
@@ -465,15 +478,65 @@ export default function ComplianceDashboard() {
     }
   };
 
-  const handleViewAlerts = async (workerId) => {
+  const handleViewAlerts = async (w) => {
     try {
       const res = await axios.get(
-        `${backendUrl}/api/compliance/worker/${workerId}/alerts`,
+        `${backendUrl}/api/compliance/worker/${w.id}/alerts`,
         { withCredentials: true },
       );
-      setSelectedAlert(res.data);
+      setSelectedAlert({
+        ...res.data,
+        workerId: w.id,
+        clientName: clientNameOf(w),
+      });
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  // ── แจ้ง HR ให้จัด training → ไปอยู่หน้า Requests (endpoint เดียวกับหน้า Allocation) ──
+  // items: alert item ที่มี globalTrainingId (training ที่ map กับระบบแล้ว)
+  const sendTrainingRequest = async (items, busyKey) => {
+    if (!selectedAlert || items.length === 0 || sendingKey) return;
+    // กดทีละตัว = ส่งทันที / แจ้งทั้งหมด = ยืนยันก่อน
+    if (items.length > 1) {
+      const names = items.map((it) => `• ${it.name}`).join("\n");
+      if (
+        !window.confirm(
+          `แจ้ง HR ให้จัด training ${items.length} รายการให้ ${selectedAlert.fullName}?\n\n${names}\n\nคำขอจะไปอยู่ที่เมนู Requests`,
+        )
+      )
+        return;
+    }
+    try {
+      setSendingKey(busyKey);
+      await axios.post(
+        `${backendUrl}/api/training-requests`,
+        {
+          items: items.map((it) => ({
+            employeeId: selectedAlert.workerId,
+            globalTrainingId: it.globalTrainingId,
+            clientName: selectedAlert.clientName,
+          })),
+        },
+        { withCredentials: true },
+      );
+      setRequestedKeys((prev) => {
+        const next = new Set(prev);
+        items.forEach((it) =>
+          next.add(reqKey(selectedAlert.workerId, it.globalTrainingId)),
+        );
+        return next;
+      });
+    } catch (err) {
+      console.error(err);
+      alert(
+        err.response?.status === 403
+          ? "ไม่มีสิทธิ์ส่งคำขอ training"
+          : err.response?.data?.message || "แจ้ง HR ไม่สำเร็จ ลองใหม่อีกครั้ง",
+      );
+    } finally {
+      setSendingKey(null);
     }
   };
 
@@ -481,12 +544,15 @@ export default function ComplianceDashboard() {
     const matchWorker = !workerFilter || w.id === workerFilter;
     const matchPosition =
       !positionFilter || w.position?.name === positionFilter;
+    const matchDepartment =
+      !departmentFilter || (w.department || "") === departmentFilter;
     const matchStatus =
       statusFilter === "all" || worstStatus(w) === statusFilter;
-    return matchWorker && matchPosition && matchStatus;
+    return matchWorker && matchPosition && matchDepartment && matchStatus;
   });
 
-  const hasFilter = workerFilter || positionFilter || statusFilter !== "all";
+  const hasFilter =
+    workerFilter || positionFilter || departmentFilter || statusFilter !== "all";
 
   const workerOptions = [
     { value: "", label: "All Workers" },
@@ -498,6 +564,13 @@ export default function ComplianceDashboard() {
     ...[...new Set(workers.map((w) => w.position?.name).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b))
       .map((p) => ({ value: p, label: p })),
+  ];
+
+  const departmentOptions = [
+    { value: "", label: "All Departments" },
+    ...[...new Set(workers.map((w) => w.department).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b))
+      .map((d) => ({ value: d, label: d })),
   ];
 
   // ── cell renderers — ใช้ทั้งตาราง (lg+) และการ์ด (มือถือ) ──
@@ -553,7 +626,7 @@ export default function ComplianceDashboard() {
           </div>
         )}
         {hasAlerts && (
-          <span onClick={() => handleViewAlerts(w.id)} className={LINK}>
+          <span onClick={() => handleViewAlerts(w)} className={LINK}>
             🔍 ดู Alerts →
           </span>
         )}
@@ -651,6 +724,65 @@ export default function ComplianceDashboard() {
     ? ALERT_GROUPS.reduce((n, g) => n + (selectedAlert[g.key]?.length || 0), 0)
     : 0;
 
+  // แจ้งแล้ว = มีคำขอค้างอยู่ที่หน้า Requests (จาก backend) หรือเพิ่งกดส่งในรอบนี้
+  const isRequested = (item) =>
+    !!selectedAlert &&
+    (item.requestPending ||
+      requestedKeys.has(reqKey(selectedAlert.workerId, item.globalTrainingId)));
+
+  // training ที่แจ้ง HR ได้และยังไม่ได้แจ้ง (ไม่ซ้ำ)
+  const pendingRequestable = selectedAlert
+    ? [
+        ...new Map(
+          ALERT_GROUPS.flatMap((g) => selectedAlert[g.key] || [])
+            .filter(
+              (it) =>
+                it.type === "Training" &&
+                it.globalTrainingId &&
+                !isRequested(it),
+            )
+            .map((it) => [it.globalTrainingId, it]),
+        ).values(),
+      ]
+    : [];
+
+  // ปุ่ม "แจ้ง HR" หลัง training แต่ละตัว
+  const renderRequestButton = (item) => {
+    if (item.type !== "Training") return null;
+    if (!item.globalTrainingId) {
+      return (
+        <span
+          title="training นี้ยังไม่ได้ map กับรายการ training ในระบบ — แจ้ง HR อัตโนมัติไม่ได้"
+          className="whitespace-nowrap rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-400"
+        >
+          แจ้งไม่ได้
+        </span>
+      );
+    }
+    if (isRequested(item)) {
+      return (
+        <Link
+          to="/requests-history"
+          className="whitespace-nowrap rounded-md bg-[#d1e7dd] px-2 py-1 text-[11px] font-semibold text-[#0f5132] no-underline hover:underline"
+          title="มีคำขอรอ HR ดำเนินการอยู่แล้ว — ดูที่เมนู Requests"
+        >
+          ✓ แจ้งแล้ว
+        </Link>
+      );
+    }
+    const k = reqKey(selectedAlert.workerId, item.globalTrainingId);
+    return (
+      <button
+        onClick={() => sendTrainingRequest([item], k)}
+        disabled={!!sendingKey}
+        title="แจ้ง HR ให้จัด training นี้ — คำขอไปที่เมนู Requests"
+        className="cursor-pointer whitespace-nowrap rounded-md border border-blue-600 bg-white px-2 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+      >
+        {sendingKey === k ? "..." : "📨 แจ้ง HR"}
+      </button>
+    );
+  };
+
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
@@ -741,7 +873,7 @@ export default function ComplianceDashboard() {
               noOptionsMessage={() => "ไม่พบ worker"}
             />
           </div>
-          <div className="min-w-[160px] flex-[1_1_45%] sm:max-w-[560px] sm:flex-[1_1_340px]">
+          <div className="min-w-[160px] flex-[1_1_45%] sm:max-w-[480px] sm:flex-[1_1_300px]">
             <label className={FILTER_LABEL}>Position</label>
             <Select
               options={positionOptions}
@@ -753,6 +885,21 @@ export default function ComplianceDashboard() {
               isClearable
               styles={customSelectStyles}
               noOptionsMessage={() => "ไม่พบตำแหน่ง"}
+            />
+          </div>
+          <div className="min-w-[160px] flex-[1_1_45%] sm:max-w-[320px] sm:flex-[1_1_220px]">
+            <label className={FILTER_LABEL}>Department</label>
+            <Select
+              options={departmentOptions}
+              value={
+                departmentOptions.find((o) => o.value === departmentFilter) ||
+                null
+              }
+              onChange={(o) => setDepartmentFilter(o ? o.value : "")}
+              placeholder="Department..."
+              isClearable
+              styles={customSelectStyles}
+              noOptionsMessage={() => "ไม่พบแผนก"}
             />
           </div>
           <div className="min-w-[160px] flex-[1_1_45%] sm:flex-[0_1_210px]">
@@ -776,6 +923,7 @@ export default function ComplianceDashboard() {
                 onClick={() => {
                   setWorkerFilter("");
                   setPositionFilter("");
+                  setDepartmentFilter("");
                   setStatusFilter("all");
                 }}
                 className="h-9 cursor-pointer whitespace-nowrap rounded-lg border border-[#dc3545] bg-white px-3.5 text-[13px] text-[#dc3545] hover:bg-red-50"
@@ -878,11 +1026,11 @@ export default function ComplianceDashboard() {
                       <div className="truncate" title={w.position?.name || ""}>
                         {w.position?.name || "—"}
                       </div>
-                      {w.department && (
-                        <div className="mt-0.5 text-[11px] text-gray-400">
-                          {w.department}
-                        </div>
-                      )}
+                    </td>
+                    <td className="px-3.5 py-3 text-gray-500">
+                      <div className="truncate" title={w.department || ""}>
+                        {w.department || "—"}
+                      </div>
                     </td>
                     <td className="px-3.5 py-3 text-center">
                       {renderAlerts(w)}
@@ -1044,6 +1192,24 @@ export default function ComplianceDashboard() {
           }
           onClose={() => setSelectedAlert(null)}
         >
+          {/* แจ้ง HR ทั้งหมดในครั้งเดียว — เฉพาะ training ที่ยังไม่ได้แจ้ง */}
+          {pendingRequestable.length > 1 && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2.5">
+              <span className="text-xs text-gray-700">
+                แจ้ง HR ให้จัด training ที่หมด/ใกล้หมดทั้งหมด → ไปที่เมนู
+                Requests
+              </span>
+              <button
+                onClick={() => sendTrainingRequest(pendingRequestable, "all")}
+                disabled={!!sendingKey}
+                className="cursor-pointer whitespace-nowrap rounded-md border-none bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
+              >
+                {sendingKey === "all"
+                  ? "กำลังส่ง..."
+                  : `📨 แจ้ง HR ทั้งหมด (${pendingRequestable.length})`}
+              </button>
+            </div>
+          )}
           {ALERT_GROUPS.map(({ key, label, text }) => {
             const items = selectedAlert[key] || [];
             if (items.length === 0) return null;
@@ -1063,10 +1229,13 @@ export default function ComplianceDashboard() {
                         {item.name}
                       </span>
                     </div>
-                    <div className={`text-xs font-semibold ${text}`}>
-                      {new Date(item.expiryDate).toLocaleDateString()} (
-                      {Math.abs(item.daysLeft)} days{" "}
-                      {item.daysLeft < 0 ? "ago" : "left"})
+                    <div className="flex items-center gap-2.5">
+                      <div className={`text-xs font-semibold ${text}`}>
+                        {new Date(item.expiryDate).toLocaleDateString()} (
+                        {Math.abs(item.daysLeft)} days{" "}
+                        {item.daysLeft < 0 ? "ago" : "left"})
+                      </div>
+                      {renderRequestButton(item)}
                     </div>
                   </div>
                 ))}

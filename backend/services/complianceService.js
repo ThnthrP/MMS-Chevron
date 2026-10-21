@@ -179,6 +179,8 @@ export async function getComplianceDashboard() {
       empCode: employee.empCode, // ← เพิ่ม: ใช้แสดงใต้ชื่อ
       empId: employee.empId,
       fullName: employee.fullName,
+      fullNameTH: employee.fullNameTH,   // ← เพิ่ม
+      fullNameEN: employee.fullNameEN,   // ← เพิ่ม
       department: employee.division, // schema ใช้ฟิลด์ division
       startWorkDate: employee.startWorkDate, // ← เพิ่ม: ใช้คำนวณ Experience
       position: employee.position,
@@ -361,6 +363,14 @@ export async function getWorkerAlerts(employeeId) {
     // "valid" → ไม่ต้องขึ้น alert
   };
 
+  // training ที่มีคำขอถึง HR ค้างอยู่แล้ว (สถานะ pending ที่หน้า Requests)
+  // — ให้ปุ่ม "แจ้ง HR" ในหน้า Compliance ขึ้น "แจ้งแล้ว" แม้รีเฟรชหน้า
+  const pendingItems = await prisma.trainingRequestItem.findMany({
+    where: { employeeId, batch: { status: "pending" } },
+    select: { globalTrainingId: true },
+  });
+  const pendingTrainingIds = new Set(pendingItems.map((i) => i.globalTrainingId));
+
   for (const t of employee.trainings) {
     if (!t.expiryDate) continue;
     const daysLeft = Math.ceil(
@@ -368,6 +378,8 @@ export async function getWorkerAlerts(employeeId) {
     );
     pushByBucket(getExpiryBucket(t.expiryDate), {
       type: "Training",
+      globalTrainingId: t.globalTrainingId, // ใช้ส่งคำขอแจ้ง HR (null = ยังไม่ map กับ training ในระบบ)
+      requestPending: !!t.globalTrainingId && pendingTrainingIds.has(t.globalTrainingId),
       name: t.globalTraining?.name || t.rawTrainingName,
       expiryDate: t.expiryDate,
       daysLeft,
