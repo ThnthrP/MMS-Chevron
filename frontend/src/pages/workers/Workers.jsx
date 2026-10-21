@@ -49,17 +49,19 @@ function Badge({ map, value, fixedWidth = false }) {
 }
 
 // [หัวคอลัมน์, ชิด, ความกว้าง]
-// ตาราง table-fixed: คอลัมน์อื่นกว้างคงที่ · NAME กับ POSITION ไม่กำหนด → แบ่งพื้นที่ที่เหลือเท่ากัน
+// ตาราง auto layout: FIT = กว้างพอดีข้อความที่ยาวที่สุดในคอลัมน์ (w-px + ไม่ตัดบรรทัด)
+// POSITION ไม่กำหนด → ได้พื้นที่ที่เหลือทั้งหมด และขึ้นบรรทัดใหม่ถ้าชื่อยาว
+const FIT = "w-px whitespace-nowrap";
 const TABLE_HEADERS = [
-  ["EMP CODE", "left", "w-[105px]"],
-  ["EMPLOYEE ID", "left", "w-[120px]"],
-  ["NAME", "left", ""],
-  ["POSITION", "left", ""],
-  ["DEPARTMENT", "left", "w-[120px]"],
-  ["STATUS", "center", "w-[120px]"],
-  ["AVAILABILITY", "center", "w-[135px]"],
-  ["MOBILIZATION", "center", "w-[135px]"],
-  ["ACTIONS", "center", "w-[120px]"],
+  ["EMP CODE", "left", FIT],
+  ["EMPLOYEE ID", "left", FIT],
+  ["NAME", "left", FIT],
+  ["POSITION", "left", "min-w-[220px]"],
+  ["DEPARTMENT", "left", FIT],
+  ["STATUS", "center", FIT],
+  ["AVAILABILITY", "center", FIT],
+  ["MOBILIZATION", "center", FIT],
+  ["ACTIONS", "center", FIT],
 ];
 
 const ICON_BTN =
@@ -494,7 +496,7 @@ export default function Workers() {
 
           {/* ── xl+: ตาราง ── */}
           <div className="hidden min-h-0 flex-1 overflow-auto xl:block">
-            <table className="w-full min-w-[1250px] table-fixed border-collapse text-[13px]">
+            <table className="w-full min-w-[1200px] border-collapse text-[13px]">
               <thead>
                 <tr>
                   {TABLE_HEADERS.map(([h, align, width]) => (
@@ -541,7 +543,7 @@ export default function Workers() {
                       <td className="whitespace-nowrap px-4 py-[11px] font-semibold text-gray-700">
                         {worker.empId || "—"}
                       </td>
-                      <td className="break-words px-4 py-[11px]">
+                      <td className="whitespace-nowrap px-4 py-[11px]">
                         <Link
                           to={`/workers/${worker.id}`}
                           className="font-semibold text-blue-600 no-underline hover:underline"
@@ -557,7 +559,7 @@ export default function Workers() {
                       <td className="break-words px-4 py-[11px]">
                         {worker.position?.name || "—"}
                       </td>
-                      <td className="truncate px-4 py-[11px] text-gray-500" title={worker.division || ""}>
+                      <td className="whitespace-nowrap px-4 py-[11px] text-gray-500">
                         {worker.division || "—"}
                       </td>
                       <td className="px-4 py-[11px] text-center">
