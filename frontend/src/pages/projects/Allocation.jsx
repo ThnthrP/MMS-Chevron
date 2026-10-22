@@ -357,7 +357,7 @@ function WorkerTable({
           {COLUMNS.map(([h, , w]) => (
             <col key={h} className={w} />
           ))}
-          {withAction && <col className="w-[84px]" />}
+          {withAction && <col className="w-[96px]" />}
         </colgroup>
         <thead>
           <tr>
@@ -372,7 +372,9 @@ function WorkerTable({
                 {h}
               </th>
             ))}
-            {withAction && <th className={`${TH} z-[1]`} />}
+            {withAction && (
+              <th className={`${TH} z-[1] text-center`}>ACTIONS</th>
+            )}
           </tr>
         </thead>
         <tbody>{children}</tbody>
@@ -423,9 +425,7 @@ function NameCell({ w, info, dim, onViewGap }) {
             </MiniTag>
           )}
         </div>
-        {nameTH(w) && (
-          <div className="text-xs text-gray-600">{nameTH(w)}</div>
-        )}
+        {nameTH(w) && <div className="text-xs text-gray-600">{nameTH(w)}</div>}
         <div className="text-[11px] text-gray-500">
           {w.empId}
           {w.position?.name ? ` · ${w.position.name}` : ""}
@@ -443,27 +443,41 @@ function NameCell({ w, info, dim, onViewGap }) {
 }
 
 // ปุ่ม "+ เพิ่ม" ท้ายแถว — กดได้เฉพาะคนที่ % Match ครบ / PE อนุมัติแล้ว และไม่ถูกแบน
-function AddCell({ enabled, busy, onAdd }) {
+// กดไม่ได้ → ยังแสดงปุ่มแต่เป็นสีเทา + ชี้แล้วบอกเหตุผล (ผู้ใช้รู้ว่าคอลัมน์นี้มีไว้ทำอะไร)
+function AddCell({ enabled, busy, onAdd, reason }) {
   return (
     <td className={`${TD} text-center`}>
-      {enabled ? (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onAdd();
-          }}
-          disabled={busy}
-          className="cursor-pointer whitespace-nowrap rounded-md border border-[#198754] bg-white px-2.5 py-1 text-xs font-semibold text-[#198754] hover:bg-[#198754] hover:text-white disabled:cursor-wait disabled:opacity-50"
-        >
-          + เพิ่ม
-        </button>
-      ) : (
-        DASH
-      )}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (enabled) onAdd();
+        }}
+        disabled={!enabled || busy}
+        title={enabled ? "เพิ่มเข้ารายชื่อที่จัดแล้ว" : reason}
+        className={`whitespace-nowrap rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
+          enabled
+            ? "cursor-pointer border-[#a3cfbb] bg-[#e8f5ee] text-[#146c43] hover:border-[#198754] hover:bg-[#198754] hover:text-white disabled:cursor-wait disabled:opacity-60"
+            : "cursor-not-allowed border-gray-200 bg-gray-50 text-gray-300"
+        }`}
+      >
+        + เพิ่ม
+      </button>
     </td>
   );
 }
+
+// เหตุผลที่ยังเพิ่มไม่ได้ (แสดงตอนชี้ที่ปุ่มสีเทา)
+const addBlockedReason = (w, exception) => {
+  if (!w) return "ยังไม่มีข้อมูล % Match ของคนนี้";
+  if (w.activeBan) return `ถูกแบนถึง ${fmtBanDate(w.activeBan.bannedUntil)}`;
+  if (w.matchPct === null || w.matchPct === undefined)
+    return "ยังไม่มี Training Matrix ของตำแหน่งนี้ — ตั้งที่ Projects & Positions › Matrix Editor";
+  if (exception?.status === "pending") return "รอ PE อนุมัติอยู่";
+  if (exception?.status === "rejected")
+    return "PE ไม่อนุมัติ — กด “ขออนุมัติใหม่” ที่คอลัมน์ % MATCH";
+  return "% Match ยังไม่ครบ 100% — กด “ขออนุมัติ PE” ที่คอลัมน์ % MATCH ก่อน";
+};
 
 function RetirementCell({ birthDate }) {
   const retire = getRetirementInfo(birthDate);
@@ -1703,7 +1717,10 @@ export default function Allocation() {
                 <div className="text-[13px] font-semibold">
                   {c.employee?.fullName}
                 </div>
-                <EmpMeta emp={c.employee} requestPositionId={req.position?.id} />
+                <EmpMeta
+                  emp={c.employee}
+                  requestPositionId={req.position?.id}
+                />
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 <Pill tone="yellow">Proposed</Pill>
@@ -1939,18 +1956,20 @@ export default function Allocation() {
             ได้
           </div>
         )}
-        {selectedProjectId && selectedProject && projectRequests.length === 0 && (
-          <div className="mt-3 rounded-lg border border-[#ffe69c] bg-[#fff8e1] px-3.5 py-2.5 text-[13px] text-[#664d03]">
-            ⚠ โปรเจกต์นี้ยังไม่มีตำแหน่ง —{" "}
-            <button
-              type="button"
-              onClick={() => navigate(`/projects/${selectedProjectId}`)}
-              className={`${LINK_TEXT} underline`}
-            >
-              เพิ่มตำแหน่งที่หน้า Requirement →
-            </button>
-          </div>
-        )}
+        {selectedProjectId &&
+          selectedProject &&
+          projectRequests.length === 0 && (
+            <div className="mt-3 rounded-lg border border-[#ffe69c] bg-[#fff8e1] px-3.5 py-2.5 text-[13px] text-[#664d03]">
+              ⚠ โปรเจกต์นี้ยังไม่มีตำแหน่ง —{" "}
+              <button
+                type="button"
+                onClick={() => navigate(`/projects/${selectedProjectId}`)}
+                className={`${LINK_TEXT} underline`}
+              >
+                เพิ่มตำแหน่งที่หน้า Requirement →
+              </button>
+            </div>
+          )}
 
         {!selectedProject ? (
           <div className="p-12 text-center text-[13px] text-gray-500">
@@ -2014,7 +2033,9 @@ export default function Allocation() {
                               <Pill tone="green">✓ ครบ</Pill>
                             ) : null}
                             {st.proposed > 0 && (
-                              <Pill tone="yellow">รอ approve {st.proposed}</Pill>
+                              <Pill tone="yellow">
+                                รอ approve {st.proposed}
+                              </Pill>
                             )}
                             {st.pendingPe > 0 && (
                               <Pill tone="orange">รอ PE {st.pendingPe}</Pill>
@@ -2070,7 +2091,9 @@ export default function Allocation() {
                           ยังขาด{" "}
                           <strong
                             className={
-                              remaining > 0 ? "text-[#dc3545]" : "text-[#198754]"
+                              remaining > 0
+                                ? "text-[#dc3545]"
+                                : "text-[#198754]"
                             }
                           >
                             {remaining}
@@ -2114,18 +2137,21 @@ export default function Allocation() {
                     <div className="pt-3">
                       <div className={SECTION_HEAD}>
                         <span>เพิ่มจาก Worker Pool</span>
-                        {selectedWorkerIds.length > 0 && canManageAllocation && (
-                          <button
-                            type="button"
-                            onClick={() => handleAddToShortlist(selectedWorkerIds)}
-                            disabled={addingShortlist}
-                            className={`${BTN_GREEN} px-4 py-[7px] text-[13px]`}
-                          >
-                            {addingShortlist
-                              ? "กำลังเพิ่ม..."
-                              : `👥 เพิ่มที่เลือก (${selectedWorkerIds.length})`}
-                          </button>
-                        )}
+                        {selectedWorkerIds.length > 0 &&
+                          canManageAllocation && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleAddToShortlist(selectedWorkerIds)
+                              }
+                              disabled={addingShortlist}
+                              className={`${BTN_GREEN} px-4 py-[7px] text-[13px]`}
+                            >
+                              {addingShortlist
+                                ? "กำลังเพิ่ม..."
+                                : `👥 เพิ่มที่เลือก (${selectedWorkerIds.length})`}
+                            </button>
+                          )}
                       </div>
 
                       {/* ค้นหาคนใดก็ได้ — เปิดอยู่ตลอด (เดิมต้องกดปุ่มก่อน) */}
@@ -2167,7 +2193,9 @@ export default function Allocation() {
                                     )}
                                     className="pointer-events-none h-3.5 w-3.5 shrink-0"
                                   />
-                                  <span className="min-w-0 flex-1">{o.label}</span>
+                                  <span className="min-w-0 flex-1">
+                                    {o.label}
+                                  </span>
                                   {o.samePosition && (
                                     <MiniTag tone="green">ตรงตำแหน่ง</MiniTag>
                                   )}
@@ -2288,7 +2316,17 @@ export default function Allocation() {
                                           isWorkerSelectable(matched)
                                         }
                                         busy={addingShortlist}
-                                        onAdd={() => handleAddToShortlist([w.id])}
+                                        reason={
+                                          loadingQuickMatch
+                                            ? "กำลังตรวจ % Match..."
+                                            : addBlockedReason(
+                                                matched,
+                                                exceptions[w.id],
+                                              )
+                                        }
+                                        onAdd={() =>
+                                          handleAddToShortlist([w.id])
+                                        }
                                       />
                                     )}
                                   </tr>
@@ -2383,7 +2421,9 @@ export default function Allocation() {
                                 type="checkbox"
                                 checked={allDisplayedSelected}
                                 onChange={toggleAll}
-                                disabled={selectableDisplayedWorkers.length === 0}
+                                disabled={
+                                  selectableDisplayedWorkers.length === 0
+                                }
                                 title="เลือกทั้งหมด (เฉพาะคนที่ % Match = 100% หรือ PE อนุมัติแล้ว)"
                                 className="h-[15px] w-[15px] cursor-pointer disabled:cursor-not-allowed"
                               />
@@ -2394,8 +2434,8 @@ export default function Allocation() {
                             <EmptyRow>Finding workers...</EmptyRow>
                           ) : workers.length === 0 ? (
                             <EmptyRow>
-                              ไม่มีพนักงานที่ว่างในตำแหน่งนี้ — ลองเปลี่ยนตำแหน่ง
-                              หรือค้นหาคนใดก็ได้ด้านบน
+                              ไม่มีพนักงานที่ว่างในตำแหน่งนี้ —
+                              ลองเปลี่ยนตำแหน่ง หรือค้นหาคนใดก็ได้ด้านบน
                             </EmptyRow>
                           ) : displayedWorkers.length === 0 ? (
                             <EmptyRow>{emptyWorkerMessage}</EmptyRow>
@@ -2403,12 +2443,15 @@ export default function Allocation() {
                             displayedWorkers.map((w) => {
                               const selected = selectedWorkerIds.includes(w.id);
                               const selectable = isWorkerSelectable(w);
-                              const clickable = canManageAllocation && selectable;
+                              const clickable =
+                                canManageAllocation && selectable;
                               return (
                                 <tr
                                   key={w.id}
                                   onClick={
-                                    clickable ? () => toggleWorker(w.id) : undefined
+                                    clickable
+                                      ? () => toggleWorker(w.id)
+                                      : undefined
                                   }
                                   title={
                                     canManageAllocation && !selectable
@@ -2469,6 +2512,10 @@ export default function Allocation() {
                                     <AddCell
                                       enabled={selectable}
                                       busy={addingShortlist}
+                                      reason={addBlockedReason(
+                                        w,
+                                        exceptions[w.id],
+                                      )}
                                       onAdd={() => handleAddToShortlist([w.id])}
                                     />
                                   )}
