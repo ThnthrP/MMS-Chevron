@@ -1,7 +1,17 @@
 import { useState, useEffect, useContext } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
+import RequestBookingModal from "./RequestBookingModal";
+
+// ══════════════════════════════════════════════════════════
+// Training Bookings  (/requests-history)    → <RequestsHistory type="training" />
+// Medical Bookings   (/medical-bookings)    → <RequestsHistory type="medical" />
+// คำขอจากหลายที่มารวมที่นี่ให้ HR จัดการ:
+//   • ปุ่ม "Request training" ในหน้านี้ (การ์ดเดียว แบบโปรแกรมตัวอย่าง)
+//   • Training Courses › "แจ้ง HR ให้จัด Training"
+//   • Assign Names › ดู Gap (Training) / 📨 แจ้ง HR (Medical)
+// ══════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════
 // helpers
@@ -38,6 +48,13 @@ const timeAgoLabel = (timestamp) => {
   if (diffHr < 24) return `${diffHr} ชั่วโมงที่แล้ว`;
   return `${Math.floor(diffHr / 24)} วันที่แล้ว`;
 };
+
+const fmtDM = (d) =>
+  new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
+const whenText = (r) =>
+  r.requestedStart
+    ? `${fmtDM(r.requestedStart)}${r.requestedEnd && r.requestedEnd !== r.requestedStart ? ` – ${fmtDM(r.requestedEnd)}` : ""}`
+    : "";
 
 const fmtDateTime = (d) =>
   new Date(d).toLocaleString("th-TH", {
@@ -92,10 +109,6 @@ const getPageNumbers = (current, total) => {
 // ══════════════════════════════════════════════════════════
 // constants
 // ══════════════════════════════════════════════════════════
-const TYPE_TABS = [
-  ["training", "🎓 Training"],
-  ["medical", "🏥 Medical"],
-];
 // ช่วงวันที่สำเร็จรูป — days = null คือไม่จำกัด
 const DATE_PRESETS = [
   ["all", "ทั้งหมด", null],
@@ -106,19 +119,34 @@ const DATE_PRESETS = [
 ];
 
 const STATUS_TABS = [
-  ["pending", "🟡 รอดำเนินการ"],
-  ["completed", "✅ เสร็จแล้ว"],
-  ["all", "ทั้งหมด"],
+  ["pending", "⏳ รอ HR จัดการ", "border-amber-500 bg-amber-50 text-amber-800"],
+  ["completed", "✓ จัดแล้ว", "border-emerald-600 bg-emerald-50 text-emerald-800"],
+  ["all", "ทั้งหมด", "border-gray-700 bg-gray-700 text-white"],
 ];
 
+// CSV (ใส่ BOM ให้ Excel อ่านภาษาไทยได้)
+const csvCell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+const downloadCsv = (filename, rows) => {
+  const blob = new Blob(["\ufeff" + rows.map((r) => r.map(csvCell).join(",")).join("\r\n")], {
+    type: "text/csv;charset=utf-8",
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
 const TH =
-  "whitespace-nowrap bg-white px-4 py-2.5 text-left text-[11px] font-semibold tracking-[0.5px] text-gray-500";
+  "whitespace-nowrap bg-gray-50 px-4 py-2 text-left text-[11px] font-semibold tracking-[0.5px] text-gray-500";
 const TD = "px-4 py-3 text-[13px]";
 const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
 const FIELD_BASE =
   "box-border h-9 rounded-lg border border-gray-200 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500";
 const FIELD = `${FIELD_BASE} w-full`;
-const DATE_FIELD = `${FIELD_BASE} w-[150px]`;
+const DATE_FIELD = `${FIELD_BASE} w-[140px]`;
+const TOOL_BTN =
+  "inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 no-underline hover:bg-gray-50";
 const CHIP =
   "cursor-pointer whitespace-nowrap rounded-full border px-3 py-1 text-xs";
 const PAGE_BTN =
@@ -127,7 +155,23 @@ const PAGE_BTN =
 // ══════════════════════════════════════════════════════════
 // small components
 // ══════════════════════════════════════════════════════════
-function StatusBadge({ status }) {
+// สถานะรายคน (HR ยืนยัน / ปฏิเสธ) — ถ้ามีข้อมูล counts จาก backend
+function StatusBadge({ status, counts }) {
+  if (counts && counts.confirmed + counts.rejected > 0) {
+    return (
+      <div className="flex flex-col items-center gap-0.5 text-[11px] font-semibold">
+        {counts.pending > 0 && (
+          <span className="rounded-md bg-[#fff3cd] px-2 py-px text-[#664d03]">⏳ รอ HR {counts.pending}</span>
+        )}
+        {counts.confirmed > 0 && (
+          <span className="rounded-md bg-[#d1e7dd] px-2 py-px text-[#0f5132]">✓ ยืนยัน {counts.confirmed}</span>
+        )}
+        {counts.rejected > 0 && (
+          <span className="rounded-md bg-[#f8d7da] px-2 py-px text-[#842029]">✕ ปฏิเสธ {counts.rejected}</span>
+        )}
+      </div>
+    );
+  }
   const done = status === "completed";
   return (
     <span
@@ -135,7 +179,7 @@ function StatusBadge({ status }) {
         done ? "bg-[#d1e7dd] text-[#0f5132]" : "bg-[#fff3cd] text-[#664d03]"
       }`}
     >
-      {done ? "✅ เสร็จแล้ว" : "🟡 รอดำเนินการ"}
+      {done ? "✓ จัดแล้ว" : "⏳ รอ HR"}
     </span>
   );
 }
@@ -166,15 +210,21 @@ function TrainingTags({ names = [] }) {
 // ══════════════════════════════════════════════════════════
 // main
 // ══════════════════════════════════════════════════════════
-export default function TrainingRequestHistory() {
-  const navigate = useNavigate();
+export default function RequestsHistory({ type }) {
   const [searchParams] = useSearchParams();
+  // ลิงก์เก่า /requests-history?type=medical → หน้า Medical Bookings
+  if (!type && searchParams.get("type") === "medical")
+    return <Navigate to="/medical-bookings" replace />;
+  const t = type === "medical" ? "medical" : "training";
+  return <BookingsPage key={t} requestType={t} />;
+}
+
+function BookingsPage({ requestType }) {
+  const navigate = useNavigate();
   const { backendUrl, userData } = useContext(AppContent);
   const isAdmin = userData?.role?.name === "admin";
-
-  const [requestType, setRequestType] = useState(
-    searchParams.get("type") === "medical" ? "medical" : "training",
-  );
+  const [modalOpen, setModalOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -206,7 +256,7 @@ export default function TrainingRequestHistory() {
         setRequests([]);
       })
       .finally(() => setLoading(false));
-  }, [apiBase]);
+  }, [apiBase, reloadKey]);
 
   // อัปเดตข้อความ "ดูล่าสุด X นาทีที่แล้ว" ทุก 30 วินาที
   useEffect(() => {
@@ -224,12 +274,6 @@ export default function TrainingRequestHistory() {
     setTrainingFilter("");
     setClientFilter("");
     setPage(1);
-  };
-
-  const switchType = (key) => {
-    setRequestType(key);
-    setStatusFilter("pending");
-    resetFilters();
   };
 
   const applyPreset = (key, days) => {
@@ -339,6 +383,25 @@ export default function TrainingRequestHistory() {
     (r) => statusFilter === "all" || r.status === statusFilter,
   );
 
+  const exportCsv = () =>
+    downloadCsv(
+      `${isTraining ? "training" : "medical"}-bookings-${toYMD(new Date())}.csv`,
+      [
+        ["Requested By", "Date", "Employees", isTraining ? "Trainings" : "Check Type", "Requested dates", "Provider", "Remarks", "Client", "Status"],
+        ...filtered.map((r) => [
+          r.requestedByName || "",
+          fmtDateTime(r.createdAt),
+          r.employeeCount,
+          isTraining ? (r.trainingNames || []).join("; ") : "Medical Check-up",
+          whenText(r),
+          r.provider || "",
+          r.remarks || "",
+          (r.clientNames || []).join("; "),
+          r.status === "completed" ? "จัดแล้ว" : "รอ HR",
+        ]),
+      ],
+    );
+
   const hasFilter =
     search ||
     dateFrom ||
@@ -383,6 +446,16 @@ export default function TrainingRequestHistory() {
       <TrainingTags names={r.trainingNames || []} />
     ) : (
       <span className="text-gray-700">🏥 Medical Check-up</span>
+    );
+
+  const renderWhen = (r) =>
+    whenText(r) || r.provider ? (
+      <div className="leading-tight">
+        <div className="whitespace-nowrap">{whenText(r) || "—"}</div>
+        {r.provider && <div className="text-[11px] text-gray-500">{r.provider}</div>}
+      </div>
+    ) : (
+      <span className="text-gray-400">—</span>
     );
 
   const renderClients = (r) =>
@@ -439,81 +512,48 @@ export default function TrainingRequestHistory() {
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
-      {/* ════════ Header ════════ */}
-      <div className="mb-4 rounded-[10px] border border-gray-200 bg-white px-4 py-4 sm:px-6">
-        <div className="flex items-center gap-2.5">
-          <span className="text-xl">📢</span>
-          <span className="text-lg font-bold">
-            Requests for Training &amp; Medical
-          </span>
-        </div>
-        <div className="mt-1 text-[13px] text-gray-500">
-          คำขอถึง HR — จัด training และนัดตรวจสุขภาพ สำหรับ worker ที่ยังขาด
-          หมดอายุ หรือใกล้หมดอายุ
-        </div>
-      </div>
-
-      {/* ════════ Type tabs (Training / Medical) ════════ */}
-      <div className="mb-3 flex shrink-0 gap-2 overflow-x-auto border-b border-gray-200">
-        {TYPE_TABS.map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => switchType(key)}
-            className={`shrink-0 cursor-pointer whitespace-nowrap border-x-0 border-b-2 border-t-0 border-solid bg-transparent px-[18px] py-2 text-[13px] ${
-              requestType === key
-                ? "border-blue-600 font-bold text-blue-600"
-                : "border-transparent font-medium text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* ════════ Search & Filter ════════ */}
-      <div className="mb-4 rounded-[10px] border border-gray-200 bg-white px-4 py-3.5">
-        {/* แถว 1: ช่วงวันที่ */}
-        <div>
-          <label className={FILTER_LABEL}>ช่วงวันที่ (วันที่ส่งคำขอ)</label>
-          <div className="flex flex-wrap items-center gap-2">
-            {DATE_PRESETS.map(([key, label, days]) => (
-              <button
-                key={key}
-                onClick={() => applyPreset(key, days)}
-                className={`${CHIP} ${
-                  datePreset === key
-                    ? "border-blue-600 bg-blue-600 font-bold text-white"
-                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-            <span className="hidden text-gray-300 sm:inline">|</span>
-            <input
-              type="date"
-              value={dateFrom}
-              max={dateTo || undefined}
-              onChange={setDate(setDateFrom)}
-              className={DATE_FIELD}
-              title="ตั้งแต่วันที่"
-            />
-            <span className="text-xs text-gray-400">ถึง</span>
-            <input
-              type="date"
-              value={dateTo}
-              min={dateFrom || undefined}
-              onChange={setDate(setDateTo)}
-              className={DATE_FIELD}
-              title="ถึงวันที่"
-            />
+      {/* ════════ หัวหน้า + ปุ่มหลัก ════════ */}
+      <div className="flex flex-col gap-2 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="m-0 text-lg font-bold">
+            {isTraining ? "Training Bookings" : "Medical Bookings"}
+          </h1>
+          <div className="text-xs text-gray-500">
+            {isTraining
+              ? "คำขอจัดอบรมถึง HR — จากปุ่ม Request training, หน้า Training Courses และ Assign Names"
+              : "คำขอนัดตรวจสุขภาพถึง HR — จากปุ่ม Request medical และ Assign Names"}
           </div>
         </div>
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" onClick={exportCsv} className={TOOL_BTN}>
+            ⬇ Export CSV
+          </button>
+          {isTraining && (
+            <Link
+              to="/certifications/bulk-add"
+              className={TOOL_BTN}
+              title="อบรมเสร็จแล้ว → บันทึก certification ให้ทั้งกลุ่มทีเดียว"
+            >
+              ✓ บันทึกผลอบรม (Bulk Add Certification)
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={() => setModalOpen(true)}
+            className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border-none bg-[#2B2F78] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#22265f]"
+          >
+            {isTraining ? "🎓 Request training" : "🏥 Request medical"}
+          </button>
+        </div>
+      </div>
 
-        {/* แถว 2: ค้นหา · ผู้ขอ · Training · Client */}
+      {/* ════════ ตัวกรอง (แถบเดียว ไม่ห่อ card) ════════ */}
+      <div className="border-y border-gray-200 py-3">
         <div
-          className={`mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 ${
-            isTraining ? "lg:grid-cols-[2fr_1fr_1.5fr_1fr]" : "lg:grid-cols-[2fr_1fr_1fr]"
+          className={`grid grid-cols-1 gap-2.5 sm:grid-cols-2 ${
+            isTraining
+              ? "lg:grid-cols-[2fr_1fr_1.5fr_1fr]"
+              : "lg:grid-cols-[2fr_1fr_1fr]"
           }`}
         >
           <div className="min-w-0">
@@ -579,23 +619,54 @@ export default function TrainingRequestHistory() {
           </div>
         </div>
 
-        {hasFilter && (
-          <div className="mt-2.5 text-right">
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold text-gray-500">วันที่ส่งคำขอ</span>
+          {DATE_PRESETS.map(([key, label, days]) => (
+            <button
+              key={key}
+              onClick={() => applyPreset(key, days)}
+              className={`${CHIP} ${
+                datePreset === key
+                  ? "border-[#2B2F78] bg-[#2B2F78] font-bold text-white"
+                  : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+          <input
+            type="date"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={setDate(setDateFrom)}
+            className={DATE_FIELD}
+            title="ตั้งแต่วันที่"
+          />
+          <span className="text-xs text-gray-400">ถึง</span>
+          <input
+            type="date"
+            value={dateTo}
+            min={dateFrom || undefined}
+            onChange={setDate(setDateTo)}
+            className={DATE_FIELD}
+            title="ถึงวันที่"
+          />
+          {hasFilter && (
             <button
               onClick={resetFilters}
-              className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#dc3545] underline hover:text-[#a71d2a]"
+              className="ml-auto cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#dc3545] underline hover:text-[#a71d2a]"
             >
               ✕ ล้าง filter
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* ════════ List — แถบสถานะอยู่หัวการ์ด ════════ */}
-      <div className="overflow-hidden rounded-[10px] border border-gray-200 bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
-          <div className="flex flex-wrap gap-2">
-            {STATUS_TABS.map(([key, label]) => {
+      {/* ════════ รายการ (ไม่ห่อ card — ใช้เส้นแบ่ง) ════════ */}
+      <div className="border-b border-gray-200">
+        <div className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+          <div className="flex flex-wrap gap-1.5">
+            {STATUS_TABS.map(([key, label, activeCls]) => {
             const count =
               key === "all"
                 ? baseFiltered.length
@@ -608,10 +679,10 @@ export default function TrainingRequestHistory() {
                   setStatusFilter(key);
                   setPage(1);
                 }}
-                className={`cursor-pointer whitespace-nowrap rounded-md border px-3.5 py-1.5 text-xs ${
+                className={`cursor-pointer whitespace-nowrap rounded-full border px-3 py-1 text-xs ${
                   active
-                    ? "border-blue-600 bg-blue-600 font-bold text-white"
-                    : "border-gray-200 bg-white font-medium text-gray-700 hover:bg-gray-50"
+                    ? `${activeCls} font-bold`
+                    : "border-gray-200 bg-white font-medium text-gray-600 hover:bg-gray-50"
                 }`}
               >
                 {label} ({count})
@@ -631,7 +702,7 @@ export default function TrainingRequestHistory() {
               {emptyText}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2.5 py-3 md:grid-cols-2">
               {paged.map((r) => (
                 <div
                   key={r.id}
@@ -640,12 +711,18 @@ export default function TrainingRequestHistory() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">{renderRequester(r)}</div>
-                    <StatusBadge status={r.status} />
+                    <StatusBadge status={r.status} counts={r.counts} />
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
                     {fmtDateTime(r.createdAt)} · 👤 {r.employeeCount} คน
                     {r.clientNames?.length > 0 && ` · ${renderClients(r)}`}
                   </div>
+                  {(whenText(r) || r.provider) && (
+                    <div className="mt-1 text-xs text-gray-600">
+                      📅 {whenText(r) || "—"}
+                      {r.provider && ` · ${r.provider}`}
+                    </div>
+                  )}
                   <div className="mt-2">{renderSubject(r)}</div>
                   <div className="mt-2.5 border-t border-gray-100 pt-2.5">
                     {renderActions(r)}
@@ -660,13 +737,14 @@ export default function TrainingRequestHistory() {
         <div className="hidden overflow-x-auto lg:block">
           <table className="w-full border-collapse text-[13px]">
             <thead>
-              <tr className="border-b border-gray-200">
+              <tr className="border-y border-gray-200">
                 <th className={TH}>Requested By</th>
                 <th className={TH}>Date</th>
                 <th className={TH}>Employees</th>
                 <th className={TH}>
                   {isTraining ? "Trainings" : "Check Type"}
                 </th>
+                <th className={TH}>ช่วงวันที่ / สถานที่</th>
                 <th className={TH}>Client</th>
                 <th className={`${TH} w-[120px] text-center`}>Status</th>
                 <th className={`${TH} w-[220px] text-center`}>Actions</th>
@@ -675,7 +753,7 @@ export default function TrainingRequestHistory() {
             <tbody>
               {paged.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-10 text-center text-gray-500">
+                  <td colSpan={8} className="p-10 text-center text-gray-500">
                     {emptyText}
                   </td>
                 </tr>
@@ -698,11 +776,12 @@ export default function TrainingRequestHistory() {
                     <td className={`${TD} max-w-[260px]`}>
                       {renderSubject(r)}
                     </td>
+                    <td className={TD}>{renderWhen(r)}</td>
                     <td className={`${TD} text-gray-500`}>
                       {renderClients(r)}
                     </td>
                     <td className={`${TD} text-center`}>
-                      <StatusBadge status={r.status} />
+                      <StatusBadge status={r.status} counts={r.counts} />
                     </td>
                     <td className={TD}>{renderActions(r)}</td>
                   </tr>
@@ -714,7 +793,7 @@ export default function TrainingRequestHistory() {
 
         {/* ════════ Pagination ════════ */}
         {totalPages > 1 && (
-          <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-gray-200 px-4 py-3 text-xs text-gray-500">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-gray-200 py-3 text-xs text-gray-500">
             <span>
               หน้า {currentPage} / {totalPages} — ทั้งหมด {filtered.length}{" "}
               รายการ
@@ -757,6 +836,19 @@ export default function TrainingRequestHistory() {
           </div>
         )}
       </div>
+
+      {modalOpen && (
+        <RequestBookingModal
+          type={requestType}
+          onClose={() => setModalOpen(false)}
+          onSent={(n) => {
+            setModalOpen(false);
+            setStatusFilter("pending");
+            setReloadKey((k) => k + 1);
+            alert(`ส่งคำขอถึง HR แล้ว (${n} คน)`);
+          }}
+        />
+      )}
     </div>
   );
 }

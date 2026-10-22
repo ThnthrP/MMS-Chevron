@@ -2,7 +2,8 @@ import { useState, useEffect, useContext, useCallback, useRef } from "react";
 import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import RequestBookingModal from "./RequestBookingModal";
 import {
   buildWorkerOptions,
   filterWorkerOption,
@@ -13,7 +14,8 @@ import {
 // ══════════════════════════════════════════════════════════
 // constants
 // ══════════════════════════════════════════════════════════
-const CARD = "rounded-[10px] border border-gray-200 bg-white";
+// ไม่ห่อเป็น card แล้ว — ใช้เส้นแบ่ง (พื้นเนื้อหาสีขาว)
+const STAT_TILE = "rounded-lg border border-gray-200 bg-white";
 const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
 const CHECKBOX = "h-[15px] w-[15px] cursor-pointer";
 
@@ -121,7 +123,6 @@ function CertDate({ hasRecord, value, emptyLabel }) {
 // ══════════════════════════════════════════════════════════
 export default function Certifications() {
   const { backendUrl } = useContext(AppContent);
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   // สิทธิ์ถูกคุมที่ AppRouter แล้ว
@@ -138,7 +139,7 @@ export default function Certifications() {
   const [positionFilter, setPositionFilter] = useState("");
 
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
-  const [requesting, setRequesting] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false); // การ์ด Request training
 
   // คนที่ถูกระบุมาจากลิงก์คำขอ Training (?empIds=...)
   const [highlightedIds, setHighlightedIds] = useState([]);
@@ -246,33 +247,6 @@ export default function Certifications() {
     }
   };
 
-  const handleRequestTraining = async () => {
-    if (!selectedTraining || selectedEmployeeIds.length === 0) return;
-    try {
-      setRequesting(true);
-      await axios.post(
-        `${backendUrl}/api/training-requests`,
-        {
-          items: selectedEmployeeIds.map((employeeId) => ({
-            employeeId,
-            globalTrainingId: selectedTraining.value,
-            clientName: null, // หน้านี้เลือกจาก training โดยตรง
-          })),
-        },
-        { withCredentials: true },
-      );
-      alert(
-        `แจ้ง HR ให้จัด training "${selectedTraining.label.replace(/\s*\(\d+\)$/, "")}" ให้ ${selectedEmployeeIds.length} คนแล้ว`,
-      );
-      setSelectedEmployeeIds([]);
-    } catch (err) {
-      console.error(err);
-      alert(err.response?.data?.message || "แจ้งไม่สำเร็จ — ดู console");
-    } finally {
-      setRequesting(false);
-    }
-  };
-
   const clearFilters = () => {
     setWorkerFilter("");
     setPositionFilter("");
@@ -310,7 +284,7 @@ export default function Certifications() {
   const dash = <span className="text-gray-400">—</span>;
 
   const placeholderBox = (text) => (
-    <div className={`${CARD} p-10 text-center text-gray-500 sm:p-[60px]`}>
+    <div className="border-t border-gray-200 p-10 text-center text-gray-500 sm:p-[60px]">
       {text}
     </div>
   );
@@ -318,31 +292,16 @@ export default function Certifications() {
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
-      <div
-        className={`${CARD} mb-4 flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6`}
-      >
-        <div className="min-w-0">
-          <div className="flex items-center gap-2.5">
-            <span className="text-xl">📋</span>
-            <span className="text-lg font-bold">Certifications</span>
-          </div>
-          <div className="mt-1 text-[13px] text-gray-500">
-            เลือก training เพื่อดูสถานะของ worker แต่ละคนสำหรับ cert นั้น
-          </div>
+      <div className="pb-3">
+        <h1 className="m-0 text-lg font-bold">Training Courses</h1>
+        <div className="text-xs text-gray-500">
+          เลือกหลักสูตร เพื่อดูว่าใครมี / หมดอายุ / ยังไม่มี — ติ๊กพนักงานแล้วกด
+          "แจ้ง HR ให้จัด Training" (บันทึกผลอบรมทีละกลุ่มอยู่ที่หน้า Bookings)
         </div>
-        <button
-          onClick={() => navigate("/certifications/bulk-add")}
-          className="w-full shrink-0 cursor-pointer whitespace-nowrap rounded-lg border-none bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-blue-700 sm:w-auto"
-        >
-          + Bulk Add Certification
-        </button>
       </div>
 
       {/* ════════ Filters ════════ */}
-      <div className={`${CARD} mb-4 px-4 py-3.5`}>
-        <div className="mb-3 text-[13px] font-bold text-gray-900">
-          🔍 Search &amp; Filter
-        </div>
+      <div className="mb-4 border-y border-gray-200 py-3">
         <div className="flex flex-wrap gap-3 sm:gap-4">
           {/* ชื่อ training บางตัวยาวมาก → ให้ช่องนี้กว้างที่สุดในแถว */}
           <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[960px] sm:flex-[2_1_640px]">
@@ -439,7 +398,7 @@ export default function Certifications() {
                 <div
                   key={c.key}
                   onClick={() => setStatusFilter(active ? "all" : c.key)}
-                  className={`${CARD} cursor-pointer px-3.5 py-2.5 transition-shadow hover:shadow-md ${
+                  className={`${STAT_TILE} cursor-pointer px-3.5 py-2.5 transition-shadow hover:shadow-md ${
                     active ? `ring-2 ${c.ring}` : ""
                   }`}
                 >
@@ -456,17 +415,17 @@ export default function Certifications() {
 
           {/* ════════ Request Training bar ════════ */}
           {canRequestTraining && selectedEmployeeIds.length > 0 && (
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-[#ffe69c] bg-[#fff3cd] px-4 py-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#ffe69c] bg-[#fff3cd] px-4 py-2.5">
               <span className="text-[13px] text-[#664d03]">
                 เลือกไว้ <strong>{selectedEmployeeIds.length}</strong> คน สำหรับ
                 training นี้
               </span>
+              {/* เปิดการ์ด Request training ที่กรอกหลักสูตร + คนไว้ให้แล้ว — ใส่วันที่ / สถานที่ต่อได้ */}
               <button
-                onClick={handleRequestTraining}
-                disabled={requesting}
-                className="cursor-pointer rounded-lg border-none bg-[#664d03] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#523e02] disabled:cursor-not-allowed disabled:opacity-70"
+                onClick={() => setRequestOpen(true)}
+                className="cursor-pointer rounded-lg border-none bg-[#664d03] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#523e02]"
               >
-                {requesting ? "กำลังส่ง..." : "📢 แจ้ง HR ให้จัด Training"}
+                📢 แจ้ง HR ให้จัด Training
               </button>
             </div>
           )}
@@ -480,10 +439,10 @@ export default function Certifications() {
           )}
 
           {/* ════════ Worker list ════════ */}
-          <div className={`${CARD} overflow-hidden`}>
+          <div className="border-t border-gray-200">
             {/* ── ต่ำกว่า lg: การ์ด ── */}
             <div className="lg:hidden">
-              <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-2.5 text-[13px]">
+              <div className="flex items-center justify-between gap-2 border-b border-gray-200 py-2.5 text-[13px]">
                 {canRequestTraining ? (
                   <label className="flex cursor-pointer items-center gap-2 text-gray-700">
                     <input
@@ -507,7 +466,7 @@ export default function Certifications() {
                   ไม่พบ worker ตามเงื่อนไขที่เลือก
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2.5 py-3 md:grid-cols-2">
                   {filteredWorkers.map((w) => (
                     <label
                       key={w.employeeId}
@@ -575,7 +534,7 @@ export default function Certifications() {
             <div className="hidden overflow-x-auto lg:block">
               <table className="w-full border-collapse text-[13px]">
                 <thead>
-                  <tr className="border-b border-gray-200">
+                  <tr className="border-b border-gray-200 bg-gray-50">
                     {canRequestTraining && (
                       <th className="w-9 px-3.5 py-2.5">
                         <input
@@ -673,6 +632,20 @@ export default function Certifications() {
         </>
       ) : (
         placeholderBox("โหลดข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง")
+      )}
+
+      {requestOpen && selectedTraining && (
+        <RequestBookingModal
+          type="training"
+          initialCourseId={selectedTraining.value}
+          initialEmployeeIds={selectedEmployeeIds}
+          onClose={() => setRequestOpen(false)}
+          onSent={(n) => {
+            setRequestOpen(false);
+            setSelectedEmployeeIds([]);
+            alert(`แจ้ง HR ให้จัด training ให้ ${n} คนแล้ว — ดูสถานะที่ Training Bookings`);
+          }}
+        />
       )}
     </div>
   );

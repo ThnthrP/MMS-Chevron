@@ -1330,6 +1330,12 @@ model TrainingRequestBatch {
   requestedById String?
   status        String   @default("pending")
   requestedBy   User?    @relation(fields: [requestedById], references: [id])
+
+  requestedStart DateTime? // วันที่ผู้ขอต้องการ (จาก)
+  requestedEnd   DateTime? // วันที่ผู้ขอต้องการ (ถึง)
+  provider       String?   // ศูนย์อบรม / โรงพยาบาล ที่ผู้ขอระบุ
+  remarks        String?   // หมายเหตุจากผู้ขอ
+
   items         TrainingRequestItem[]
   createdAt     DateTime @default(now())
 }
@@ -1343,6 +1349,14 @@ model TrainingRequestItem {
   globalTrainingId String
   globalTraining   GlobalTraining @relation(fields: [globalTrainingId], references: [id])
   clientName       String? // snapshot ชื่อ client ตอนขอ
+
+  status            String    @default("pending") // pending | confirmed | rejected (HR ตัดสินรายคน)
+  confirmedStart    DateTime? // วันที่ HR ยืนยันกับศูนย์อบรม / โรงพยาบาล
+  confirmedEnd      DateTime?
+  confirmedProvider String?
+  hrNote            String?   // หมายเหตุจาก HR เช่น "Seat confirmed, report 07:30"
+  decidedAt         DateTime?
+  decidedByName     String?   // snapshot ชื่อ HR ที่ตัดสิน
 
   @@index([batchId])
 }
@@ -1381,6 +1395,12 @@ model MedicalRequestBatch {
   requestedById String?
   status        String   @default("pending")
   requestedBy   User?    @relation(fields: [requestedById], references: [id])
+
+  requestedStart DateTime? // วันที่ผู้ขอต้องการ (จาก)
+  requestedEnd   DateTime? // วันที่ผู้ขอต้องการ (ถึง)
+  provider       String?   // ศูนย์อบรม / โรงพยาบาล ที่ผู้ขอระบุ
+  remarks        String?   // หมายเหตุจากผู้ขอ
+
   items         MedicalRequestItem[]
   createdAt     DateTime @default(now())
 }
@@ -1394,6 +1414,14 @@ model MedicalRequestItem {
   checkType  String?  // "Medical Check up" (default) — เผื่ออนาคตแยก Confined Space ได้
   clientName String?  // snapshot ชื่อ client ตอนขอ
   reason     String?  // snapshot สถานะตอนขอ: "overdue" / "no_record" / "due_soon"
+
+  status            String    @default("pending") // pending | confirmed | rejected (HR ตัดสินรายคน)
+  confirmedStart    DateTime? // วันที่ HR ยืนยันกับศูนย์อบรม / โรงพยาบาล
+  confirmedEnd      DateTime?
+  confirmedProvider String?
+  hrNote            String?   // หมายเหตุจาก HR เช่น "Seat confirmed, report 07:30"
+  decidedAt         DateTime?
+  decidedByName     String?   // snapshot ชื่อ HR ที่ตัดสิน
 
   @@index([batchId])
 }

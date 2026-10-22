@@ -3,340 +3,285 @@
 // Experteam Manpower Management System (MMS) - Production Ready
 // ============================================================
 //
-// ── Role scheme (9 roles ปัจจุบันในระบบ) ──
-//   admin
-//   project_engineer          (เดิม: pe)
-//   manpower_supply           (เดิม: manpower)
-//   hr_supervisor
-//   personal_record_officer
-//   hr_officer                (เดิม: hr — แทนที่ด้วย 3 ตำแหน่ง HR ข้างบนทั้งหมด)
-//   safety_manager
-//   safety_officer            (เดิม: safety)
-//   training_officer          (เดิม: ta)
+// เมนูจัดตาม flow ISO / โปรแกรมตัวอย่างของลูกค้า แบ่ง section ตามช่วงของ flow:
+//   OVERVIEW      My Dashboard · Manpower Calendar
+//   REQUIREMENTS  Manpower Requirements · Assign Names            (ISO 1–2)
+//   MOBILIZATION  Training Bookings · Medical Bookings · Worker Schedule             (ISO 3–11)
+//   WORKFORCE     Worker Pool
+//   SETTINGS      Projects & Positions
+//   ADMIN         Users & Roles · Audit Log · Data Import (admin เท่านั้น)
 //
-// role อื่นที่เคยมี (pe_head, nurse, bd, expert, supervisor, executive,
-// manager) ถูกลบออกจากระบบแล้ว — เอา string เหล่านี้ออกจากทุก array
+// 1 เมนู = หลายหน้าเดิมได้ (tabs) — แสดงเป็นแท็บด้านบนของหน้า (MenuTabs.jsx)
+// URL ของทุกหน้ายังเหมือนเดิม → ลิงก์ในแจ้งเตือน / bookmark เดิมใช้ได้ต่อ
+//
+// สิทธิ์: กำหนดที่ tab — เมนูจะแสดงถ้ามีอย่างน้อย 1 tab ที่ role เข้าได้
+// และกดเมนูแล้วไปที่ tab แรกที่ role นั้นเข้าได้
+// ⚠ enforcement จริงอยู่ที่ allowRoles ใน AppRouter.jsx — ต้อง sync กันเสมอ
+//
+// ── Role scheme (9 roles ปัจจุบันในระบบ) ──
+//   admin, project_engineer, manpower_supply, hr_supervisor,
+//   personal_record_officer, hr_officer, safety_manager, safety_officer,
+//   training_officer
 // ============================================================
 
+import {
+  LayoutDashboard,
+  CalendarRange,
+  ClipboardList,
+  UserPlus,
+  GraduationCap,
+  Stethoscope,
+  Ship,
+  Users,
+  Settings2,
+  ShieldCheck,
+  History,
+  Upload,
+} from "lucide-react";
+
+// ── ชุด role ที่ใช้ซ้ำ (ตรงกับ allowRoles ใน AppRouter.jsx) ──
+const HR_CORE = [
+  "admin",
+  "manpower_supply",
+  "hr_supervisor",
+  "personal_record_officer",
+  "hr_officer",
+  "training_officer",
+];
+
+const R = {
+  dashboard: [...HR_CORE, "safety_manager", "safety_officer"],
+  compliance: [...HR_CORE, "safety_manager"],
+  reports: HR_CORE,
+  projects: [...HR_CORE, "project_engineer", "safety_manager"],
+  allocation: [...HR_CORE, "project_engineer", "safety_manager"],
+  peApprovals: [...HR_CORE, "project_engineer"],
+  projectsOverview: [...HR_CORE, "project_engineer"],
+  workers: [...HR_CORE, "safety_manager"],
+  mobilization: [
+    ...HR_CORE,
+    "project_engineer",
+    "safety_manager",
+    "safety_officer",
+  ],
+  review: [...HR_CORE, "project_engineer"],
+  requests: HR_CORE,
+  certifications: [...HR_CORE, "safety_manager"],
+  settings: HR_CORE,
+  admin: ["admin"],
+};
+
+// item: { name, icon (lucide-react), tabs, badge? }
+// tab: { name, path, roles, prefixes? }
+//   prefixes = หน้าลูกที่ถือว่าอยู่ใต้ tab นี้ (เช่น /workers/:id) — ใช้ไฮไลต์เมนู
 export const APP_MENU = [
+  // ── ภาพรวม: ดูสถานะทั้งหมด (ISO: "ตรวจ My Dashboard" + "ตรวจวันว่างใน Manpower Calendar") ──
   {
-    section: "MAIN",
+    section: "OVERVIEW",
     items: [
       {
-        name: "Dashboard",
-        path: "/",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "safety_manager",
-          "safety_officer",
-          "training_officer",
-        ],
-      },
-    ],
-  },
-
-  // ========================================================
-  // WORKFORCE: ข้อมูลกำลังพล (รายคน)
-  // ========================================================
-  {
-    section: "WORKFORCE",
-    items: [
-      {
-        name: "Workers",
-        path: "/workers",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "safety_manager", // ← ตามเอกสารอนุมัติ: "การเข้าถึงหน้าข้อมูลพนักงานทั้งหมด"
-          "training_officer",
-        ],
-      },
-      {
-        name: "Add Worker",
-        path: "/workers/add",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
-        ],
-      },
-    ],
-  },
-
-  // ========================================================
-  // COMPLIANCE: ใบรับรอง/ผลตรวจแพทย์ (งานดู/ใช้รายวัน)
-  // ========================================================
-  {
-    section: "COMPLIANCE",
-    items: [
-      {
-        name: "Training Matrix",
-        path: "/training-matrix",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
-        ],
-      },
-      {
-        name: "Compliance Center",
-        path: "/compliance",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "safety_manager",
-          "training_officer",
+        name: "My Dashboard",
+        icon: LayoutDashboard,
+        tabs: [
+          { name: "Overview", path: "/", roles: R.dashboard },
+          { name: "Compliance", path: "/compliance", roles: R.compliance },
+          { name: "Reports", path: "/reports", roles: R.reports },
         ],
         badge: true,
       },
       {
-        name: "Certifications",
-        path: "/certifications",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "safety_manager",
-          "training_officer",
-        ],
-      },
-      {
-        name: "Requests", // ชื่อเต็มที่หัวเพจ: Requests for Training & Medical (เดิม: Requests from MP)
-        path: "/requests-history",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
+        name: "Manpower Calendar",
+        icon: CalendarRange,
+        tabs: [
+          {
+            name: "Manpower Calendar",
+            path: "/projects-overview",
+            roles: R.projectsOverview,
+            prefixes: ["/projects-overview/"],
+          },
         ],
       },
     ],
   },
 
-  // ========================================================
-  // OPERATIONS: การดำเนินงานหน้างาน (ตั้งแต่เปิดโปรเจกต์ ยันส่งคนลงเรือ)
-  // ========================================================
+  // ── ISO ขั้น 1–2: ลูกค้าแจ้งความต้องการ → จัดรายชื่อ ──
   {
-    section: "OPERATIONS",
+    section: "REQUIREMENTS",
     items: [
       {
-        name: "Projects",
-        path: "/projects",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
-          "project_engineer",
-          "safety_manager", // ← ตามเอกสารอนุมัติ: "การเข้าถึงหน้าข้อมูล project request"
+        name: "Manpower Requirements",
+        icon: ClipboardList,
+        tabs: [
+          {
+            name: "Requirements",
+            path: "/projects",
+            roles: R.projects,
+            prefixes: ["/projects/"],
+          },
         ],
       },
       {
-        name: "Allocation",
-        path: "/allocation",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
-          "project_engineer",
-          "safety_manager", // ← ตามเอกสารอนุมัติ: "สรุปรายชื่อพนักงานเลือกลงงาน"
-        ],
-      },
-      {
-        name: "PE Approvals",
-        path: "/pe-approvals",
-        roles: [
-          "admin",
-          "project_engineer",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
-        ],
-      },
-      {
-        name: "Mobilization",
-        path: "/mobilization",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "project_engineer",
-          "safety_manager",
-          "safety_officer",
-          "training_officer",
-        ],
-      },
-      {
-        name: "Projects Overview",
-        path: "/projects-overview",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
-          "project_engineer",
+        name: "Assign Names",
+        icon: UserPlus,
+        tabs: [
+          { name: "Assign Names", path: "/allocation", roles: R.allocation },
+          { name: "PE Approvals", path: "/pe-approvals", roles: R.peApprovals },
         ],
       },
     ],
   },
 
-  // ========================================================
-  // REVIEW: ประวัติและการประเมินผลหลังจบงาน
-  // ========================================================
+  // ── ISO ขั้น 3–11: อบรม/ตรวจสุขภาพ → เตรียมตัว → ตรวจ Hangar → ลงงาน → รับกลับ → ประเมิน ──
   {
-    section: "REVIEW",
+    section: "MOBILIZATION",
     items: [
       {
-        name: "Post-Project Review",
-        path: "/review",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
-          "project_engineer",
+        name: "Training Bookings",
+        icon: GraduationCap,
+        tabs: [
+          {
+            name: "Bookings",
+            path: "/requests-history",
+            roles: R.requests,
+            prefixes: ["/training-requests/"],
+          },
+          {
+            name: "Training Courses",
+            path: "/certifications",
+            roles: R.certifications,
+            prefixes: ["/certifications/"],
+          },
+        ],
+      },
+      // Medical แยกเมนูจาก Training (โปรแกรมตัวอย่างไม่มี Medical — คนละ flow คนละคนดูแล)
+      {
+        name: "Medical Bookings",
+        icon: Stethoscope,
+        tabs: [
+          {
+            name: "Medical Bookings",
+            path: "/medical-bookings",
+            roles: R.requests,
+            prefixes: ["/medical-requests/"],
+          },
+        ],
+      },
+      {
+        name: "Worker Schedule",
+        icon: Ship,
+        tabs: [
+          { name: "Mobilization", path: "/mobilization", roles: R.mobilization },
+          { name: "Post-Project Review", path: "/review", roles: R.review },
         ],
       },
     ],
   },
 
-  // ========================================================
-  // REPORTS: รายงานภาพรวม
-  // ========================================================
+  // ── ข้อมูลพนักงาน ──
   {
-    section: "REPORTS",
+    section: "WORKFORCE",
     items: [
       {
-        name: "Analytics & Reports",
-        path: "/reports",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
+        name: "Worker Pool",
+        icon: Users,
+        tabs: [
+          {
+            name: "Workers",
+            path: "/workers",
+            roles: R.workers,
+            prefixes: ["/workers/"], // รวม /workers/add, /workers/:id, /workers/:id/edit
+          },
         ],
       },
     ],
   },
 
-  // ========================================================
-  // SETTINGS: master data / config — เซ็ตตอนเริ่ม, นานๆ แก้ที
-  // ========================================================
+  // ── ข้อมูลตั้งต้น: เซ็ตตอนเริ่ม นานๆ แก้ที ──
   {
     section: "SETTINGS",
     items: [
       {
-        name: "Manage Positions",
-        path: "/positions",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
-        ],
-      },
-      {
-        name: "Manage Departments",
-        path: "/divisions",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
-        ],
-      },
-      {
-        name: "Manage Trainings",
-        path: "/trainings",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
-        ],
-      },
-      {
-        name: "Matrix Editor",
-        path: "/positions/matrix",
-        roles: [
-          "admin",
-          "manpower_supply",
-          "hr_supervisor",
-          "personal_record_officer",
-          "hr_officer",
-          "training_officer",
+        name: "Projects & Positions",
+        icon: Settings2,
+        tabs: [
+          { name: "Positions", path: "/positions", roles: R.settings },
+          {
+            name: "Training Matrix",
+            path: "/training-matrix",
+            roles: R.settings,
+          },
+          {
+            name: "Matrix Editor",
+            path: "/positions/matrix",
+            roles: R.settings,
+          },
+          { name: "Trainings", path: "/trainings", roles: R.settings },
+          { name: "Departments", path: "/divisions", roles: R.settings },
         ],
       },
     ],
   },
 
-  // ========================================================
-  // SYSTEM: จัดการระบบ/ผู้ใช้ (admin only)
-  // ========================================================
+  // ── ADMIN: เครื่องมือผู้ดูแลระบบ — ไม่อยู่ใน flow งานปกติ ──
   {
-    section: "SYSTEM",
+    section: "ADMIN",
     items: [
       {
-        name: "User Management",
-        path: "/users",
-        roles: ["admin"],
-      },
-      {
-        name: "Bulk Set PIN",
-        path: "/workers/bulk-set-pin",
-        roles: ["admin"],
+        name: "Users & Roles",
+        icon: ShieldCheck,
+        tabs: [
+          { name: "Users", path: "/users", roles: R.admin },
+          {
+            name: "Bulk Set PIN",
+            path: "/workers/bulk-set-pin",
+            roles: R.admin,
+          },
+        ],
       },
       {
         name: "Audit Log",
-        path: "/audit-logs",
-        roles: ["admin"],
+        icon: History,
+        tabs: [{ name: "Audit Log", path: "/audit-logs", roles: R.admin }],
       },
       {
         name: "Data Import",
-        path: "/data-import",
-        roles: ["admin"],
+        icon: Upload,
+        tabs: [{ name: "Data Import", path: "/data-import", roles: R.admin }],
       },
     ],
   },
 ];
+
+// ══════════════════════════════════════════════════════════
+// helpers — ใช้ร่วมกันใน Sidebar.jsx และ MenuTabs.jsx
+// ══════════════════════════════════════════════════════════
+
+// role ทั้งหมดของ user (role หลัก + role เสริม ถ้ามี)
+export const userRoleNames = (user) =>
+  Array.isArray(user?.roleNames)
+    ? user.roleNames
+    : [user?.role?.name, ...(user?.extraRoles || []).map((r) => r?.name)].filter(
+        Boolean,
+      );
+
+export const canSee = (roles, user) =>
+  !roles || userRoleNames(user).some((r) => roles.includes(r));
+
+// tab ที่ user เข้าได้ของเมนูนั้น
+export const visibleTabs = (item, user) =>
+  item.tabs.filter((t) => canSee(t.roles, user));
+
+// หา { item, tab } ของ path ปัจจุบัน — ตรงตัวก่อน แล้วค่อยดู prefixes
+// (กัน /workers/bulk-set-pin ไปตกที่ Worker Pool เพราะ prefix /workers/)
+export const findMenuEntry = (pathname) => {
+  const all = APP_MENU.flatMap((g) =>
+    g.items.flatMap((item) => item.tabs.map((tab) => ({ item, tab }))),
+  );
+  return (
+    all.find(({ tab }) => tab.path === pathname) ||
+    all.find(({ tab }) =>
+      (tab.prefixes || []).some((p) => pathname.startsWith(p)),
+    ) ||
+    null
+  );
+};

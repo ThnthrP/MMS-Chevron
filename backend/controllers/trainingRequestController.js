@@ -8,21 +8,36 @@ const TRAINING_REQUEST_NOTIFY_ROLES = [
   "training_officer",
 ];
 
+const fmtDay = (d) =>
+  d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : null;
+
+// POST /api/training-requests
+// body: { items: [{ employeeId, globalTrainingId, clientName }], requestedStart?, requestedEnd?, provider?, remarks? }
 export async function createBatch(req, res) {
   try {
-    const { items } = req.body;
+    const { items, requestedStart, requestedEnd, provider, remarks } = req.body;
     if (!items?.length) {
       return res.status(400).json({ message: "items are required" });
     }
     const { batch, employeeCount, trainingCount } = await service.createBatch(
       req.user.id,
       items,
+      { requestedStart, requestedEnd, provider, remarks },
     );
 
+    const when = [fmtDay(batch.requestedStart), fmtDay(batch.requestedEnd)]
+      .filter(Boolean)
+      .join("–");
     const payload = {
       type: "training_request_batch",
-      title: "MP ขอให้จัด Training (หลายรายการ)",
-      message: `${employeeCount} คน • ${trainingCount} training`,
+      title: "มีคำขอจัด Training ใหม่",
+      message: [
+        `${employeeCount} คน • ${trainingCount} training`,
+        when,
+        batch.provider,
+      ]
+        .filter(Boolean)
+        .join(" • "),
       link: `/training-requests/${batch.id}`,
     };
 
@@ -40,8 +55,6 @@ export async function createBatch(req, res) {
     res.status(500).json({ message: error.message });
   }
 }
-
-// ...ส่วนอื่นเหมือนเดิมทุกอย่าง...
 
 export async function getBatch(req, res) {
   try {
@@ -74,5 +87,33 @@ export async function updateStatus(req, res) {
   } catch (error) {
     console.error(error);
     res.status(error.status || 500).json({ message: error.message });
+  }
+}
+
+// PATCH /api/training-requests/:id/items — HR ยืนยัน / ปฏิเสธ รายคน
+export async function decideItems(req, res) {
+  try {
+    const data = await service.decideItems(req.params.id, req.body, req.user);
+    res.json(data);
+  } catch (error) {
+    if (!error.status) console.error(error);
+    res.status(error.status || 500).json({ message: error.message });
+  }
+}
+
+// GET /api/training-requests/availability?start=&end=&globalTrainingId=&employeeIds=a,b
+export async function getAvailability(req, res) {
+  try {
+    const { start, end, globalTrainingId, employeeIds } = req.query;
+    const data = await service.getAvailability({
+      start,
+      end,
+      globalTrainingId,
+      employeeIds: employeeIds ? String(employeeIds).split(",") : undefined,
+    });
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
   }
 }

@@ -6,28 +6,24 @@ import requireRole from "../middleware/requireRole.js";
 const router = express.Router();
 router.use(userAuth);
 
+const REQUESTER_ROLES = [
+  "admin",
+  "manpower_supply",
+  "hr_supervisor",
+  "personal_record_officer",
+  "hr_officer",
+  "project_engineer",
+  "safety_manager",
+];
+const HR_ROLES = ["admin", "hr_officer", "hr_supervisor"];
+
 router.get("/:id", controller.getBatch);
 
-router.post(
-  "/",
-  requireRole(
-    "admin",
-    "manpower_supply",
-    "hr_supervisor",
-    "personal_record_officer",
-    "hr_officer",
-    "project_engineer",
-    "safety_manager",
-  ),
-  controller.createBatch,
-);
+router.post("/", requireRole(...REQUESTER_ROLES), controller.createBatch);
 
-router.get("/", requireRole("admin", "hr_officer"), controller.getAllBatches);
+router.get("/", requireRole(...HR_ROLES), controller.getAllBatches);
 
-router.patch(
-  "/:id",
-  requireRole("admin", "hr_officer"),
-  controller.updateStatus,
-);
+router.patch("/:id", requireRole(...HR_ROLES), controller.updateStatus);
+router.patch("/:id/items", requireRole(...HR_ROLES), controller.decideItems);
 
 export default router;

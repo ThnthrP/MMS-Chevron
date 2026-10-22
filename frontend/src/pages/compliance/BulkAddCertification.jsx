@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
@@ -7,10 +7,10 @@ import { AppContent } from "../../context/AppContext";
 // ══════════════════════════════════════════════════════════
 // constants
 // ══════════════════════════════════════════════════════════
-const CARD =
-  "mb-6 overflow-hidden rounded-[10px] border border-gray-200 bg-white";
-const CARD_HEADER =
-  "flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3.5 text-sm font-bold sm:px-5";
+// ไม่ห่อเป็น card แล้ว — แต่ละขั้นคั่นด้วยเส้น (พื้นเนื้อหาเป็นสีขาว)
+const SECTION = "border-t border-gray-200 py-4";
+const SECTION_HEADER =
+  "mb-3 flex flex-wrap items-center justify-between gap-2 text-sm font-bold";
 const LABEL =
   "mb-1.5 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
 // ไม่ใส่สีกรอบไว้ในตัว — ใส่ตอนใช้ (กัน class ชนกันแบบหน้า AdminUsers)
@@ -59,6 +59,13 @@ function ExistingBadge() {
 export default function BulkAddCertification() {
   const { backendUrl } = useContext(AppContent);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // เปิดจากคำขอที่ HR ยืนยันแล้ว: ?trainingId=&empIds=a,b&issued=YYYY-MM-DD → เลือกไว้ให้เลย
+  const prefillRef = useRef({
+    trainingId: searchParams.get("trainingId"),
+    empIds: (searchParams.get("empIds") || "").split(",").filter(Boolean),
+    issued: searchParams.get("issued") || "",
+  });
 
   // ── Step 1 ──
   const [trainingOptions, setTrainingOptions] = useState([]);
@@ -90,14 +97,19 @@ export default function BulkAddCertification() {
   useEffect(() => {
     axios
       .get(`${backendUrl}/api/trainings/global`, { withCredentials: true })
-      .then((res) =>
-        setTrainingOptions(
-          (res.data || []).map((t) => ({
-            value: t.id,
-            label: `${t.name}${t.fullName ? ` - ${t.fullName}` : ""}`,
-          })),
-        ),
-      )
+      .then((res) => {
+        const opts = (res.data || []).map((t) => ({
+          value: t.id,
+          label: `${t.name}${t.fullName ? ` - ${t.fullName}` : ""}`,
+        }));
+        setTrainingOptions(opts);
+        const pre = prefillRef.current;
+        if (pre.trainingId) {
+          const match = opts.find((o) => o.value === pre.trainingId);
+          if (match) setSelectedTraining(match);
+          if (pre.issued) setIssuedDate(pre.issued);
+        }
+      })
       .catch((err) => console.error(err));
   }, [backendUrl]);
 
@@ -149,7 +161,13 @@ export default function BulkAddCertification() {
 
   useEffect(() => {
     loadExisting(selectedTraining?.value);
-    setSelectedEmployeeIds([]);
+    const pre = prefillRef.current;
+    if (pre.trainingId && pre.trainingId === selectedTraining?.value) {
+      setSelectedEmployeeIds(pre.empIds); // เลือกคนจากคำขอไว้ให้ (ครั้งเดียว)
+      prefillRef.current = { trainingId: null, empIds: [], issued: "" };
+    } else {
+      setSelectedEmployeeIds([]);
+    }
     setResultMsg(null);
   }, [selectedTraining, loadExisting]);
 
@@ -332,26 +350,23 @@ export default function BulkAddCertification() {
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
-      <div
-        className={`${CARD} flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6`}
-      >
-        <div>
-          <div className="flex items-center gap-2.5">
-            <span className="text-xl">📋</span>
-            <span className="text-lg font-bold">Bulk Add Certification</span>
-          </div>
-          <div className="mt-1 text-[13px] text-gray-500">
-            เพิ่ม certification เดียวกันให้พนักงานหลายคนพร้อมกัน (เช่น
-            อบรมรอบเดียวกัน)
+      <div className="flex flex-col gap-2 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={() => navigate("/requests-history")}
+            disabled={applying}
+            className="mb-1 cursor-pointer border-none bg-transparent p-0 text-[13px] text-gray-500 hover:text-gray-800 disabled:cursor-not-allowed"
+          >
+            ← Training Bookings
+          </button>
+          <h1 className="m-0 text-lg font-bold">
+            บันทึกผลอบรม (Bulk Add Certification)
+          </h1>
+          <div className="text-xs text-gray-500">
+            อบรมรอบเดียวกันเสร็จแล้ว → เพิ่ม certification ให้พนักงานทั้งกลุ่มทีเดียว
           </div>
         </div>
-        <button
-          onClick={() => navigate("/certifications")}
-          disabled={applying}
-          className="shrink-0 cursor-pointer self-start rounded-lg border border-gray-200 bg-white px-4 py-[7px] text-[13px] hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
-        >
-          ← Back
-        </button>
       </div>
 
       {resultMsg && (
@@ -367,14 +382,14 @@ export default function BulkAddCertification() {
       )}
 
       {/* ════════ Step 1 ════════ */}
-      <div className={CARD}>
-        <div className={CARD_HEADER}>
+      <div className={SECTION}>
+        <div className={SECTION_HEADER}>
           <span className="flex items-center">
             <StepBadge n={1} />
             เลือก Training / Certification
           </span>
         </div>
-        <div className="p-4 sm:p-5">
+        <div>
           <div className="mb-4">
             <label className={LABEL}>Training / Certification *</label>
             <Select
@@ -471,8 +486,8 @@ export default function BulkAddCertification() {
 
       {/* ════════ Step 2 ════════ */}
       {selectedTraining && (
-        <div className={CARD}>
-          <div className={CARD_HEADER}>
+        <div className={SECTION}>
+          <div className={SECTION_HEADER}>
             <span className="flex items-center">
               <StepBadge n={2} />
               เลือกพนักงานที่ไปอบรมชุดนี้
@@ -485,7 +500,7 @@ export default function BulkAddCertification() {
               </span>
             )}
           </div>
-          <div className="p-4 sm:p-5">
+          <div>
             {/* Filters */}
             <div className="mb-3 flex flex-col gap-2.5 md:flex-row md:flex-wrap">
               <input
@@ -552,7 +567,7 @@ export default function BulkAddCertification() {
                 Loading employees...
               </div>
             ) : (
-              <div className="max-h-[480px] overflow-y-auto rounded-lg border border-gray-100">
+              <div className="max-h-[480px] overflow-y-auto border-y border-gray-200">
                 <table className="w-full border-collapse text-[13px]">
                   <thead>
                     <tr>
@@ -658,7 +673,7 @@ export default function BulkAddCertification() {
 
       {/* ════════ Sticky Apply bar — ชิดขอบล่างจอ (แบบเดียวกับ AddWorker / EditWorker) ════════ */}
       {selectedTraining && (
-        <div className="sticky bottom-0 z-20 -mx-4 mt-4 overflow-hidden border-t border-gray-200 bg-white/95 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur sm:mx-0 sm:rounded-t-[10px] sm:border-x">
+        <div className="sticky bottom-0 z-20 -mx-3 mt-2 overflow-hidden border-t border-gray-200 bg-white/95 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur sm:-mx-5">
           {applying && (
             <div className="h-1 bg-gray-100">
               <div

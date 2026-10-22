@@ -5,6 +5,12 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
 import {
+  buildWorkerOptions,
+  filterWorkerOption,
+  nameTH,
+  workerLabel,
+} from "../../utils/workerSearch";
+import {
   PrintModal,
   ResumePage,
   SkillMatrixTable,
@@ -48,10 +54,6 @@ const EXCEPTION_REASONS = [
 // ══════════════════════════════════════════════════════════
 // Tailwind class ที่ใช้ซ้ำ
 // ══════════════════════════════════════════════════════════
-const CARD = "overflow-hidden rounded-[10px] border border-gray-200 bg-white";
-const CARD_HEAD =
-  "border-b border-gray-200 px-4 py-2.5 text-sm font-bold sm:px-5";
-const CARD_BODY = "px-4 py-3.5 sm:px-5";
 const LABEL =
   "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
 // z-index กำหนดแยกต่อหัวคอลัมน์ใน WorkerTable (หัวที่ตรึงซ้ายต้องอยู่บนสุด)
@@ -77,8 +79,6 @@ const BTN_GREEN =
   "cursor-pointer rounded-lg border-none bg-[#198754] font-semibold text-white hover:bg-[#157347] disabled:cursor-not-allowed disabled:opacity-60";
 const LINK_TEXT =
   "cursor-pointer border-none bg-transparent p-0 font-semibold text-blue-600 hover:underline";
-const EXPORT_BTN =
-  "flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border-none bg-white py-[9px] text-[13px] font-semibold text-blue-600 shadow-[0_1px_3px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.08)] transition-all hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(0,0,0,0.18),0_2px_3px_rgba(0,0,0,0.1)] disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400 disabled:shadow-none disabled:hover:translate-y-0";
 const DASH = <span className="text-gray-400">—</span>;
 
 // ── สี badge ──
@@ -193,9 +193,6 @@ const matchColor = (pct) =>
     : pct >= 70
       ? "text-[#cc8400]"
       : "text-[#dc3545]";
-
-const workerLabel = (w) =>
-  w.empId ? `${w.empId} : ${w.fullName}` : w.fullName;
 
 // ══════════════════════════════════════════════════════════
 // small components (อยู่นอก Allocation — ไม่ถูกสร้างใหม่ทุก render)
@@ -345,15 +342,22 @@ const COLUMNS = [
   ["MEDICAL", "text-left", "w-[16%]"],
 ];
 
-function WorkerTable({ leadHeader, children }) {
+// withAction = เพิ่มคอลัมน์ปุ่ม "+ เพิ่ม" ท้ายแถว
+function WorkerTable({
+  leadHeader,
+  withAction = false,
+  maxH = "max-h-[560px]",
+  children,
+}) {
   return (
-    <div className="max-h-[560px] overflow-auto">
-      <table className="w-full min-w-[760px] table-fixed border-collapse text-[13px]">
+    <div className={`${maxH} overflow-auto`}>
+      <table className="w-full min-w-[840px] table-fixed border-collapse text-[13px]">
         <colgroup>
           <col className="w-9" />
           {COLUMNS.map(([h, , w]) => (
             <col key={h} className={w} />
           ))}
+          {withAction && <col className="w-[84px]" />}
         </colgroup>
         <thead>
           <tr>
@@ -368,6 +372,7 @@ function WorkerTable({ leadHeader, children }) {
                 {h}
               </th>
             ))}
+            {withAction && <th className={`${TH} z-[1]`} />}
           </tr>
         </thead>
         <tbody>{children}</tbody>
@@ -379,7 +384,7 @@ function WorkerTable({ leadHeader, children }) {
 function EmptyRow({ children }) {
   return (
     <tr>
-      <td colSpan={7} className="p-10 text-center text-[13px] text-gray-500">
+      <td colSpan={8} className="p-10 text-center text-[13px] text-gray-500">
         {children}
       </td>
     </tr>
@@ -418,6 +423,9 @@ function NameCell({ w, info, dim, onViewGap }) {
             </MiniTag>
           )}
         </div>
+        {nameTH(w) && (
+          <div className="text-xs text-gray-600">{nameTH(w)}</div>
+        )}
         <div className="text-[11px] text-gray-500">
           {w.empId}
           {w.position?.name ? ` · ${w.position.name}` : ""}
@@ -430,6 +438,29 @@ function NameCell({ w, info, dim, onViewGap }) {
           </div>
         )}
       </div>
+    </td>
+  );
+}
+
+// ปุ่ม "+ เพิ่ม" ท้ายแถว — กดได้เฉพาะคนที่ % Match ครบ / PE อนุมัติแล้ว และไม่ถูกแบน
+function AddCell({ enabled, busy, onAdd }) {
+  return (
+    <td className={`${TD} text-center`}>
+      {enabled ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAdd();
+          }}
+          disabled={busy}
+          className="cursor-pointer whitespace-nowrap rounded-md border border-[#198754] bg-white px-2.5 py-1 text-xs font-semibold text-[#198754] hover:bg-[#198754] hover:text-white disabled:cursor-wait disabled:opacity-50"
+        >
+          + เพิ่ม
+        </button>
+      ) : (
+        DASH
+      )}
     </td>
   );
 }
@@ -749,6 +780,11 @@ export default function Allocation() {
     "",
   );
   const [allPositions, setAllPositions] = useState([]);
+  // รายการตำแหน่งด้านซ้าย: ปิด = แสดงเฉพาะตำแหน่งที่ยังต้องทำอะไรต่อ
+  const [showAllPositions, setShowAllPositions] = useStickyState(
+    "alloc_showAllPositions",
+    false,
+  );
 
   // ── Matching workers ──
   const [workers, setWorkers] = useState([]);
@@ -762,7 +798,6 @@ export default function Allocation() {
 
   // ── Quick search (ค้นหา Worker คนใดก็ได้) ──
   const [allWorkers, setAllWorkers] = useState([]);
-  const [quickSearchOpen, setQuickSearchOpen] = useState(false);
   const [quickPickedWorkers, setQuickPickedWorkers] = useState([]);
   const [quickMatchResults, setQuickMatchResults] = useState({});
   const [loadingQuickMatch, setLoadingQuickMatch] = useState(false);
@@ -1037,6 +1072,12 @@ export default function Allocation() {
         String(w.fullName || "")
           .toLowerCase()
           .includes(q) ||
+        String(w.fullNameTH || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(w.fullNameEN || "")
+          .toLowerCase()
+          .includes(q) ||
         String(w.empCode || "")
           .toLowerCase()
           .includes(q) ||
@@ -1061,14 +1102,6 @@ export default function Allocation() {
   const totalShortlisted = shortlist.reduce(
     (sum, r) => sum + (r.candidates?.length ?? 0),
     0,
-  );
-
-  // Step 9 มีอะไรให้แสดงไหม (shortlist หรือสถานะคำขอ PE)
-  const hasStep9Content = shortlist.some(
-    (r) =>
-      r.candidates?.length ||
-      r.peExceptions?.pending?.length ||
-      r.peExceptions?.rejected?.length,
   );
 
   const requestsWithCandidates = shortlist.filter(
@@ -1100,13 +1133,6 @@ export default function Allocation() {
     { pending: 0, approved: 0, rejected: 0 },
   );
 
-  const requestOptions =
-    selectedProject?.requests?.map((r) => ({
-      value: r.id,
-      label: `${r.position?.name} × ${r.quantity}`,
-      request: r,
-    })) ?? [];
-
   const projectOptions = projects.map((p) => {
     const codePart = p.masterProjectRecord?.projectCode
       ? `[${p.masterProjectRecord.projectCode}] `
@@ -1127,13 +1153,24 @@ export default function Allocation() {
     label: `${p.name}${p._count ? ` (${p._count.employees})` : ""}`,
   }));
 
-  const quickSearchOptions = useMemo(
-    () =>
-      [...allWorkers]
-        .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || ""))
-        .map((w) => ({ value: w.id, label: workerLabel(w), worker: w })),
-    [allWorkers],
-  );
+  // ค้นหา Worker คนใดก็ได้ — คนที่ตำแหน่งตรงกับตำแหน่งที่เลือกขึ้นก่อน
+  const requestPositionId = selectedRequest?.position?.id;
+  const quickSearchOptions = useMemo(() => {
+    const byId = new Map(allWorkers.map((w) => [w.id, w]));
+    const opts = buildWorkerOptions(allWorkers).map((o) => {
+      const worker = byId.get(o.value);
+      const posId = worker?.positionId ?? worker?.position?.id;
+      return {
+        ...o,
+        worker,
+        samePosition: !!requestPositionId && posId === requestPositionId,
+      };
+    });
+    return [
+      ...opts.filter((o) => o.samePosition),
+      ...opts.filter((o) => !o.samePosition),
+    ];
+  }, [allWorkers, requestPositionId]);
 
   const clientName = selectedProject?.contract?.client?.name;
 
@@ -1191,8 +1228,10 @@ export default function Allocation() {
         { requestId: selectedRequest.id, employeeIds: eligibleIds },
         { withCredentials: true },
       );
-      setSelectedWorkerIds([]);
-      setQuickPickedWorkers([]);
+      // เอาออกเฉพาะคนที่เพิ่มสำเร็จ (กด "+ เพิ่ม" ทีละคนได้ คนอื่นที่เลือกไว้ยังอยู่)
+      const added = new Set(eligibleIds);
+      setSelectedWorkerIds((prev) => prev.filter((id) => !added.has(id)));
+      setQuickPickedWorkers((prev) => prev.filter((p) => !added.has(p.id)));
       fetchShortlist(selectedProjectId);
       handleFindWorkers();
     } catch (error) {
@@ -1538,6 +1577,58 @@ export default function Allocation() {
   };
 
   // ===========================================================
+  // ตำแหน่ง (รายการด้านซ้าย)
+  // ===========================================================
+  const requestStats = (r) => {
+    const sl = shortlist.find((s) => s.requestId === r.id);
+    const cands = sl?.candidates ?? [];
+    const approved = cands.filter((c) => c.status === "approved").length;
+    const proposed = cands.length - approved;
+    const pendingPe = sl?.peExceptions?.pending?.length ?? 0;
+    const missing = Math.max(0, r.quantity - cands.length);
+    return {
+      approved,
+      proposed,
+      pendingPe,
+      missing,
+      needsAction: missing > 0 || proposed > 0 || pendingPe > 0,
+    };
+  };
+
+  const projectRequests = selectedProject?.requests ?? [];
+  const shownRequests = showAllPositions
+    ? projectRequests
+    : projectRequests.filter(
+        (r) => requestStats(r).needsAction || r.id === selectedRequest?.id,
+      );
+
+  const selectRequest = (req) => {
+    restoredRef.current = true; // กันโหลดซ้ำจาก effect restore
+    setSelectedRequest(req);
+    setSelectedRequestId(req ? req.id : "");
+    setPositionFilterId(req?.position?.id || "");
+    setWorkers([]);
+    setSelectedWorkerIds([]);
+    if (req) handleFindWorkers(req, selectedProject, req.position?.id);
+  };
+
+  // เลือกโปรเจกต์แล้วยังไม่ได้เลือกตำแหน่ง → เลือกตำแหน่งแรกที่ยังขาดคนให้เลย
+  const shortlistReady =
+    !loadingShortlist &&
+    shortlist.every((s) => projectRequests.some((r) => r.id === s.requestId));
+  useEffect(() => {
+    if (!selectedProject || selectedRequest || !shortlistReady) return;
+    // กำลัง restore ตำแหน่งเดิมจาก localStorage
+    if (projectRequests.some((r) => r.id === selectedRequestId)) return;
+    const first =
+      projectRequests.find((r) => requestStats(r).missing > 0) ||
+      projectRequests.find((r) => requestStats(r).needsAction) ||
+      projectRequests[0];
+    if (first) selectRequest(first);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject, selectedRequest, shortlistReady]);
+
+  // ===========================================================
   // Render helpers
   // ===========================================================
   const renderMedical = (info) => (
@@ -1568,368 +1659,403 @@ export default function Allocation() {
   // ===========================================================
   // Render
   // ===========================================================
+  // ── รายชื่อที่จัดแล้วของตำแหน่งที่เลือก (เดิมคือ Step 9 — ตอนนี้แสดงทีละตำแหน่ง) ──
+  const selectedShortlist = selectedRequest
+    ? shortlist.find((s) => s.requestId === selectedRequest.id)
+    : null;
+  const renderAssigned = (req) => {
+    if (!req) return null;
+    const pe = req.peExceptions ?? { pending: [], rejected: [] };
+    const all = req.candidates ?? [];
+    // คนที่ PE อนุมัติ → ไปหน้า Mobilization เลย ไม่แสดงในรายชื่อ
+    const peApproved = all.filter(
+      (c) => c.viaPeApproval && c.status === "approved",
+    );
+    const visible = all.filter(
+      (c) => !(c.viaPeApproval && c.status === "approved"),
+    );
+    const proposed = visible.filter((c) => c.status !== "approved");
+    const approved = visible.filter((c) => c.status === "approved");
+    const approvedOpen = !!approvedExpanded[req.requestId];
+
+    if (!all.length && !pe.pending.length && !pe.rejected.length)
+      return (
+        <div className="py-3 text-[13px] text-gray-400">
+          ยังไม่มีรายชื่อ — เพิ่มจาก Worker Pool ด้านล่าง
+        </div>
+      );
+
+    return (
+      <div className="grid grid-cols-1 gap-x-6 gap-y-2 xl:grid-cols-2">
+        {/* ซ้าย: รออนุมัติ (Proposed) + Approved */}
+        <div className="min-w-0">
+          {visible.length === 0 && (
+            <div className="py-2 text-[13px] text-gray-400">
+              ยังไม่มีรายชื่อที่จัดในตำแหน่งนี้
+            </div>
+          )}
+          {proposed.map((c) => (
+            <div
+              key={c.id}
+              className="mb-1.5 flex items-center justify-between gap-2 rounded-md border border-[#ffe69c] bg-[#fffdf5] px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold">
+                  {c.employee?.fullName}
+                </div>
+                <EmpMeta emp={c.employee} requestPositionId={req.position?.id} />
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <Pill tone="yellow">Proposed</Pill>
+                <button
+                  type="button"
+                  onClick={() => handleApprove([c.id], req.requestId)}
+                  title="Approve คนนี้"
+                  className="cursor-pointer whitespace-nowrap rounded-md border border-[#198754] bg-[#198754] px-2.5 py-[3px] text-[11px] font-semibold text-white hover:bg-[#157347]"
+                >
+                  ✓ Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveFromShortlist(c.id)}
+                  title="เอาออกจาก shortlist"
+                  className="cursor-pointer border-none bg-transparent px-0.5 text-sm leading-none text-gray-400 hover:text-[#dc3545]"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+          {proposed.length > 1 && (
+            <button
+              type="button"
+              onClick={() =>
+                handleApprove(
+                  proposed.map((c) => c.id),
+                  req.requestId,
+                )
+              }
+              className="mb-2 cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#198754] hover:underline"
+            >
+              ✓ Approve ทั้งหมด ({proposed.length})
+            </button>
+          )}
+
+          {approved.length > 0 && (
+            <div className="mt-1">
+              <button
+                type="button"
+                onClick={() =>
+                  setApprovedExpanded((prev) => ({
+                    ...prev,
+                    [req.requestId]: !prev[req.requestId],
+                  }))
+                }
+                className="inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-xs font-semibold text-[#198754]"
+              >
+                {approvedOpen ? "▾" : "▸"} ✓ Approved {approved.length} คน —{" "}
+                {approvedOpen ? "ซ่อนรายชื่อ" : "ดูรายชื่อ"}
+              </button>
+              {approvedOpen && (
+                <div className="mt-1.5">
+                  {approved.map((c) => (
+                    <div
+                      key={c.id}
+                      className="mb-1.5 flex items-center justify-between gap-2 rounded-md border border-[#badbcc] bg-[#f0fff4] px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-semibold">
+                          {c.employee?.fullName}
+                        </div>
+                        <EmpMeta
+                          emp={c.employee}
+                          requestPositionId={req.position?.id}
+                        />
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <Pill tone="green">✓ Approved</Pill>
+                        <button
+                          type="button"
+                          onClick={() => handleUnapprove([c.id], req.requestId)}
+                          title="ยกเลิก approve (กลับเป็น Proposed)"
+                          className="cursor-pointer border-none bg-transparent px-0.5 text-sm leading-none text-gray-400 hover:text-gray-700"
+                        >
+                          ↩
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ขวา: สถานะคำขอ PE (% Match ไม่ครบ) — แสดงให้รู้ ไม่มีปุ่มให้กด */}
+        {(pe.pending.length > 0 ||
+          peApproved.length > 0 ||
+          pe.rejected.length > 0) && (
+          <div className="min-w-0">
+            {pe.pending.length > 0 && (
+              <div className="mb-2 rounded-md bg-[#fff8e1] px-3 py-2 text-[#664d03]">
+                <div className="text-[11px] font-semibold">
+                  ⏳ รอ PE อนุมัติ {pe.pending.length} คน
+                </div>
+                {pe.pending.map((e) => (
+                  <PeRow
+                    key={e.employeeId}
+                    emp={e.employee}
+                    requestPositionId={req.position?.id}
+                    pct={e.matchPct}
+                  />
+                ))}
+              </div>
+            )}
+            {peApproved.length > 0 && (
+              <div className="mb-2 rounded-md bg-[#f0fff4] px-3 py-2 text-[#0f5132]">
+                <div className="text-[11px] font-semibold">
+                  🚀 PE อนุมัติ {peApproved.length} คน — อยู่ในหน้า Mobilization
+                  แล้ว
+                </div>
+                {peApproved.map((c) => (
+                  <PeRow
+                    key={c.id}
+                    emp={c.employee}
+                    requestPositionId={req.position?.id}
+                    pct={c.matchPct}
+                  />
+                ))}
+              </div>
+            )}
+            {pe.rejected.length > 0 && (
+              <div className="mb-2 rounded-md bg-[#fff5f5] px-3 py-2 text-[#842029]">
+                <div className="text-[11px] font-semibold">
+                  ✕ PE ไม่อนุมัติ {pe.rejected.length} คน
+                </div>
+                {pe.rejected.map((e) => (
+                  <PeRow
+                    key={e.employeeId}
+                    emp={e.employee}
+                    requestPositionId={req.position?.id}
+                    pct={e.matchPct}
+                    note={e.decisionNote}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const SECTION_HEAD =
+    "mb-2 flex flex-wrap items-center justify-between gap-2 text-[13px] font-bold text-gray-900";
+  const DOC_BTN =
+    "inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400 disabled:hover:bg-white";
+
   return (
     <div className={hasCart ? "pb-[140px]" : ""}>
       <div className="mx-auto w-full min-w-0 max-w-[1800px]">
-        {/* ════════ Header ════════ */}
-        <div className="mb-4 rounded-[10px] border border-gray-200 bg-white px-4 py-4 sm:px-6">
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            <span className="text-xl">👥</span>
-            <span className="text-lg font-bold">Worker Allocation</span>
-            <span className="rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600">
-              Phase 3
-            </span>
-            <span className="basis-full text-xs text-gray-500 md:basis-auto">
-              Steps 8–9: Filter & Match → Shortlist → Generate CV
-            </span>
+        {/* ════════ แถบบน: โปรเจกต์ + เอกสาร ════════ */}
+        <div className="flex flex-col gap-3 border-b border-gray-200 pb-3 lg:flex-row lg:items-end">
+          <div className="min-w-0 flex-1">
+            <label className={LABEL}>Project</label>
+            <Select
+              {...SELECT_PORTAL}
+              options={projectOptions}
+              styles={projectSelectStyles}
+              value={
+                projectOptions.find((o) => o.value === selectedProjectId) ||
+                null
+              }
+              onChange={(o) => {
+                setSelectedProjectId(o ? o.value : "");
+                setSelectedRequestId("");
+                setSelectedRequest(null);
+                setWorkers([]);
+                setSelectedWorkerIds([]);
+                if (!o) setShortlist([]);
+              }}
+              placeholder="-- เลือกโปรเจกต์ --"
+              isClearable
+              noOptionsMessage={() => "No projects found"}
+            />
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={handleGenerateCv}
+              disabled={totalShortlisted === 0 || cvLoading}
+              className={DOC_BTN}
+            >
+              {cvLoading ? "Generating..." : "📄 CV Summary"}
+            </button>
+            <button
+              type="button"
+              onClick={handleGenerateRoster}
+              disabled={totalShortlisted === 0 || rosterLoading}
+              className={DOC_BTN}
+            >
+              {rosterLoading ? "Generating..." : "🛫 Roster (MOB/D-MOB)"}
+            </button>
+            <button
+              type="button"
+              onClick={handleGenerateSkillMatrix}
+              disabled={totalShortlisted === 0 || skillMatrixLoading}
+              className={DOC_BTN}
+            >
+              {skillMatrixLoading ? "Generating..." : "📋 Skill Matrix"}
+            </button>
+            {selectedProjectId && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(`/projects/${selectedProjectId}?tab=discussion`)
+                }
+                className={`${DOC_BTN} text-blue-600`}
+              >
+                💬 ส่งไฟล์ให้ PE →
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-          {/* ════════ Step 8 ════════ */}
-          <div className={CARD}>
-            <div className={CARD_HEAD}>
-              Step 8: Filter & Match — Search for 'Ready' Workers
-            </div>
-            <div className={CARD_BODY}>
-              {/* Project / Position Request */}
-              <div className="mb-4">
-                <div className="mb-3">
-                  <label className={LABEL}>Select Project</label>
-                  <Select
-                    {...SELECT_PORTAL}
-                    options={projectOptions}
-                    styles={projectSelectStyles}
-                    value={
-                      projectOptions.find(
-                        (o) => o.value === selectedProjectId,
-                      ) || null
-                    }
-                    onChange={(o) => {
-                      setSelectedProjectId(o ? o.value : "");
-                      setSelectedRequestId("");
-                      setSelectedRequest(null);
-                      setWorkers([]);
-                      setSelectedWorkerIds([]);
-                      if (!o) setShortlist([]);
-                    }}
-                    placeholder="-- Select Project --"
-                    isClearable
-                    noOptionsMessage={() => "No projects found"}
-                  />
-                </div>
+        {/* ════════ แจ้งสถานะทั้งโปรเจกต์ ════════ */}
+        {allApproved && (
+          <button
+            type="button"
+            onClick={() =>
+              navigate(`/mobilization?projectId=${selectedProjectId}`)
+            }
+            className="mt-3 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border-none bg-[#198754] py-2 text-[13px] font-bold text-white hover:bg-[#157347]"
+          >
+            🚀 ทุกคน Approve แล้ว — ไป Mobilization →
+          </button>
+        )}
+        {everyCandidateApproved && totalPendingPe > 0 && (
+          <div className="mt-3 rounded-lg border border-[#ffe69c] bg-[#fff8e1] px-3 py-2 text-center text-xs font-semibold text-[#664d03]">
+            ⏳ รอ PE อนุมัติอีก {totalPendingPe} คน — ครบแล้วจึงไป Mobilization
+            ได้
+          </div>
+        )}
+        {selectedProjectId && selectedProject && projectRequests.length === 0 && (
+          <div className="mt-3 rounded-lg border border-[#ffe69c] bg-[#fff8e1] px-3.5 py-2.5 text-[13px] text-[#664d03]">
+            ⚠ โปรเจกต์นี้ยังไม่มีตำแหน่ง —{" "}
+            <button
+              type="button"
+              onClick={() => navigate(`/projects/${selectedProjectId}`)}
+              className={`${LINK_TEXT} underline`}
+            >
+              เพิ่มตำแหน่งที่หน้า Requirement →
+            </button>
+          </div>
+        )}
 
-                <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[1fr_auto]">
-                  <div>
-                    <label className={LABEL}>Position Request</label>
-                    <Select
-                      {...SELECT_PORTAL}
-                      options={requestOptions}
-                      styles={customSelectStyles}
-                      value={
-                        requestOptions.find(
-                          (o) => o.value === selectedRequest?.id,
-                        ) || null
-                      }
-                      onChange={(o) => {
-                        const req = o ? o.request : null;
-                        setSelectedRequest(req);
-                        setSelectedRequestId(o ? o.value : "");
-                        setPositionFilterId(req?.position?.id || "");
-                        setWorkers([]);
-                        setSelectedWorkerIds([]);
-                        if (req)
-                          handleFindWorkers(
-                            req,
-                            selectedProject,
-                            req.position?.id,
-                          );
-                      }}
-                      placeholder="Select position..."
-                      isClearable
-                      isDisabled={
-                        !selectedProjectId || requestOptions.length === 0
-                      }
-                      noOptionsMessage={() => "No position requests found"}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleFindWorkers(
-                        selectedRequest,
-                        selectedProject,
-                        positionFilterId,
-                      )
-                    }
-                    disabled={!selectedRequest || loadingWorkers}
-                    className="cursor-pointer whitespace-nowrap rounded-lg border-none bg-blue-600 px-5 py-2 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-                  >
-                    🔍 Find Workers
-                  </button>
-                </div>
-              </div>
-
-              {/* ── ค้นหา Worker คนใดก็ได้ ── */}
-              <div className="mb-3 border-t border-gray-100 pt-2.5">
-                <button
-                  type="button"
-                  onClick={() => setQuickSearchOpen((v) => !v)}
-                  aria-expanded={quickSearchOpen}
-                  className={`inline-flex cursor-pointer select-none items-center gap-1.5 rounded-lg border px-3.5 py-[7px] text-[13px] font-semibold text-gray-700 transition-colors ${
-                    quickSearchOpen
-                      ? "mb-2.5 border-blue-600 bg-[#f0f7ff]"
-                      : "border-gray-200 bg-gray-50 hover:bg-[#eef1f4]"
-                  }`}
-                >
-                  <span className="text-[11px] text-blue-600">
-                    {quickSearchOpen ? "▾" : "▸"}
+        {!selectedProject ? (
+          <div className="p-12 text-center text-[13px] text-gray-500">
+            เลือกโปรเจกต์ด้านบน เพื่อเริ่มจัดรายชื่อ
+          </div>
+        ) : (
+          projectRequests.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)]">
+              {/* ════════ ซ้าย: ตำแหน่ง ════════ */}
+              <aside className="border-b border-gray-200 py-3 lg:border-b-0 lg:border-r lg:pr-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.4px] text-gray-500">
+                    ตำแหน่ง ({projectRequests.length})
                   </span>
-                  🔍 ค้นหา Worker คนใดก็ได้
-                  {quickPickedWorkers.length > 0 && (
-                    <span className="rounded-[10px] bg-blue-600 px-2 py-px text-[11px] font-bold text-white">
-                      {quickPickedWorkers.length} เลือกแล้ว
-                    </span>
-                  )}
-                </button>
-
-                {quickSearchOpen && (
-                  <>
-                    <div className="rounded-[10px] border border-gray-200 bg-white px-4 py-3.5">
-                      <label className="mb-1 block text-[11px] font-semibold text-gray-500">
-                        Worker (Employee ID / Name)
-                      </label>
-                      <div className="max-w-[400px]">
-                        <Select
-                          {...SELECT_PORTAL}
-                          isMulti
-                          options={quickSearchOptions}
-                          value={quickPickedWorkers.map((w) => ({
-                            value: w.id,
-                            label: workerLabel(w),
-                            worker: w,
-                          }))}
-                          onChange={(opts) =>
-                            setQuickPickedWorkers(
-                              (opts || []).map((o) => o.worker),
-                            )
-                          }
-                          // ไม่แสดง badge คนที่เลือกในช่องค้นหา — ดู/ลบได้ที่ตารางด้านล่าง
-                          // (เดิมช่องค้นหาสูงขึ้นเรื่อยๆ ตามจำนวนคนที่เลือก)
-                          controlShouldRenderValue={false}
-                          isClearable={false}
-                          backspaceRemovesValue={false}
-                          // เลือกต่อได้หลายคนโดยเมนูไม่ปิด · คลิกคนที่ติ๊กไว้ซ้ำ = เอาออก
-                          hideSelectedOptions={false}
-                          closeMenuOnSelect={false}
-                          formatOptionLabel={(o, { context }) =>
-                            context === "menu" ? (
-                              <span className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  readOnly
-                                  tabIndex={-1}
-                                  checked={quickPickedWorkers.some(
-                                    (w) => w.id === o.value,
-                                  )}
-                                  className="pointer-events-none h-3.5 w-3.5 shrink-0"
-                                />
-                                <span>{o.label}</span>
-                              </span>
-                            ) : (
-                              o.label
-                            )
-                          }
-                          placeholder={
-                            quickPickedWorkers.length > 0
-                              ? `🔍 ค้นหาเพิ่ม... (เลือกแล้ว ${quickPickedWorkers.length} คน)`
-                              : "🔍 ค้นหาด้วย Employee ID หรือชื่อ..."
-                          }
-                          noOptionsMessage={() => "ไม่พบ worker"}
-                          styles={{
-                            ...quickSelectStyles,
-                            option: (b, s) => ({
-                              ...b,
-                              fontSize: "13px",
-                              cursor: "pointer",
-                              backgroundColor: s.isSelected
-                                ? s.isFocused
-                                  ? "#dbeafe"
-                                  : "#eff6ff"
-                                : s.isFocused
-                                  ? "#f3f4f6"
-                                  : "white",
-                              color: s.isSelected ? "#1d4ed8" : "#111827",
-                              fontWeight: s.isSelected ? 600 : 400,
-                            }),
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {quickPickedWorkers.length > 0 && (
-                      <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
-                        <div className="flex flex-wrap items-center justify-between gap-1.5 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">
-                          <span className="flex items-center gap-2">
-                            ✅ เลือกแล้ว {quickPickedWorkers.length} คน
-                            <button
-                              type="button"
-                              onClick={() => setQuickPickedWorkers([])}
-                              className="cursor-pointer border-none bg-transparent p-0 text-[11px] font-normal text-[#dc3545] underline hover:text-[#a71d2a]"
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={!!showAllPositions}
+                      onChange={(e) => setShowAllPositions(e.target.checked)}
+                      className="h-3.5 w-3.5"
+                    />
+                    แสดงทุกตำแหน่ง
+                  </label>
+                </div>
+                {shownRequests.length === 0 ? (
+                  <div className="rounded-md bg-[#f0fff4] px-3 py-3 text-center text-xs font-semibold text-[#198754]">
+                    ✓ ทุกตำแหน่งจัดครบแล้ว
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {shownRequests.map((r) => {
+                      const st = requestStats(r);
+                      const active = r.id === selectedRequest?.id;
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => selectRequest(r)}
+                          className={`w-full cursor-pointer rounded-md border px-3 py-2 text-left transition ${
+                            active
+                              ? "border-[#F16726] bg-orange-50 shadow-[inset_3px_0_0_#F16726]"
+                              : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span
+                              className={`min-w-0 break-words text-[13px] font-semibold ${
+                                active ? "text-[#c2410c]" : "text-gray-900"
+                              }`}
                             >
-                              ล้างทั้งหมด
-                            </button>
-                          </span>
-                          {!selectedRequest && (
-                            <span className="text-[11px] font-normal text-[#664d03]">
-                              💡 เลือก Position Request ด้านบนเพื่อดู % Match
+                              {r.position?.name}
                             </span>
-                          )}
-                        </div>
-
-                        <WorkerTable leadHeader={null}>
-                          {quickPickedWorkers.map((w) => {
-                            const matched = quickMatchResults[w.id];
-                            const matchState = !selectedRequest
-                              ? "need_request"
-                              : loadingQuickMatch
-                                ? "loading"
-                                : !matched
-                                  ? "none"
-                                  : "ready";
-                            return (
-                              <tr
-                                key={w.id}
-                                className="border-t border-gray-100 bg-white"
-                              >
-                                <td className={`${TD} ${STICKY_CHECK}`}>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeQuickWorker(w.id)}
-                                    title="เอาออก"
-                                    className="cursor-pointer border-none bg-transparent p-0 text-sm leading-none text-[#dc3545]"
-                                  >
-                                    ✕
-                                  </button>
-                                </td>
-                                <NameCell
-                                  w={w}
-                                  info={matched}
-                                  onViewGap={() => handleViewEligibility(w)}
-                                />
-                                <MatchCell
-                                  state={matchState}
-                                  pct={matched?.matchPct}
-                                  missing={matched?.missingTrainings}
-                                  onViewGap={() => handleViewEligibility(w)}
-                                  exception={exceptions[w.id]}
-                                  onRequestException={
-                                    canManageAllocation &&
-                                    selectedRequest &&
-                                    matched &&
-                                    !matched.activeBan
-                                      ? () => openExceptionModal(matched)
-                                      : undefined
-                                  }
-                                />
-                                {matched ? (
-                                  <DayOffCell
-                                    dayOff={matched.dayOff}
-                                    platform={matched.platform}
-                                  />
-                                ) : (
-                                  <td className={`${TD} text-center`}>
-                                    {DASH}
-                                  </td>
-                                )}
-                                <RetirementCell birthDate={w.birthDate} />
-                                <HealthCell
-                                  info={matched}
-                                  onOpenNote={openNote(w.fullName)}
-                                />
-                                {matched ? (
-                                  renderMedical(matched)
-                                ) : (
-                                  <td className={TD}>{DASH}</td>
-                                )}
-                              </tr>
-                            );
-                          })}
-                        </WorkerTable>
-
-                        {canManageAllocation && (
-                          <div className="border-t border-gray-200 bg-gray-50 p-2.5">
-                            {!selectedRequest ? (
-                              <div className="text-center text-[11px] text-[#dc3545]">
-                                ⚠ ต้องเลือก Position Request ก่อนถึงจะ Add to
-                                Shortlist ได้
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleAddToShortlist(
-                                    quickPickedWorkers.map((w) => w.id),
-                                  )
-                                }
-                                disabled={addingShortlist || loadingQuickMatch}
-                                className={`${BTN_GREEN} w-full p-2 text-xs`}
-                              >
-                                {addingShortlist
-                                  ? "กำลังเพิ่ม..."
-                                  : `👥 Add Selected to Shortlist (${quickPickedWorkers.length})`}
-                              </button>
+                            <span className="shrink-0 text-xs text-gray-500">
+                              × {r.quantity}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {st.missing > 0 ? (
+                              <Pill tone="red">ขาด {st.missing} คน</Pill>
+                            ) : !st.needsAction ? (
+                              <Pill tone="green">✓ ครบ</Pill>
+                            ) : null}
+                            {st.proposed > 0 && (
+                              <Pill tone="yellow">รอ approve {st.proposed}</Pill>
+                            )}
+                            {st.pendingPe > 0 && (
+                              <Pill tone="orange">รอ PE {st.pendingPe}</Pill>
+                            )}
+                            {st.approved > 0 && st.needsAction && (
+                              <Pill tone="gray">approved {st.approved}</Pill>
                             )}
                           </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {selectedProjectId &&
-                selectedProject &&
-                requestOptions.length === 0 && (
-                  <div className="mb-2.5 rounded-lg border border-[#ffe69c] bg-[#fff8e1] px-3.5 py-2.5 text-[13px] text-[#664d03]">
-                    ⚠ โปรเจกต์นี้ยังไม่มี position request —{" "}
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/projects/${selectedProjectId}`)}
-                      className={`${LINK_TEXT} underline`}
-                    >
-                      เพิ่ม Position ในหน้า Project Detail →
-                    </button>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
+                {!showAllPositions &&
+                  shownRequests.length < projectRequests.length && (
+                    <div className="mt-2 text-[11px] text-gray-400">
+                      ซ่อนตำแหน่งที่ครบแล้ว{" "}
+                      {projectRequests.length - shownRequests.length} ตำแหน่ง
+                    </div>
+                  )}
+              </aside>
 
-              {!selectedRequest ? (
-                <div className="p-10 text-center text-[13px] text-gray-500">
-                  Select a project and position, then click Find Workers
-                </div>
-              ) : (
-                <>
-                  {/* สรุปจำนวน + ปุ่ม Add */}
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold">
-                        Matching Workers
-                      </span>
-                      <span className="rounded-xl bg-blue-600 px-2.5 py-0.5 text-xs font-semibold text-white">
-                        {workers.length} found
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        · Permanent {permCount} · New SSE {newSseCount}
-                      </span>
-                      <span className="inline-flex items-center gap-2.5 border-l border-gray-200 pl-2.5 text-xs text-gray-500">
-                        <span>
-                          Need{" "}
-                          <strong className="text-gray-900">
-                            {selectedRequest.quantity}
-                          </strong>
+              {/* ════════ ขวา: ตำแหน่งที่เลือก ════════ */}
+              <section className="min-w-0 py-3 lg:pl-5">
+                {!selectedRequest ? (
+                  <div className="p-10 text-center text-[13px] text-gray-500">
+                    เลือกตำแหน่งทางซ้าย
+                  </div>
+                ) : (
+                  <>
+                    {/* หัวตำแหน่ง */}
+                    <div className="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                      <h2 className="m-0 text-lg font-bold">
+                        {selectedRequest.position?.name}
+                        <span className="ml-1.5 text-sm font-normal text-gray-500">
+                          × {selectedRequest.quantity}
                         </span>
+                      </h2>
+                      <span className="flex flex-wrap gap-x-3 text-xs text-gray-500">
                         <span>
-                          Shortlisted{" "}
+                          จัดแล้ว{" "}
                           <strong
                             className={
                               currentRequestShortlisted > 0
@@ -1941,12 +2067,10 @@ export default function Allocation() {
                           </strong>
                         </span>
                         <span>
-                          Remaining{" "}
+                          ยังขาด{" "}
                           <strong
                             className={
-                              remaining > 0
-                                ? "text-[#dc3545]"
-                                : "text-[#198754]"
+                              remaining > 0 ? "text-[#dc3545]" : "text-[#198754]"
                             }
                           >
                             {remaining}
@@ -1967,460 +2091,400 @@ export default function Allocation() {
                         )}
                       </span>
                     </div>
-                    {selectedWorkerIds.length > 0 && canManageAllocation && (
-                      <button
-                        type="button"
-                        onClick={() => handleAddToShortlist(selectedWorkerIds)}
-                        disabled={addingShortlist}
-                        className={`${BTN_GREEN} px-4 py-[7px] text-[13px]`}
-                      >
-                        {addingShortlist
-                          ? "กำลังเพิ่ม..."
-                          : `👥 Add Selected to Shortlist (${selectedWorkerIds.length})`}
-                      </button>
-                    )}
-                  </div>
 
-                  <div className="mb-3">
-                    <label className={LABEL}>Position</label>
-                    <Select
-                      {...SELECT_PORTAL}
-                      options={positionFilterOptions}
-                      styles={customSelectStyles}
-                      value={
-                        positionFilterOptions.find(
-                          (o) => o.value === positionFilterId,
-                        ) || null
-                      }
-                      onChange={(o) => {
-                        const newPosId = o ? o.value : "";
-                        setPositionFilterId(newPosId);
-                        handleFindWorkers(
-                          selectedRequest,
-                          selectedProject,
-                          newPosId,
-                        );
-                      }}
-                      placeholder="เลือกตำแหน่งพนักงาน..."
-                      noOptionsMessage={() => "ไม่มีตำแหน่ง"}
-                    />
-                  </div>
-
-                  {/* Type / Sort / Search */}
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-4">
-                      <ButtonGroup
-                        label="Type:"
-                        options={EMP_TYPES}
-                        value={empType}
-                        onChange={setEmpType}
-                        activeClass="border-[#198754] bg-[#198754] text-white"
-                      />
-                      <ButtonGroup
-                        label="Sort by:"
-                        options={SORTS}
-                        value={sortBy}
-                        onChange={setSortBy}
-                        activeClass="border-blue-600 bg-blue-600 text-white"
-                      />
-                    </div>
-
-                    <div className="relative min-w-[200px] flex-1 sm:max-w-[300px]">
-                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-gray-400">
-                        🔍
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="Search name or emp code..."
-                        value={workerSearch}
-                        onChange={(e) => setWorkerSearch(e.target.value)}
-                        className="box-border w-full rounded-lg border border-gray-200 bg-white py-1.5 pl-8 pr-7 text-[13px] outline-none focus:border-blue-400"
-                      />
-                      {workerSearch && (
-                        <button
-                          type="button"
-                          onClick={() => setWorkerSearch("")}
-                          title="Clear"
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer border-none bg-transparent p-0 text-[13px] text-gray-400 hover:text-gray-600"
-                        >
-                          ✕
-                        </button>
+                    {/* ── รายชื่อที่จัดแล้ว ── */}
+                    <div className="border-b border-gray-200 pb-3">
+                      <div className={SECTION_HEAD}>รายชื่อที่จัดแล้ว</div>
+                      {loadingShortlist && !selectedShortlist ? (
+                        <div className="py-3 text-[13px] text-gray-400">
+                          Loading...
+                        </div>
+                      ) : (
+                        renderAssigned(
+                          selectedShortlist || {
+                            requestId: selectedRequest.id,
+                            position: selectedRequest.position,
+                            candidates: [],
+                          },
+                        )
                       )}
                     </div>
-                  </div>
 
-                  {/* ตารางหลัก */}
-                  <WorkerTable
-                    leadHeader={
-                      canManageAllocation && (
-                        <input
-                          type="checkbox"
-                          checked={allDisplayedSelected}
-                          onChange={toggleAll}
-                          disabled={selectableDisplayedWorkers.length === 0}
-                          title="เลือกทั้งหมด (เฉพาะคนที่ % Match = 100% หรือ PE อนุมัติแล้ว)"
-                          className="h-[15px] w-[15px] cursor-pointer disabled:cursor-not-allowed"
-                        />
-                      )
-                    }
-                  >
-                    {loadingWorkers ? (
-                      <EmptyRow>Finding workers...</EmptyRow>
-                    ) : workers.length === 0 ? (
-                      <EmptyRow>
-                        No available workers found for this position
-                      </EmptyRow>
-                    ) : displayedWorkers.length === 0 ? (
-                      <EmptyRow>{emptyWorkerMessage}</EmptyRow>
-                    ) : (
-                      displayedWorkers.map((w) => {
-                        const selected = selectedWorkerIds.includes(w.id);
-                        const selectable = isWorkerSelectable(w);
-                        const clickable = canManageAllocation && selectable;
-                        return (
-                          <tr
-                            key={w.id}
-                            onClick={
-                              clickable ? () => toggleWorker(w.id) : undefined
-                            }
-                            title={
-                              canManageAllocation && !selectable
-                                ? "เลือกได้เฉพาะคนที่ % Match = 100% หรือ PE อนุมัติแล้ว"
-                                : undefined
-                            }
-                            className={`border-b border-gray-100 last:border-b-0 ${
-                              selected ? "bg-[#f0f7ff]" : "bg-white"
-                            } ${clickable ? "cursor-pointer hover:bg-gray-50" : ""}`}
+                    {/* ── เพิ่มจาก Worker Pool ── */}
+                    <div className="pt-3">
+                      <div className={SECTION_HEAD}>
+                        <span>เพิ่มจาก Worker Pool</span>
+                        {selectedWorkerIds.length > 0 && canManageAllocation && (
+                          <button
+                            type="button"
+                            onClick={() => handleAddToShortlist(selectedWorkerIds)}
+                            disabled={addingShortlist}
+                            className={`${BTN_GREEN} px-4 py-[7px] text-[13px]`}
                           >
-                            <td className={`${TD} ${STICKY_CHECK}`}>
-                              {canManageAllocation && (
-                                <input
-                                  type="checkbox"
-                                  checked={selected}
-                                  disabled={!selectable}
-                                  onChange={() => toggleWorker(w.id)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  title={
-                                    w.activeBan
-                                      ? `พนักงานถูกแบนถึง ${fmtBanDate(w.activeBan.bannedUntil)}`
-                                      : !selectable
-                                        ? "% Match ต้องครบ 100% หรือขออนุมัติ PE ก่อน"
-                                        : ""
-                                  }
-                                  className="h-[15px] w-[15px] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                                />
-                              )}
-                            </td>
-                            <NameCell
-                              w={w}
-                              info={w}
-                              dim={!selectable}
-                              onViewGap={() => handleViewEligibility(w)}
-                            />
-                            <MatchCell
-                              pct={w.matchPct}
-                              missing={w.missingTrainings}
-                              onViewGap={() => handleViewEligibility(w)}
-                              exception={exceptions[w.id]}
-                              onRequestException={
-                                canManageAllocation && !w.activeBan
-                                  ? () => openExceptionModal(w)
-                                  : undefined
-                              }
-                            />
-                            <DayOffCell
-                              dayOff={w.dayOff}
-                              platform={w.platform}
-                            />
-                            <RetirementCell birthDate={w.birthDate} />
-                            <HealthCell
-                              info={w}
-                              onOpenNote={openNote(w.fullName)}
-                            />
-                            {renderMedical(w)}
-                          </tr>
-                        );
-                      })
-                    )}
-                  </WorkerTable>
-                </>
-              )}
-            </div>
-          </div>
+                            {addingShortlist
+                              ? "กำลังเพิ่ม..."
+                              : `👥 เพิ่มที่เลือก (${selectedWorkerIds.length})`}
+                          </button>
+                        )}
+                      </div>
 
-          {/* ════════ Step 9 ════════ */}
-          <div className={CARD}>
-            <div className={CARD_HEAD}>Step 9: Shortlist & CV</div>
-            <div className={CARD_BODY}>
-              {loadingShortlist ? (
-                <div className="p-5 text-center text-[13px] text-gray-500">
-                  Loading...
-                </div>
-              ) : !hasStep9Content ? (
-                <div className="p-5 text-center text-[13px] text-gray-500">
-                  No workers shortlisted yet for this project.
-                </div>
-              ) : (
-                <div className="mb-4">
-                  {shortlist.map((req) => {
-                    const pe = req.peExceptions ?? {
-                      pending: [],
-                      rejected: [],
-                    };
-                    const all = req.candidates ?? [];
-                    if (
-                      !all.length &&
-                      !pe.pending.length &&
-                      !pe.rejected.length
-                    )
-                      return null;
-                    // คนที่ PE อนุมัติ → ไปหน้า Mobilization เลย ไม่แสดงในรายชื่อ shortlist
-                    const peApproved = all.filter(
-                      (c) => c.viaPeApproval && c.status === "approved",
-                    );
-                    const visible = all.filter(
-                      (c) => !(c.viaPeApproval && c.status === "approved"),
-                    );
-                    const proposed = visible.filter(
-                      (c) => c.status !== "approved",
-                    );
-                    const approved = visible.filter(
-                      (c) => c.status === "approved",
-                    );
-                    const approvedOpen = !!approvedExpanded[req.requestId];
-
-                    return (
-                      <div key={req.requestId} className="mb-4">
-                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.4px] text-gray-500">
-                          {req.position?.name} × {req.quantity}
-                          {all.length > 0 && (
-                            <span className="ml-2 whitespace-nowrap text-blue-600">
-                              ({all.length} shortlisted)
-                            </span>
-                          )}
-                          {pe.pending.length > 0 && (
-                            <span className="ml-2 whitespace-nowrap normal-case tracking-normal text-[#b08900]">
-                              (รอ PE อนุมัติ {pe.pending.length} คน)
-                            </span>
-                          )}
+                      {/* ค้นหาคนใดก็ได้ — เปิดอยู่ตลอด (เดิมต้องกดปุ่มก่อน) */}
+                      <div className="mb-3 rounded-lg bg-gray-50 px-3 py-2.5">
+                        <label className="mb-1 block text-[11px] font-semibold text-gray-500">
+                          🔍 ค้นหาพนักงานคนใดก็ได้ (Employee ID / ชื่อไทย /
+                          ชื่ออังกฤษ) — คนที่ตำแหน่งตรงขึ้นก่อน
+                        </label>
+                        <div className="max-w-[560px]">
+                          <Select
+                            {...SELECT_PORTAL}
+                            isMulti
+                            options={quickSearchOptions}
+                            filterOption={filterWorkerOption}
+                            value={quickPickedWorkers.map((w) => ({
+                              value: w.id,
+                              label: workerLabel(w),
+                              worker: w,
+                            }))}
+                            onChange={(opts) =>
+                              setQuickPickedWorkers(
+                                (opts || []).map((o) => o.worker),
+                              )
+                            }
+                            controlShouldRenderValue={false}
+                            isClearable={false}
+                            backspaceRemovesValue={false}
+                            hideSelectedOptions={false}
+                            closeMenuOnSelect={false}
+                            formatOptionLabel={(o, { context }) =>
+                              context === "menu" ? (
+                                <span className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    readOnly
+                                    tabIndex={-1}
+                                    checked={quickPickedWorkers.some(
+                                      (w) => w.id === o.value,
+                                    )}
+                                    className="pointer-events-none h-3.5 w-3.5 shrink-0"
+                                  />
+                                  <span className="min-w-0 flex-1">{o.label}</span>
+                                  {o.samePosition && (
+                                    <MiniTag tone="green">ตรงตำแหน่ง</MiniTag>
+                                  )}
+                                </span>
+                              ) : (
+                                o.label
+                              )
+                            }
+                            placeholder={
+                              quickPickedWorkers.length > 0
+                                ? `ค้นหาเพิ่ม... (เลือกแล้ว ${quickPickedWorkers.length} คน)`
+                                : "พิมพ์ ID หรือชื่อ แล้วเลือก → ขึ้นในตารางพร้อมปุ่ม + เพิ่ม"
+                            }
+                            noOptionsMessage={() => "ไม่พบ worker"}
+                            styles={{
+                              ...quickSelectStyles,
+                              option: (b, s) => ({
+                                ...b,
+                                fontSize: "13px",
+                                cursor: "pointer",
+                                backgroundColor: s.isSelected
+                                  ? s.isFocused
+                                    ? "#dbeafe"
+                                    : "#eff6ff"
+                                  : s.isFocused
+                                    ? "#f3f4f6"
+                                    : "white",
+                                color: s.isSelected ? "#1d4ed8" : "#111827",
+                                fontWeight: s.isSelected ? 600 : 400,
+                              }),
+                            }}
+                          />
                         </div>
 
-                        {visible.length > 0 && proposed.length === 0 && (
-                          <div className="py-2 text-xs font-semibold text-[#198754]">
-                            ✓ ทุกคนได้รับการ approve แล้ว
-                          </div>
-                        )}
-
-                        {proposed.map((c) => (
-                          <div
-                            key={c.id}
-                            className="mb-1.5 flex items-center justify-between gap-2 rounded-md bg-gray-50 px-3 py-2"
-                          >
-                            <div className="min-w-0">
-                              <div className="text-[13px] font-semibold">
-                                {c.employee?.fullName}
-                              </div>
-                              <EmpMeta
-                                emp={c.employee}
-                                requestPositionId={req.position?.id}
-                              />
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1.5">
-                              <Pill tone="yellow">Proposed</Pill>
+                        {quickPickedWorkers.length > 0 && (
+                          <div className="mt-2.5 overflow-hidden rounded-lg border border-gray-200 bg-white">
+                            <div className="flex flex-wrap items-center gap-2 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-700">
+                              ✅ เลือกจากการค้นหา {quickPickedWorkers.length} คน
                               <button
                                 type="button"
-                                onClick={() =>
-                                  handleApprove([c.id], req.requestId)
-                                }
-                                title="Approve คนนี้"
-                                className="cursor-pointer whitespace-nowrap rounded-md border border-[#198754] bg-[#198754] px-2.5 py-[3px] text-[11px] font-semibold text-white hover:bg-[#157347]"
+                                onClick={() => setQuickPickedWorkers([])}
+                                className="cursor-pointer border-none bg-transparent p-0 text-[11px] font-normal text-[#dc3545] underline hover:text-[#a71d2a]"
                               >
-                                ✓ Approve
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveFromShortlist(c.id)}
-                                title="เอาออกจาก shortlist"
-                                className="cursor-pointer border-none bg-transparent px-0.5 text-sm leading-none text-gray-400 hover:text-[#dc3545]"
-                              >
-                                ✕
+                                ล้างทั้งหมด
                               </button>
                             </div>
-                          </div>
-                        ))}
-
-                        {approved.length > 0 && (
-                          <div className="mt-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setApprovedExpanded((prev) => ({
-                                  ...prev,
-                                  [req.requestId]: !prev[req.requestId],
-                                }))
-                              }
-                              className="inline-flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[11px] font-semibold text-[#198754]"
+                            <WorkerTable
+                              leadHeader={null}
+                              withAction={canManageAllocation}
+                              maxH="max-h-[360px]"
                             >
-                              {approvedOpen ? "▾" : "▸"} ✓ {approved.length}{" "}
-                              approved —{" "}
-                              {approvedOpen ? "ซ่อนรายชื่อ" : "ดูรายชื่อ"}
-                            </button>
-
-                            {approvedOpen && (
-                              <div className="mt-1.5">
-                                {approved.map((c) => (
-                                  <div
-                                    key={c.id}
-                                    className="mb-1.5 flex items-center justify-between gap-2 rounded-md bg-[#f0fff4] px-3 py-2"
+                              {quickPickedWorkers.map((w) => {
+                                const matched = quickMatchResults[w.id];
+                                const matchState = loadingQuickMatch
+                                  ? "loading"
+                                  : !matched
+                                    ? "none"
+                                    : "ready";
+                                return (
+                                  <tr
+                                    key={w.id}
+                                    className="border-t border-gray-100 bg-white"
                                   >
-                                    <div className="min-w-0">
-                                      <div className="text-[13px] font-semibold">
-                                        {c.employee?.fullName}
-                                      </div>
-                                      <EmpMeta
-                                        emp={c.employee}
-                                        requestPositionId={req.position?.id}
-                                      />
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-1.5">
-                                      <Pill tone="green">✓ Approved</Pill>
+                                    <td className={`${TD} ${STICKY_CHECK}`}>
                                       <button
                                         type="button"
-                                        onClick={() =>
-                                          handleUnapprove([c.id], req.requestId)
-                                        }
-                                        title="ยกเลิก approve (กลับเป็น Proposed)"
-                                        className="cursor-pointer border-none bg-transparent px-0.5 text-sm leading-none text-gray-400 hover:text-gray-700"
+                                        onClick={() => removeQuickWorker(w.id)}
+                                        title="เอาออก"
+                                        className="cursor-pointer border-none bg-transparent p-0 text-sm leading-none text-[#dc3545]"
                                       >
-                                        ↩
+                                        ✕
                                       </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* ── สถานะคำขอ PE (% Match ไม่ครบ) — แสดงให้รู้ ไม่มีปุ่มให้กด ── */}
-                        {pe.pending.length > 0 && (
-                          <div className="mt-2 rounded-md bg-[#fff8e1] px-3 py-2 text-[#664d03]">
-                            <div className="text-[11px] font-semibold">
-                              ⏳ รอ PE อนุมัติ {pe.pending.length} คน
-                            </div>
-                            {pe.pending.map((e) => (
-                              <PeRow
-                                key={e.employeeId}
-                                emp={e.employee}
-                                requestPositionId={req.position?.id}
-                                pct={e.matchPct}
-                              />
-                            ))}
-                          </div>
-                        )}
-                        {peApproved.length > 0 && (
-                          <div className="mt-2 rounded-md bg-[#f0fff4] px-3 py-2 text-[#0f5132]">
-                            <div className="text-[11px] font-semibold">
-                              🚀 PE อนุมัติ {peApproved.length} คน — อยู่ในหน้า
-                              Mobilization แล้ว
-                            </div>
-                            {peApproved.map((c) => (
-                              <PeRow
-                                key={c.id}
-                                emp={c.employee}
-                                requestPositionId={req.position?.id}
-                                pct={c.matchPct}
-                              />
-                            ))}
-                          </div>
-                        )}
-                        {pe.rejected.length > 0 && (
-                          <div className="mt-2 rounded-md bg-[#fff5f5] px-3 py-2 text-[#842029]">
-                            <div className="text-[11px] font-semibold">
-                              ✕ PE ไม่อนุมัติ {pe.rejected.length} คน
-                            </div>
-                            {pe.rejected.map((e) => (
-                              <PeRow
-                                key={e.employeeId}
-                                emp={e.employee}
-                                requestPositionId={req.position?.id}
-                                pct={e.matchPct}
-                                note={e.decisionNote}
-                              />
-                            ))}
+                                    </td>
+                                    <NameCell
+                                      w={w}
+                                      info={matched}
+                                      onViewGap={() => handleViewEligibility(w)}
+                                    />
+                                    <MatchCell
+                                      state={matchState}
+                                      pct={matched?.matchPct}
+                                      missing={matched?.missingTrainings}
+                                      onViewGap={() => handleViewEligibility(w)}
+                                      exception={exceptions[w.id]}
+                                      onRequestException={
+                                        canManageAllocation &&
+                                        matched &&
+                                        !matched.activeBan
+                                          ? () => openExceptionModal(matched)
+                                          : undefined
+                                      }
+                                    />
+                                    {matched ? (
+                                      <DayOffCell
+                                        dayOff={matched.dayOff}
+                                        platform={matched.platform}
+                                      />
+                                    ) : (
+                                      <td className={`${TD} text-center`}>
+                                        {DASH}
+                                      </td>
+                                    )}
+                                    <RetirementCell birthDate={w.birthDate} />
+                                    <HealthCell
+                                      info={matched}
+                                      onOpenNote={openNote(w.fullName)}
+                                    />
+                                    {matched ? (
+                                      renderMedical(matched)
+                                    ) : (
+                                      <td className={TD}>{DASH}</td>
+                                    )}
+                                    {canManageAllocation && (
+                                      <AddCell
+                                        enabled={
+                                          !!matched &&
+                                          !loadingQuickMatch &&
+                                          isWorkerSelectable(matched)
+                                        }
+                                        busy={addingShortlist}
+                                        onAdd={() => handleAddToShortlist([w.id])}
+                                      />
+                                    )}
+                                  </tr>
+                                );
+                              })}
+                            </WorkerTable>
                           </div>
                         )}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-              <div
-                className={`flex flex-col gap-2 ${
-                  totalShortlisted > 0 ? "border-t border-gray-200 pt-4" : ""
-                }`}
-              >
-                {allApproved && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate(`/mobilization?projectId=${selectedProjectId}`)
-                    }
-                    className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border-none bg-[#198754] py-2.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(25,135,84,0.4)] transition-all hover:-translate-y-px hover:shadow-[0_4px_10px_rgba(25,135,84,0.5)]"
-                  >
-                    🚀 ทุกคน Approve แล้ว — ไป Mobilization →
-                  </button>
-                )}
-                {everyCandidateApproved && totalPendingPe > 0 && (
-                  <div className="rounded-lg border border-[#ffe69c] bg-[#fff8e1] px-3 py-2.5 text-center text-xs font-semibold text-[#664d03]">
-                    ⏳ รอ PE อนุมัติอีก {totalPendingPe} คน — ครบแล้วจึงไป Mobilization ได้
-                  </div>
-                )}
 
-                <button
-                  type="button"
-                  onClick={handleGenerateCv}
-                  disabled={totalShortlisted === 0 || cvLoading}
-                  className={EXPORT_BTN}
-                >
-                  {cvLoading ? "Generating..." : "📄 Generate CV Summary"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleGenerateRoster}
-                  disabled={totalShortlisted === 0 || rosterLoading}
-                  className={EXPORT_BTN}
-                >
-                  {rosterLoading
-                    ? "Generating..."
-                    : "🛫 Export Roster (MOB/D-MOB)"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleGenerateSkillMatrix}
-                  disabled={totalShortlisted === 0 || skillMatrixLoading}
-                  className={EXPORT_BTN}
-                >
-                  {skillMatrixLoading
-                    ? "Generating..."
-                    : "📋 Export Skill Matrix"}
-                </button>
+                      {/* รายชื่อที่ระบบแนะนำ (ตำแหน่งตรง + ว่าง) */}
+                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                        <span className="text-[13px] font-semibold text-gray-900">
+                          พนักงานที่ว่าง
+                        </span>
+                        <span className="rounded-xl bg-blue-600 px-2.5 py-0.5 text-xs font-semibold text-white">
+                          {workers.length} คน
+                        </span>
+                        <span>
+                          · Permanent {permCount} · New SSE {newSseCount}
+                        </span>
+                      </div>
 
-                {selectedProjectId && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate(`/projects/${selectedProjectId}?tab=discussion`)
-                    }
-                    className="mt-1 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border-none bg-[#f0f7ff] py-[9px] text-[13px] font-semibold text-blue-600 shadow-[0_1px_3px_rgba(13,110,253,0.15)] transition-all hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(13,110,253,0.25)]"
-                  >
-                    💬 ส่งไฟล์ให้ PE →
-                  </button>
+                      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                        <div className="w-full min-w-[220px] sm:w-[280px]">
+                          <Select
+                            {...SELECT_PORTAL}
+                            options={positionFilterOptions}
+                            styles={customSelectStyles}
+                            value={
+                              positionFilterOptions.find(
+                                (o) => o.value === positionFilterId,
+                              ) || null
+                            }
+                            onChange={(o) => {
+                              const newPosId = o ? o.value : "";
+                              setPositionFilterId(newPosId);
+                              handleFindWorkers(
+                                selectedRequest,
+                                selectedProject,
+                                newPosId,
+                              );
+                            }}
+                            placeholder="ตำแหน่งปัจจุบันของพนักงาน..."
+                            noOptionsMessage={() => "ไม่มีตำแหน่ง"}
+                          />
+                        </div>
+                        <ButtonGroup
+                          label="Type:"
+                          options={EMP_TYPES}
+                          value={empType}
+                          onChange={setEmpType}
+                          activeClass="border-[#198754] bg-[#198754] text-white"
+                        />
+                        <ButtonGroup
+                          label="Sort:"
+                          options={SORTS}
+                          value={sortBy}
+                          onChange={setSortBy}
+                          activeClass="border-blue-600 bg-blue-600 text-white"
+                        />
+                        <div className="relative min-w-[180px] flex-1 sm:max-w-[260px]">
+                          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-gray-400">
+                            🔍
+                          </span>
+                          <input
+                            type="text"
+                            placeholder="กรองในรายการนี้..."
+                            value={workerSearch}
+                            onChange={(e) => setWorkerSearch(e.target.value)}
+                            className="box-border w-full rounded-lg border border-gray-200 bg-white py-1.5 pl-8 pr-7 text-[13px] outline-none focus:border-blue-400"
+                          />
+                          {workerSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setWorkerSearch("")}
+                              title="Clear"
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer border-none bg-transparent p-0 text-[13px] text-gray-400 hover:text-gray-600"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-gray-200">
+                        <WorkerTable
+                          withAction={canManageAllocation}
+                          leadHeader={
+                            canManageAllocation && (
+                              <input
+                                type="checkbox"
+                                checked={allDisplayedSelected}
+                                onChange={toggleAll}
+                                disabled={selectableDisplayedWorkers.length === 0}
+                                title="เลือกทั้งหมด (เฉพาะคนที่ % Match = 100% หรือ PE อนุมัติแล้ว)"
+                                className="h-[15px] w-[15px] cursor-pointer disabled:cursor-not-allowed"
+                              />
+                            )
+                          }
+                        >
+                          {loadingWorkers ? (
+                            <EmptyRow>Finding workers...</EmptyRow>
+                          ) : workers.length === 0 ? (
+                            <EmptyRow>
+                              ไม่มีพนักงานที่ว่างในตำแหน่งนี้ — ลองเปลี่ยนตำแหน่ง
+                              หรือค้นหาคนใดก็ได้ด้านบน
+                            </EmptyRow>
+                          ) : displayedWorkers.length === 0 ? (
+                            <EmptyRow>{emptyWorkerMessage}</EmptyRow>
+                          ) : (
+                            displayedWorkers.map((w) => {
+                              const selected = selectedWorkerIds.includes(w.id);
+                              const selectable = isWorkerSelectable(w);
+                              const clickable = canManageAllocation && selectable;
+                              return (
+                                <tr
+                                  key={w.id}
+                                  onClick={
+                                    clickable ? () => toggleWorker(w.id) : undefined
+                                  }
+                                  title={
+                                    canManageAllocation && !selectable
+                                      ? "เลือกได้เฉพาะคนที่ % Match = 100% หรือ PE อนุมัติแล้ว"
+                                      : undefined
+                                  }
+                                  className={`border-b border-gray-100 last:border-b-0 ${
+                                    selected ? "bg-[#f0f7ff]" : "bg-white"
+                                  } ${clickable ? "cursor-pointer hover:bg-gray-50" : ""}`}
+                                >
+                                  <td className={`${TD} ${STICKY_CHECK}`}>
+                                    {canManageAllocation && (
+                                      <input
+                                        type="checkbox"
+                                        checked={selected}
+                                        disabled={!selectable}
+                                        onChange={() => toggleWorker(w.id)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        title={
+                                          w.activeBan
+                                            ? `พนักงานถูกแบนถึง ${fmtBanDate(w.activeBan.bannedUntil)}`
+                                            : !selectable
+                                              ? "% Match ต้องครบ 100% หรือขออนุมัติ PE ก่อน"
+                                              : ""
+                                        }
+                                        className="h-[15px] w-[15px] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                                      />
+                                    )}
+                                  </td>
+                                  <NameCell
+                                    w={w}
+                                    info={w}
+                                    dim={!selectable}
+                                    onViewGap={() => handleViewEligibility(w)}
+                                  />
+                                  <MatchCell
+                                    pct={w.matchPct}
+                                    missing={w.missingTrainings}
+                                    onViewGap={() => handleViewEligibility(w)}
+                                    exception={exceptions[w.id]}
+                                    onRequestException={
+                                      canManageAllocation && !w.activeBan
+                                        ? () => openExceptionModal(w)
+                                        : undefined
+                                    }
+                                  />
+                                  <DayOffCell
+                                    dayOff={w.dayOff}
+                                    platform={w.platform}
+                                  />
+                                  <RetirementCell birthDate={w.birthDate} />
+                                  <HealthCell
+                                    info={w}
+                                    onOpenNote={openNote(w.fullName)}
+                                  />
+                                  {renderMedical(w)}
+                                  {canManageAllocation && (
+                                    <AddCell
+                                      enabled={selectable}
+                                      busy={addingShortlist}
+                                      onAdd={() => handleAddToShortlist([w.id])}
+                                    />
+                                  )}
+                                </tr>
+                              );
+                            })
+                          )}
+                        </WorkerTable>
+                      </div>
+                    </div>
+                  </>
                 )}
-              </div>
+              </section>
             </div>
-          </div>
-        </div>
+          )
+        )}
       </div>
 
       {/* ════════ CV Summary ════════ */}

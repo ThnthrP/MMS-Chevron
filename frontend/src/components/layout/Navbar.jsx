@@ -2,8 +2,12 @@ import React, { useContext, useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
-import { Bell, Search, ChevronDown, Menu } from "lucide-react";
+import { Bell, ChevronDown, Menu } from "lucide-react";
 import { roleLabel } from "../../utils/roles";
+import logo from "../../assets/experteam-logo.png";
+
+// Navbar คลุมเต็มความกว้างด้านบน (สูง 48px) — โลโก้ + MMS System อยู่มุมซ้ายบน
+// Sidebar อยู่ใต้ Navbar (ดู Layout.jsx)
 
 const Navbar = ({ onMenuClick }) => {
   const navigate = useNavigate();
@@ -104,36 +108,43 @@ const Navbar = ({ onMenuClick }) => {
   };
 
   return (
-    <div className="w-full flex justify-between items-center px-3 sm:px-6 py-3 bg-white shadow sticky top-0 z-40">
+    <div className="sticky top-0 z-[60] flex h-12 w-full items-center justify-between bg-[#22265f] px-2 text-white shadow-[0_1px_3px_rgba(0,0,0,0.25)] sm:px-4">
       {/* LEFT */}
-      <div className="flex items-center gap-3 sm:gap-6 min-w-0">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <button
           onClick={onMenuClick}
-          className="md:hidden p-2 -ml-1 hover:bg-gray-100 rounded-lg"
+          className="rounded-lg p-1.5 text-white hover:bg-white/10 md:hidden"
           aria-label="เปิดเมนู"
         >
           <Menu size={20} />
         </button>
         <Link
           to="/"
-          className="font-bold text-lg text-inherit no-underline"
+          title="กลับหน้าแรก"
+          className="flex min-w-0 items-center gap-2 text-white no-underline hover:opacity-90"
         >
-          MMS
+          {/* โลโก้บนพื้นขาว — วงกลมขาวในโลโก้ยังเห็นชัด */}
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white p-0.5">
+            <img src={logo} alt="Experteam" className="h-full w-full object-contain" />
+          </span>
+          <span className="truncate text-[15px] font-bold tracking-wide">
+            MMS <span className="font-semibold text-[#F9A26C]">System</span>
+          </span>
         </Link>
-        <div className="text-sm bg-gray-100 px-3 py-1 rounded-full truncate">
+        <span className="hidden rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-indigo-100 sm:inline">
           Experteam
-        </div>
+        </span>
       </div>
 
       {/* RIGHT */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-3">
         {/* 🔔 NOTIFICATION */}
         <div className="relative">
           <button
             onClick={() => setOpenNotif(!openNotif)}
-            className="relative p-2 hover:bg-gray-100 rounded-full"
+            className="relative rounded-full p-1.5 text-white hover:bg-white/10"
           >
-            <Bell size={20} />
+            <Bell size={18} />
             {unreadCount > 0 && (
               <span className="absolute top-0 right-0 bg-red-500 text-white text-xs w-4 h-4 flex items-center justify-center rounded-full">
                 {unreadCount > 9 ? "9+" : unreadCount}
@@ -142,7 +153,7 @@ const Navbar = ({ onMenuClick }) => {
           </button>
 
           {openNotif && (
-            <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-1.5rem)] bg-white shadow-lg rounded-lg p-3 z-50 max-h-96 overflow-y-auto">
+            <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-1.5rem)] bg-white text-gray-900 shadow-lg rounded-lg p-3 z-50 max-h-96 overflow-y-auto">
               <div className="flex items-center justify-between mb-2">
                 <p className="font-semibold">Notifications</p>
                 {unreadCount > 0 && (
@@ -205,8 +216,8 @@ const Navbar = ({ onMenuClick }) => {
           onMouseLeave={handleLeave}
         >
           <div className="flex items-center gap-2 cursor-pointer">
-            <div className="relative w-9 h-9">
-              <div className="w-9 h-9 flex items-center justify-center rounded-full bg-blue-600 text-white overflow-hidden">
+            <div className="relative w-8 h-8">
+              <div className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F16726] text-sm font-semibold text-white overflow-hidden">
                 {userData?.employee?.photoUrl ? (
                   <img
                     src={`${backendUrl}${userData.employee.photoUrl}`}
@@ -225,12 +236,12 @@ const Navbar = ({ onMenuClick }) => {
             </div>
 
             <div className="hidden md:flex flex-col leading-tight">
-              <span className="text-sm font-medium text-gray-800">
+              <span className="text-[13px] font-medium text-white">
                 {userData?.titlePrefix
                   ? `${userData.titlePrefix}${userData.name}`
                   : userData?.name}
               </span>
-              <span className="text-xs text-gray-500">
+              <span className="text-[11px] text-indigo-200">
                 {roleLabel(userData)}
               </span>
             </div>
@@ -238,7 +249,7 @@ const Navbar = ({ onMenuClick }) => {
 
           {openUser && (
             <div
-              className="absolute right-0 top-full mt-1 bg-white shadow-lg rounded-lg p-2 w-44 z-50"
+              className="absolute right-0 top-full mt-1 bg-white text-gray-900 shadow-lg rounded-lg p-2 w-44 z-50"
               onMouseEnter={handleEnter}
               onMouseLeave={handleLeave}
             >

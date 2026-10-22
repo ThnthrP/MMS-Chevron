@@ -2,6 +2,7 @@ import { useState, useEffect, useContext } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
+import { useSearchParams } from "react-router-dom";
 import Select from "react-select";
 
 // ══════════════════════════════════════════════════════════
@@ -169,6 +170,16 @@ export default function PostProjectReview() {
     "review_projectId",
     "",
   );
+  // เปิดจากลิงก์ ?projectId=... (เช่น Manpower Calendar › ผู้ประเมิน) → เลือกโปรเจกต์นั้นให้เลย
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const qp = searchParams.get("projectId");
+    if (qp) {
+      setSelectedProjectId(qp);
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [project, setProject] = useState(null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);

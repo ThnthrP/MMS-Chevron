@@ -1,12 +1,33 @@
 import { PrismaClient } from "@prisma/client";
+import {
+  parseMeta,
+  decisionData,
+  countStatuses,
+  notifyRequester,
+  badRequest,
+} from "./bookingHelpers.js";
+
 const prisma = new PrismaClient();
 
-export async function createBatch(requestedById, items) {
+// ══════════════════════════════════════════════════════════
+// Medical Bookings — โครงเดียวกับ Training Bookings
+//   item = 1 คน — HR ยืนยันวันนัด / ปฏิเสธ รายคน
+// ══════════════════════════════════════════════════════════
+
+export async function createBatch(requestedById, items, meta) {
   // items: [{ employeeId, checkType?, clientName?, reason? }]
   const batch = await prisma.medicalRequestBatch.create({
     data: {
       requestedById: requestedById || null,
-      items: { create: items },
+      ...parseMeta(meta),
+      items: {
+        create: items.map((i) => ({
+          employeeId: i.employeeId,
+          checkType: i.checkType || null,
+          clientName: i.clientName || null,
+          reason: i.reason || null,
+        })),
+      },
     },
     include: {
       items: {
@@ -33,6 +54,7 @@ export async function getBatch(id) {
               id: true,
               fullName: true,
               empCode: true,
+              empId: true,
               position: { select: { name: true } },
             },
           },
@@ -46,19 +68,33 @@ export async function getBatch(id) {
     throw err;
   }
 
-  // ไม่ต้อง group ตาม training — flat list พอ เพราะ item มีแค่ "ขอตรวจ medical" อย่างเดียว
   return {
     id: batch.id,
     requestedByName: batch.requestedBy?.name || null,
     createdAt: batch.createdAt,
+    status: batch.status,
+    requestedStart: batch.requestedStart,
+    requestedEnd: batch.requestedEnd,
+    provider: batch.provider,
+    remarks: batch.remarks,
+    counts: countStatuses(batch.items),
     employees: batch.items.map((item) => ({
+      itemId: item.id,
       employeeId: item.employee.id,
       fullName: item.employee.fullName,
       empCode: item.employee.empCode,
+      empId: item.employee.empId,
       position: item.employee.position?.name || null,
       clientName: item.clientName,
       checkType: item.checkType || "Medical Check up",
       reason: item.reason,
+      status: item.status,
+      confirmedStart: item.confirmedStart,
+      confirmedEnd: item.confirmedEnd,
+      confirmedProvider: item.confirmedProvider,
+      hrNote: item.hrNote,
+      decidedAt: item.decidedAt,
+      decidedByName: item.decidedByName,
     })),
   };
 }
@@ -69,7 +105,7 @@ export async function getAllBatches() {
     include: {
       requestedBy: { select: { name: true } },
       items: {
-        select: { employeeId: true, clientName: true },
+        select: { employeeId: true, clientName: true, status: true },
       },
     },
   });
@@ -83,6 +119,11 @@ export async function getAllBatches() {
       requestedByName: b.requestedBy?.name || null,
       createdAt: b.createdAt,
       status: b.status,
+      requestedStart: b.requestedStart,
+      requestedEnd: b.requestedEnd,
+      provider: b.provider,
+      remarks: b.remarks,
+      counts: countStatuses(b.items),
       employeeCount: new Set(b.items.map((i) => i.employeeId)).size,
       itemCount: b.items.length,
       clientNames,
@@ -100,4 +141,47 @@ export async function updateStatus(id, status) {
     where: { id },
     data: { status },
   });
+}
+
+export async function decideItems(batchId, body, actor) {
+  const itemIds = Array.isArray(body.itemIds) ? body.itemIds : [];
+  if (itemIds.length === 0) throw badRequest("itemIds are required");
+  const data = decisionData(body.decision, body, actor?.name);
+
+  const batch = await prisma.medicalRequestBatch.findUnique({
+    where: { id: batchId },
+    select: { id: true, requestedById: true },
+  });
+  if (!batch) {
+    const err = new Error("Medical request not found");
+    err.status = 404;
+    throw err;
+  }
+
+  const { count } = await prisma.medicalRequestItem.updateMany({
+    where: { id: { in: itemIds }, batchId },
+    data,
+  });
+
+  const stillPending = await prisma.medicalRequestItem.count({
+    where: { batchId, status: "pending" },
+  });
+  await prisma.medicalRequestBatch.update({
+    where: { id: batchId },
+    data: { status: stillPending === 0 ? "completed" : "pending" },
+  });
+
+  if (body.decision !== "pending" && count > 0) {
+    await notifyRequester(prisma, batch, actor?.id, {
+      type: "medical_request_decision",
+      title:
+        body.decision === "confirmed"
+          ? `HR ยืนยันวันตรวจสุขภาพแล้ว ${count} คน`
+          : `HR ปฏิเสธคำขอตรวจสุขภาพ ${count} คน`,
+      message: data.hrNote || null,
+      link: `/medical-requests/${batchId}`,
+    });
+  }
+
+  return getBatch(batchId);
 }

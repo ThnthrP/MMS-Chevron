@@ -6,5 +6,7 @@ const router = express.Router();
 router.use(userAuth);
 
 router.get("/projects-overview", controller.getProjectsOverview);
+router.get("/projects-overview/:id", controller.getProjectOverview);
+router.get("/projects-overview/:id/history", controller.getProjectHistory);
 
 export default router;

@@ -4,6 +4,7 @@ import { AppContent } from "../context/AppContext";
 
 import Layout from "../components/layout/Layout";
 import ProtectedRoute from "../components/ProtectedRoute";
+import MenuTabs from "../components/layout/MenuTabs";
 
 import Dashboard from "../pages/dashboard/Dashboard"; // ← เดิม AdminDashboard (ทุก role ใช้หน้านี้)
 
@@ -39,6 +40,7 @@ import RequestsHistory from "../pages/compliance/RequestsHistory";
 import MedicalRequestDetail from "../pages/compliance/MedicalRequestDetail";
 
 import ProjectsOverview from "../pages/projects/ProjectsOverview";
+import ProjectCalendarDetail from "../pages/projects/ProjectCalendarDetail";
 
 import BulkAddCertification from "../pages/compliance/BulkAddCertification";
 
@@ -48,6 +50,8 @@ import PEApprovals from "../pages/projects/PEApprovals";
 
 import AuditLogs from "../pages/admin/AuditLogs";
 
+import DataImport from "../pages/admin/DataImport";
+
 // ── Role scheme (9 roles ปัจจุบันในระบบ) ──
 // admin, project_engineer, manpower_supply, hr_supervisor,
 // personal_record_officer, hr_officer, safety_manager, safety_officer,
@@ -56,7 +60,7 @@ import AuditLogs from "../pages/admin/AuditLogs";
 // manager) ถูกลบออกจากระบบแล้ว — เอาออกจากทุก allowRoles ด้านล่าง
 //
 // ต้อง sync กับ sidebarMenu.js เสมอ — allowRoles ที่นี่คือ enforcement จริง
-// sidebarMenu.js แค่คุมว่าเมนูโชว์ในแถบข้างซ้ายไหม
+// sidebarMenu.js แค่คุมว่าเมนู/แท็บโชว์ไหม (ชุด role อยู่ในตัวแปร R ของไฟล์นั้น)
 
 // role ที่เข้า "Requests from MP" ได้ — ใช้ร่วมกับหน้า detail ของคำขอ
 const REQUESTS_ROLES = [
@@ -97,6 +101,8 @@ const AppRouter = () => {
   return (
     <ProtectedRoute>
       <Layout>
+        {/* แท็บสลับหน้าที่อยู่ใต้เมนูเดียวกัน (เช่น Assign Names | PE Approvals) */}
+        <MenuTabs />
         <Routes>
           {/* Dashboard — ทุก role ยกเว้น PE (PE ถูกส่งไป /pe-approvals) */}
           <Route path="/" element={<HomeRoute />} />
@@ -253,6 +259,15 @@ const AppRouter = () => {
             element={
               <ProtectedRoute allowRoles={REQUESTS_ROLES}>
                 <RequestsHistory />
+              </ProtectedRoute>
+            }
+          />
+          {/* Medical Bookings — หน้าเดียวกับ Training Bookings แต่แสดงคำขอตรวจสุขภาพ */}
+          <Route
+            path="/medical-bookings"
+            element={
+              <ProtectedRoute allowRoles={REQUESTS_ROLES}>
+                <RequestsHistory type="medical" />
               </ProtectedRoute>
             }
           />
@@ -484,6 +499,26 @@ const AppRouter = () => {
             }
           />
 
+          {/* Manpower Calendar — รายละเอียด requirement (timeline ขั้นตอน + ตารางวันทำงาน) */}
+          <Route
+            path="/projects-overview/:id"
+            element={
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "training_officer",
+                  "project_engineer",
+                ]}
+              >
+                <ProjectCalendarDetail />
+              </ProtectedRoute>
+            }
+          />
+
           <Route
             path="/divisions"
             element={
@@ -546,6 +581,15 @@ const AppRouter = () => {
             element={
               <ProtectedRoute allowRoles={["admin"]}>
                 <AuditLogs />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/data-import"
+            element={
+              <ProtectedRoute allowRoles={["admin"]}>
+                <DataImport />
               </ProtectedRoute>
             }
           />
