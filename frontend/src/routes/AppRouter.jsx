@@ -15,6 +15,7 @@ import Workers from "../pages/workers/Workers";
 import AddWorker from "../pages/workers/AddWorker";
 import ComplianceDashboard from "../pages/compliance/ComplianceDashboard";
 import Project from "../pages/projects/Project";
+import ManpowerRequirements from "../pages/projects/ManpowerRequirements";
 import Allocation from "../pages/projects/Allocation";
 
 import WorkerDetail from "../pages/workers/WorkerDetail";
@@ -288,6 +289,27 @@ const AppRouter = () => {
             }
           />
 
+          {/* Manpower Requirements — รายการตำแหน่งที่ขอทั้งหมด (ข้อมูลชุดเดียวกับ /projects/:id) */}
+          <Route
+            path="/requirements"
+            element={
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "manpower_supply",
+                  "training_officer",
+                  "project_engineer",
+                  "safety_manager",
+                ]}
+              >
+                <ManpowerRequirements />
+              </ProtectedRoute>
+            }
+          />
+          {/* Projects (ON Number) — อยู่ที่เมนู Projects & Positions */}
           <Route
             path="/projects"
             element={

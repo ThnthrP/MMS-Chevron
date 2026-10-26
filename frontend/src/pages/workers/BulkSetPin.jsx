@@ -4,22 +4,22 @@ import { AppContent } from "../../context/AppContext";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
-const CARD =
-  "mb-6 overflow-hidden rounded-[10px] border border-gray-200 bg-white";
-const CARD_HEADER =
-  "border-b border-gray-200 px-4 py-4 text-[15px] font-bold sm:px-5";
+// ไม่ใช้การ์ด — แต่ละส่วนคั่นด้วยเส้น + หัวข้อแถบซ้าย (แบบเดียวกับหน้าอื่น)
+const SECTION = "mb-6";
+const SECTION_HEAD =
+  "border-l-[3px] border-[#2B2F78] pl-2.5 text-[15px] font-bold";
 const TH =
-  "sticky top-0 z-[1] bg-gray-50 px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 sm:px-5";
-const TD = "px-4 py-2.5 sm:px-5";
+  "sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.3px] text-gray-500";
+const TD = "px-3 py-2.5";
 const HIDE_MOBILE = "hidden sm:table-cell";
 
 // รายชื่อคนที่ถูกข้าม (ไม่มี MP Code / มี PIN แล้ว)
 function SkippedList({ title, tone, items }) {
   if (!items?.length) return null;
   return (
-    <div className={CARD}>
-      <div className={`${CARD_HEADER} ${tone}`}>{title}</div>
-      <div className="max-h-[260px] overflow-y-auto px-4 py-4 text-[13px] sm:px-5">
+    <div className={SECTION}>
+      <div className={`${SECTION_HEAD} ${tone}`}>{title}</div>
+      <div className="mt-2 max-h-[260px] overflow-y-auto border-y border-gray-200 py-2 text-[13px]">
         {items.map((s, i) => (
           <div key={i} className="text-gray-500">
             {s.empCode} — {s.fullName}
@@ -156,31 +156,26 @@ export default function BulkSetPin() {
   const pinCount = result?.results?.length ?? 0;
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-[1400px]">
-      {/* ════════ Header ════════ */}
-      <div className={`${CARD} px-4 py-5 sm:px-6`}>
-        <div className="text-xl font-extrabold">
-          🔑 Bulk Set PIN — Worker App
-        </div>
-        <div className="mt-1 text-xs text-gray-500">
-          ตั้งค่า PIN ให้พนักงานหลายคนพร้อมกันในครั้งเดียว สำหรับ rollout Worker
-          App รอบแรก
-        </div>
+    <div className="mx-auto w-full min-w-0 max-w-[1800px]">
+      {/* ════════ Header — ชื่อหน้าแสดงที่แท็บ "Bulk Set PIN" ด้านบนแล้ว ════════ */}
+      <div className="pb-3 text-xs text-gray-500">
+        ตั้งค่า PIN สำหรับ Worker App ให้พนักงานหลายคนพร้อมกันในครั้งเดียว —
+        ใช้ตอน rollout รอบแรก
       </div>
 
       {/* ════════ คำเตือนความปลอดภัย ════════ */}
-      <div className="mb-6 rounded-[10px] border border-[#ffe69c] bg-[#fff8e1] px-4 py-3.5 text-[13px] leading-relaxed text-[#664d03] sm:px-[18px]">
+      <div className="mb-6 border-l-[3px] border-[#ffc107] bg-[#fff8e1] px-4 py-3 text-[13px] leading-relaxed text-[#664d03]">
         ⚠️ ไฟล์ Excel ที่ export จะมี PIN แบบข้อความล้วนของพนักงานทุกคน —
         เก็บไฟล์นี้อย่างปลอดภัย ลบทิ้งทันทีหลังแจกจ่ายเสร็จ
         และห้ามส่งผ่านช่องทางที่ไม่ปลอดภัย (เช่น กลุ่มไลน์สาธารณะ)
       </div>
 
       {/* ════════ ตั้งค่า ════════ */}
-      <div className={CARD}>
-        <div className={CARD_HEADER}>ตั้งค่า</div>
-        <div className="p-4 sm:p-5">
+      <div className={SECTION}>
+        <div className={SECTION_HEAD}>ตั้งค่า</div>
+        <div className="mt-2 border-y border-gray-200 py-4">
           <label
-            className={`mb-4 flex cursor-pointer items-start gap-2.5 rounded-lg px-1 py-1 text-[13px] ${
+            className={`mb-4 flex w-fit cursor-pointer items-start gap-2.5 text-[13px] ${
               includeExisting ? "font-semibold text-[#842029]" : ""
             }`}
           >
@@ -188,7 +183,7 @@ export default function BulkSetPin() {
               type="checkbox"
               checked={includeExisting}
               onChange={(e) => setIncludeExisting(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer"
+              className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-[#2B2F78]"
             />
             รวมพนักงานที่มี PIN อยู่แล้วด้วย (รีเซ็ต PIN เดิมทิ้ง — ระวัง!)
           </label>
@@ -196,10 +191,10 @@ export default function BulkSetPin() {
           <button
             onClick={handleGenerate}
             disabled={loading}
-            className={`w-full cursor-pointer rounded-lg border-none px-6 py-2.5 text-sm font-bold text-white disabled:cursor-default disabled:bg-gray-400 sm:w-auto ${
+            className={`w-full cursor-pointer rounded-md border-none px-5 py-2 text-[13px] font-semibold text-white disabled:cursor-default disabled:bg-gray-400 sm:w-auto ${
               includeExisting
                 ? "bg-[#dc3545] hover:bg-[#bb2d3b]"
-                : "bg-blue-600 hover:bg-blue-700"
+                : "bg-[#2B2F78] hover:bg-[#22265f]"
             }`}
           >
             {loading
@@ -214,23 +209,21 @@ export default function BulkSetPin() {
       {/* ════════ ผลลัพธ์ ════════ */}
       {result && (
         <>
-          <div className={CARD}>
-            <div
-              className={`${CARD_HEADER} flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`}
-            >
-              <span>✅ ตั้งค่าสำเร็จ {pinCount} คน</span>
+          <div className={SECTION}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className={SECTION_HEAD}>✅ ตั้งค่าสำเร็จ {pinCount} คน</div>
               <div className="flex flex-wrap gap-2">
                 {pinCount > 0 && (
                   <button
                     onClick={handleExportExcel}
-                    className="flex-1 cursor-pointer rounded-lg border-none bg-[#198754] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#157347] sm:flex-none"
+                    className="flex-1 cursor-pointer rounded-md border-none bg-[#198754] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#157347] sm:flex-none"
                   >
                     📊 Export Excel{exported && " อีกครั้ง"}
                   </button>
                 )}
                 <button
                   onClick={clearResult}
-                  className="flex-1 cursor-pointer rounded-lg border border-gray-200 bg-white px-4 py-2 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 sm:flex-none"
+                  className="flex-1 cursor-pointer rounded-md border border-gray-200 bg-white px-4 py-2 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 sm:flex-none"
                 >
                   🧹 ล้างรายการ
                 </button>
@@ -239,10 +232,10 @@ export default function BulkSetPin() {
 
             {pinCount > 0 && (
               <div
-                className={`border-b px-4 py-2.5 text-xs sm:px-5 ${
+                className={`mt-2 border-l-[3px] px-4 py-2.5 text-xs ${
                   exported
-                    ? "border-[#badbcc] bg-[#d1e7dd] text-[#0f5132]"
-                    : "border-[#f5c6cb] bg-[#f8d7da] text-[#842029]"
+                    ? "border-[#198754] bg-[#d1e7dd] text-[#0f5132]"
+                    : "border-[#dc3545] bg-[#f8d7da] text-[#842029]"
                 }`}
               >
                 {exported
@@ -251,7 +244,7 @@ export default function BulkSetPin() {
               </div>
             )}
 
-            <div className="max-h-[420px] overflow-y-auto">
+            <div className="mt-2 max-h-[420px] overflow-y-auto border-y border-gray-200">
               {pinCount === 0 ? (
                 <div className="p-7 text-center text-[13px] text-gray-500">
                   ไม่มีพนักงานที่ต้องตั้งค่า PIN ใหม่
@@ -266,7 +259,7 @@ export default function BulkSetPin() {
                       <th className={TH}>PIN</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="[&>tr:first-child]:border-t-0">
                     {result.results.map((r, i) => (
                       <tr key={i} className="border-t border-gray-100">
                         <td className={`${TD} ${HIDE_MOBILE} text-gray-500`}>

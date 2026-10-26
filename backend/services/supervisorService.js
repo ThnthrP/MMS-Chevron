@@ -743,3 +743,110 @@ export async function getProjectHistory(id) {
 
   return items.sort((a, b) => new Date(b.at) - new Date(a.at));
 }
+
+// ============================================================
+// Manpower Requirements — รายการ position request ทุกตัว (1 แถว = 1 ตำแหน่งใน 1 requirement)
+// ใช้ข้อมูลชุดเดียวกับหน้า ProjectDetail (ตาราง ManpowerRequest) → เพิ่ม/แก้ที่ไหนก็เห็นทั้งสองหน้า
+//   Requested by = คนที่เพิ่มตำแหน่งนี้ (ManpowerRequest.requestedBy)
+//   Filled by    = คนที่จัดรายชื่อเข้าตำแหน่งนี้ล่าสุด (Audit Log ของ Assign Names)
+// ============================================================
+export async function getRequirements() {
+  const requests = await prisma.manpowerRequest.findMany({
+    orderBy: { createdAt: "desc" },
+    include: {
+      position: { select: { id: true, name: true } },
+      requestedBy: { select: { name: true, titlePrefix: true } },
+      matchExceptions: { where: { status: "pending" }, select: { id: true } },
+      bookings: { where: { status: { not: "cancelled" } }, select: { id: true } },
+      rounds: {
+        orderBy: { round: "desc" },
+        take: 1,
+        include: {
+          candidates: {
+            select: {
+              status: true,
+              // ชื่อพนักงานที่จัดเข้าตำแหน่ง — ให้ช่องค้นหาหน้า Requirements หาจากชื่อได้
+              employee: {
+                select: { empId: true, fullName: true, fullNameEN: true, fullNameTH: true },
+              },
+            },
+          },
+        },
+      },
+      project: {
+        select: {
+          id: true,
+          name: true,
+          location: true,
+          isOffshore: true,
+          startDate: true,
+          endDate: true,
+          status: true,
+          contract: { select: { name: true, client: { select: { name: true } } } },
+          masterProjectRecord: { select: { projectCode: true, jobTitle: true } },
+        },
+      },
+    },
+  });
+
+  // ── Filled by: log การเพิ่มรายชื่อ (POST /api/allocation/shortlist) ล่าสุดของแต่ละตำแหน่ง ──
+  const ids = new Set(requests.map((r) => r.id));
+  const filledBy = new Map();
+  if (ids.size > 0) {
+    const logs = await prisma.auditLog.findMany({
+      where: { module: "allocation", success: true, method: "POST" },
+      orderBy: { createdAt: "desc" },
+      take: 5000,
+      select: { createdAt: true, actorName: true, path: true, details: true },
+    });
+    for (const l of logs) {
+      if (!l.path?.includes("shortlist") || !l.details) continue;
+      const raw = JSON.stringify(l.details);
+      const m = raw.match(/"requestId":"([0-9a-f-]{36})"/);
+      const reqId = m && ids.has(m[1]) ? m[1] : null;
+      if (reqId && !filledBy.has(reqId))
+        filledBy.set(reqId, { name: l.actorName || null, at: l.createdAt });
+    }
+  }
+
+  return requests.map((r) => {
+    const cands = (r.rounds[0]?.candidates ?? []).filter((c) => c.status !== "rejected");
+    const p = r.project;
+    return {
+      id: r.id,
+      projectId: p?.id,
+      position: r.position?.name ?? null,
+      positionId: r.position?.id ?? null,
+      quantity: r.quantity,
+      assigned: cands.length,
+      approved: cands.filter((c) => c.status === "approved").length,
+      booked: r.bookings.length, // = คอลัมน์ ASSIGNED ในหน้า ProjectDetail
+      pendingPe: r.matchExceptions.length,
+      status: r.status,
+      startDate: r.startDate ?? p?.startDate ?? null,
+      endDate: r.endDate ?? p?.endDate ?? null,
+      location: p?.location ?? null,
+      isOffshore: r.isOffshore || p?.isOffshore || false,
+      projectName: p?.name ?? null,
+      projectCode: p?.masterProjectRecord?.projectCode ?? null,
+      jobTitle: p?.masterProjectRecord?.jobTitle ?? p?.name ?? null,
+      projectStatus: p?.status ?? null,
+      client: p?.contract?.client?.name ?? null,
+      contract: p?.contract?.name ?? null,
+      requestedBy: r.requestedBy
+        ? `${r.requestedBy.titlePrefix ?? ""}${r.requestedBy.name ?? ""}`
+        : null,
+      requestedAt: r.createdAt,
+      filledBy: filledBy.get(r.id) || null,
+      projectStartDate: p?.startDate ?? null,
+      workers: cands
+        .filter((c) => c.employee)
+        .map((c) => ({
+          empId: c.employee.empId ?? null,
+          name: c.employee.fullNameEN || c.employee.fullName,
+          nameTH: c.employee.fullNameTH ?? null,
+          status: c.status,
+        })),
+    };
+  });
+}

@@ -8,16 +8,17 @@ import { AppContent } from "../../context/AppContext";
 // ขั้นตอน: เลือกไฟล์ → ตรวจสอบ (preview, ยังไม่บันทึก) → ยืนยันนำเข้า
 // ══════════════════════════════════════════════════════════
 
-const CARD = "overflow-hidden rounded-[10px] border border-gray-200 bg-white";
 const TH =
   "whitespace-nowrap border-b border-gray-200 bg-gray-50 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[0.3px] text-gray-500";
 const TD = "border-b border-gray-100 px-3 py-2 align-top text-[13px]";
+const LABEL =
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
 const BTN =
   "cursor-pointer whitespace-nowrap rounded-lg px-4 py-2 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-50";
 
 function Stat({ label, value, tone = "text-gray-800" }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+    <div className="bg-white px-3 py-2.5">
       <div className="text-[11px] font-semibold text-gray-500">{label}</div>
       <div className={`text-[18px] font-bold ${tone}`}>{value}</div>
     </div>
@@ -28,18 +29,18 @@ function Section({ title, count, tone = "text-gray-700", children }) {
   const [open, setOpen] = useState(false);
   if (!count) return null;
   return (
-    <div className={CARD}>
+    <div className="border-b border-gray-200">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50"
+        className="flex w-full cursor-pointer items-center justify-between border-none bg-transparent px-1 py-2.5 text-left hover:bg-gray-50"
       >
         <span className={`text-[13px] font-bold ${tone}`}>
           {title} <span className="font-semibold text-gray-400">({count})</span>
         </span>
         <span className="text-[12px] text-gray-400">{open ? "▲ ซ่อน" : "▼ ดู"}</span>
       </button>
-      {open && <div className="max-h-[420px] overflow-auto border-t border-gray-100">{children}</div>}
+      {open && <div className="mb-3 max-h-[420px] overflow-auto border-y border-gray-100">{children}</div>}
     </div>
   );
 }
@@ -159,36 +160,43 @@ export default function DataImport() {
   const c = report?.counts;
 
   return (
-    <div className="space-y-4 p-6">
-      <div>
-        <h1 className="text-[20px] font-bold text-gray-800">Data Import</h1>
-        <p className="text-[13px] text-gray-500">
-          นำเข้าข้อมูลจากไฟล์ Excel ของ HR — admin เท่านั้น
-        </p>
+    <div className="mx-auto w-full min-w-0 max-w-[1800px] space-y-4">
+      {/* ════════ Header ════════ */}
+      <div className="min-w-0">
+        <h1 className="m-0 text-lg font-bold">Data Import</h1>
+        <div className="text-xs text-gray-500">
+          นำเข้าข้อมูลจากไฟล์ Excel ของ HR — admin เท่านั้น · ขั้นตอน: เลือกไฟล์ → ตรวจสอบ (Preview) → ยืนยันนำเข้า
+        </div>
       </div>
 
-      {/* ── เลือกชนิดไฟล์ ── */}
-      <div className="flex flex-wrap gap-2">
-        {Object.entries(KINDS).map(([k, v]) => (
-          <button
-            key={k}
-            type="button"
-            disabled={!!busy}
-            onClick={() => switchKind(k)}
-            className={`${BTN} border ${
-              kind === k
-                ? "border-blue-600 bg-blue-600 text-white"
-                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-            }`}
-          >
-            {v.label}
-          </button>
-        ))}
-      </div>
+      {/* ════════ เลือกไฟล์ — คั่นด้วยเส้น ════════ */}
+      <div className="border-y border-gray-200 py-3">
+        {/* ชนิดไฟล์ */}
+        <div className="mb-3">
+          <div className={LABEL}>ชนิดไฟล์</div>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(KINDS).map(([k, v]) => (
+              <button
+                key={k}
+                type="button"
+                disabled={!!busy}
+                onClick={() => switchKind(k)}
+                className={`${BTN} border ${
+                  kind === k
+                    ? "border-[#2B2F78] bg-[#2B2F78] text-white"
+                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      {/* ── เลือกไฟล์ ── */}
-      <div className={`${CARD} p-4`}>
-        <div className="mb-1 text-[11px] font-semibold text-gray-500">{K.fileLabel}</div>
+        <div className={LABEL}>
+          ไฟล์{" "}
+          <span className="normal-case tracking-normal text-gray-400">{K.fileLabel.replace(/^ไฟล์\s*/, "")}</span>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
             ref={inputRef}
@@ -212,17 +220,17 @@ export default function DataImport() {
               type="button"
               disabled={!!busy}
               onClick={clearAll}
-              className="cursor-pointer text-[12px] font-semibold text-gray-400 hover:text-red-500 disabled:opacity-50"
+              className="cursor-pointer border-none bg-transparent text-[12px] font-semibold text-gray-400 hover:text-red-500 disabled:opacity-50"
             >
               ✕ ล้าง
             </button>
           )}
-          <div className="ml-auto flex gap-2">
+          <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
             <button
               type="button"
               disabled={!file || !!busy}
               onClick={() => send(true)}
-              className={`${BTN} border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100`}
+              className={`${BTN} flex-1 border border-[#2B2F78] bg-white text-[#2B2F78] hover:bg-[#2B2F78]/5 sm:flex-none`}
             >
               {busy === "preview" ? "กำลังตรวจสอบ…" : "1. ตรวจสอบ (Preview)"}
             </button>
@@ -230,13 +238,12 @@ export default function DataImport() {
               type="button"
               disabled={!report?.dryRun || !!busy}
               onClick={confirmImport}
-              className={`${BTN} bg-green-600 text-white hover:bg-green-700`}
+              className={`${BTN} flex-1 border-none bg-green-600 text-white hover:bg-green-700 sm:flex-none`}
             >
               {busy === "import" ? "กำลังนำเข้า…" : "2. ยืนยันนำเข้า"}
             </button>
           </div>
         </div>
-        {(
         <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 text-[13px] text-gray-700">
           <input
             type="checkbox"
@@ -246,7 +253,7 @@ export default function DataImport() {
               setReport(null); // เปลี่ยนตัวเลือก → ต้อง Preview ใหม่
               setReportAt(null);
             }}
-            className="h-4 w-4 cursor-pointer accent-blue-600"
+            className="h-4 w-4 cursor-pointer accent-[#2B2F78]"
           />
           สร้างพนักงานใหม่ให้คนที่ไม่พบในระบบ
           <span className="text-[12px] text-gray-400">
@@ -254,8 +261,7 @@ export default function DataImport() {
             {kind === "pe" ? ", ไม่มี Employee ID — เติมทีหลังในหน้า Edit Worker" : ""})
           </span>
         </label>
-        )}
-        <ul className="mt-3 list-disc space-y-0.5 pl-5 text-[12px] text-gray-500">
+        <ul className="mb-0 mt-3 list-disc space-y-0.5 pl-5 text-[12px] text-gray-500">
           {K.hints.map((h) => (
             <li key={h}>{h}</li>
           ))}
@@ -268,10 +274,10 @@ export default function DataImport() {
       {report && report.kind !== "pe" && (
         <>
           <div
-            className={`rounded-lg border px-4 py-2.5 text-[13px] font-semibold ${
+            className={`border-l-[3px] px-4 py-2.5 text-[13px] font-semibold ${
               report.dryRun
-                ? "border-amber-200 bg-amber-50 text-amber-800"
-                : "border-green-200 bg-green-50 text-green-800"
+                ? "border-amber-400 bg-amber-50 text-amber-800"
+                : "border-green-500 bg-green-50 text-green-800"
             }`}
           >
             {report.dryRun
@@ -288,7 +294,7 @@ export default function DataImport() {
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-px border-y border-gray-200 bg-gray-200 sm:grid-cols-4 lg:grid-cols-6">
             <Stat label="แถวในไฟล์" value={report.rowsInFile} />
             <Stat label="จับคู่พนักงานได้" value={report.employeesMatched} tone="text-blue-700" />
             {report.createMissing ? (
@@ -308,119 +314,121 @@ export default function DataImport() {
           </div>
 
           {report.warnings?.map((w) => (
-            <div key={w} className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-[13px] text-amber-800">
+            <div key={w} className="border-l-[3px] border-amber-400 bg-amber-50 px-4 py-2 text-[13px] text-amber-800">
               ⚠ {w}
             </div>
           ))}
 
-          <Section title="❌ Error ตอนบันทึก" count={report.errors.length} tone="text-red-700">
-            <table className="w-full">
-              <thead><tr><th className={TH}>แถว</th><th className={TH}>พนักงาน</th><th className={TH}>ข้อความ</th></tr></thead>
-              <tbody>
-                {report.errors.map((e) => (
-                  <tr key={e.row}><td className={TD}>{e.row}</td><td className={TD}>{e.employee}</td><td className={`${TD} text-red-600`}>{e.message}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </Section>
+          <div className="border-t border-gray-200">
+            <Section title="❌ Error ตอนบันทึก" count={report.errors.length} tone="text-red-700">
+              <table className="w-full">
+                <thead><tr><th className={TH}>แถว</th><th className={TH}>พนักงาน</th><th className={TH}>ข้อความ</th></tr></thead>
+                <tbody>
+                  {report.errors.map((e) => (
+                    <tr key={e.row}><td className={TD}>{e.row}</td><td className={TD}>{e.employee}</td><td className={`${TD} text-red-600`}>{e.message}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
 
-          <Section title={`➕ พนักงานใหม่${report.dryRun ? " (จะสร้าง)" : " (สร้างแล้ว)"}`} count={report.created.length} tone="text-green-700">
-            <table className="w-full">
-              <thead><tr><th className={TH}>แถว</th><th className={TH}>EMP CODE</th><th className={TH}>Employee ID</th><th className={TH}>Name</th><th className={TH}>ชื่อไทย</th><th className={TH}>ตำแหน่ง</th></tr></thead>
-              <tbody>
-                {report.created.map((r) => (
-                  <tr key={r.row}>
-                    <td className={TD}>{r.row}</td>
-                    <td className={TD}>{r.empCode}</td>
-                    <td className={TD}>{r.empId}</td>
-                    <td className={TD}>{r.nameEN}</td>
-                    <td className={TD}>{r.nameTH || "-"}</td>
-                    <td className={TD}>
-                      {r.positionMatched || (
-                        <span className="text-amber-600">{r.position ? `“${r.position}” ไม่ตรงกับตำแหน่งในระบบ — เว้นว่าง` : "-"}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Section>
+            <Section title={`➕ พนักงานใหม่${report.dryRun ? " (จะสร้าง)" : " (สร้างแล้ว)"}`} count={report.created.length} tone="text-green-700">
+              <table className="w-full">
+                <thead><tr><th className={TH}>แถว</th><th className={TH}>EMP CODE</th><th className={TH}>Employee ID</th><th className={TH}>Name</th><th className={TH}>ชื่อไทย</th><th className={TH}>ตำแหน่ง</th></tr></thead>
+                <tbody>
+                  {report.created.map((r) => (
+                    <tr key={r.row}>
+                      <td className={TD}>{r.row}</td>
+                      <td className={TD}>{r.empCode}</td>
+                      <td className={TD}>{r.empId}</td>
+                      <td className={TD}>{r.nameEN}</td>
+                      <td className={TD}>{r.nameTH || "-"}</td>
+                      <td className={TD}>
+                        {r.positionMatched || (
+                          <span className="text-amber-600">{r.position ? `“${r.position}” ไม่ตรงกับตำแหน่งในระบบ — เว้นว่าง` : "-"}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
 
-          <Section title="⚠ ไม่พบพนักงานในระบบ (จะถูกข้าม)" count={report.createMissing ? 0 : report.notFound.length} tone="text-red-700">
-            <table className="w-full">
-              <thead><tr><th className={TH}>แถว</th><th className={TH}>Employee ID</th><th className={TH}>Name</th><th className={TH}>ชื่อไทย</th></tr></thead>
-              <tbody>
-                {report.notFound.map((r) => (
-                  <tr key={r.row}><td className={TD}>{r.row}</td><td className={TD}>{r.empId}</td><td className={TD}>{r.nameEN}</td><td className={TD}>{r.nameTH || "-"}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </Section>
+            <Section title="⚠ ไม่พบพนักงานในระบบ (จะถูกข้าม)" count={report.createMissing ? 0 : report.notFound.length} tone="text-red-700">
+              <table className="w-full">
+                <thead><tr><th className={TH}>แถว</th><th className={TH}>Employee ID</th><th className={TH}>Name</th><th className={TH}>ชื่อไทย</th></tr></thead>
+                <tbody>
+                  {report.notFound.map((r) => (
+                    <tr key={r.row}><td className={TD}>{r.row}</td><td className={TD}>{r.empId}</td><td className={TD}>{r.nameEN}</td><td className={TD}>{r.nameTH || "-"}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
 
-          <Section title="⚠ Training ในไฟล์ที่ map ไม่ได้ (จะถูกข้าม)" count={report.unmappedTrainings.length} tone="text-amber-700">
-            <div className="px-4 py-2 text-[12px] text-gray-500">
-              แก้ได้โดยตั้ง Alias ของ training ให้ตรงกับชื่อในไฟล์ (หน้า Manage Trainings) แล้วตรวจสอบใหม่
-            </div>
-            <table className="w-full">
-              <thead><tr><th className={TH}>ชื่อในไฟล์</th><th className={TH}>จำนวนคนที่มีข้อมูล</th></tr></thead>
-              <tbody>
-                {report.unmappedTrainings.map((t) => (
-                  <tr key={t.name}><td className={TD}>{t.name}</td><td className={TD}>{t.filledRows}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </Section>
+            <Section title="⚠ Training ในไฟล์ที่ map ไม่ได้ (จะถูกข้าม)" count={report.unmappedTrainings.length} tone="text-amber-700">
+              <div className="px-4 py-2 text-[12px] text-gray-500">
+                แก้ได้โดยตั้ง Alias ของ training ให้ตรงกับชื่อในไฟล์ (หน้า Manage Trainings) แล้วตรวจสอบใหม่
+              </div>
+              <table className="w-full">
+                <thead><tr><th className={TH}>ชื่อในไฟล์</th><th className={TH}>จำนวนคนที่มีข้อมูล</th></tr></thead>
+                <tbody>
+                  {report.unmappedTrainings.map((t) => (
+                    <tr key={t.name}><td className={TD}>{t.name}</td><td className={TD}>{t.filledRows}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
 
-          <Section title="พนักงานซ้ำในไฟล์ (ใช้แถวแรก)" count={report.duplicatesInFile.length} tone="text-amber-700">
-            <table className="w-full">
-              <thead><tr><th className={TH}>แถว</th><th className={TH}>ซ้ำกับแถว</th><th className={TH}>พนักงาน</th></tr></thead>
-              <tbody>
-                {report.duplicatesInFile.map((d) => (
-                  <tr key={d.row}><td className={TD}>{d.row}</td><td className={TD}>{d.firstRow}</td><td className={TD}>{d.empId} {d.nameEN}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </Section>
+            <Section title="พนักงานซ้ำในไฟล์ (ใช้แถวแรก)" count={report.duplicatesInFile.length} tone="text-amber-700">
+              <table className="w-full">
+                <thead><tr><th className={TH}>แถว</th><th className={TH}>ซ้ำกับแถว</th><th className={TH}>พนักงาน</th></tr></thead>
+                <tbody>
+                  {report.duplicatesInFile.map((d) => (
+                    <tr key={d.row}><td className={TD}>{d.row}</td><td className={TD}>{d.firstRow}</td><td className={TD}>{d.empId} {d.nameEN}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
 
-          <Section title="เติม Employee ID / ชื่อ ที่ยังว่างในระบบ" count={report.backfills.length}>
-            <table className="w-full">
-              <thead><tr><th className={TH}>พนักงาน</th><th className={TH}>EMP CODE</th><th className={TH}>เติม</th></tr></thead>
-              <tbody>
-                {report.backfills.map((b, i) => (
-                  <tr key={i}>
-                    <td className={TD}>{b.employee}</td>
-                    <td className={TD}>{b.empCode}</td>
-                    <td className={TD}>{Object.entries(b.fields).map(([k, v]) => `${k}: ${v}`).join(" · ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Section>
+            <Section title="เติม Employee ID / ชื่อ ที่ยังว่างในระบบ" count={report.backfills.length}>
+              <table className="w-full">
+                <thead><tr><th className={TH}>พนักงาน</th><th className={TH}>EMP CODE</th><th className={TH}>เติม</th></tr></thead>
+                <tbody>
+                  {report.backfills.map((b, i) => (
+                    <tr key={i}>
+                      <td className={TD}>{b.employee}</td>
+                      <td className={TD}>{b.empCode}</td>
+                      <td className={TD}>{Object.entries(b.fields).map(([k, v]) => `${k}: ${v}`).join(" · ")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
 
-          <Section
-            title={`รายการเปลี่ยนแปลง${report.changesTruncated ? " (แสดง 500 รายการแรก)" : ""}`}
-            count={report.changes.length}
-            tone="text-blue-700"
-          >
-            <table className="w-full">
-              <thead><tr><th className={TH}>พนักงาน</th><th className={TH}>รายการ</th><th className={TH}>ประเภท</th><th className={TH}>เดิม</th><th className={TH}>ใหม่</th></tr></thead>
-              <tbody>
-                {report.changes.map((ch, i) => (
-                  <tr key={i}>
-                    <td className={TD}>{ch.employee}</td>
-                    <td className={TD}>{ch.item}</td>
-                    <td className={TD}>
-                      <span className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${ch.kind === "create" ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
-                        {ch.kind === "create" ? "ใหม่" : "อัปเดต"}
-                      </span>
-                    </td>
-                    <td className={`${TD} text-gray-400`}>{ch.from || "-"}</td>
-                    <td className={TD}>{ch.to}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Section>
+            <Section
+              title={`รายการเปลี่ยนแปลง${report.changesTruncated ? " (แสดง 500 รายการแรก)" : ""}`}
+              count={report.changes.length}
+              tone="text-blue-700"
+            >
+              <table className="w-full">
+                <thead><tr><th className={TH}>พนักงาน</th><th className={TH}>รายการ</th><th className={TH}>ประเภท</th><th className={TH}>เดิม</th><th className={TH}>ใหม่</th></tr></thead>
+                <tbody>
+                  {report.changes.map((ch, i) => (
+                    <tr key={i}>
+                      <td className={TD}>{ch.employee}</td>
+                      <td className={TD}>{ch.item}</td>
+                      <td className={TD}>
+                        <span className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${ch.kind === "create" ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                          {ch.kind === "create" ? "ใหม่" : "อัปเดต"}
+                        </span>
+                      </td>
+                      <td className={`${TD} text-gray-400`}>{ch.from || "-"}</td>
+                      <td className={TD}>{ch.to}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+          </div>
         </>
       )}
     </div>
@@ -444,8 +452,8 @@ function PeReport({ report, reportAt }) {
   return (
     <>
       <div
-        className={`rounded-lg border px-4 py-2.5 text-[13px] font-semibold ${
-          report.dryRun ? "border-amber-200 bg-amber-50 text-amber-800" : "border-green-200 bg-green-50 text-green-800"
+        className={`border-l-[3px] px-4 py-2.5 text-[13px] font-semibold ${
+          report.dryRun ? "border-amber-400 bg-amber-50 text-amber-800" : "border-green-500 bg-green-50 text-green-800"
         }`}
       >
         {report.dryRun
@@ -458,7 +466,7 @@ function PeReport({ report, reportAt }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-px border-y border-gray-200 bg-gray-200 sm:grid-cols-4 lg:grid-cols-6">
         <Stat label="แถวในไฟล์" value={report.rowsInFile} />
         <Stat label="จับคู่พนักงานได้" value={report.employeesMatched} tone="text-blue-700" />
         {report.createMissing ? (
@@ -478,169 +486,171 @@ function PeReport({ report, reportAt }) {
       </div>
 
       {report.warnings?.map((w) => (
-        <div key={w} className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-[13px] text-amber-800">
+        <div key={w} className="border-l-[3px] border-amber-400 bg-amber-50 px-4 py-2 text-[13px] text-amber-800">
           ⚠ {w}
         </div>
       ))}
       {report.unknownHeaders?.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-[12px] text-gray-600">
+        <div className="border-l-[3px] border-gray-300 bg-gray-50 px-4 py-2 text-[12px] text-gray-600">
           คอลัมน์ที่ระบบไม่รู้จัก (ข้าม): {report.unknownHeaders.join(" · ")}
         </div>
       )}
 
-      <Section title="❌ Error ตอนบันทึก" count={report.errors.length} tone="text-red-700">
-        <table className="w-full">
-          <thead><tr><th className={TH}>แถว</th><th className={TH}>พนักงาน</th><th className={TH}>ข้อความ</th></tr></thead>
-          <tbody>
-            {report.errors.map((e) => (
-              <tr key={e.row}><td className={TD}>{e.row}</td><td className={TD}>{e.employee}</td><td className={`${TD} text-red-600`}>{e.message}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
+      <div className="border-t border-gray-200">
+        <Section title="❌ Error ตอนบันทึก" count={report.errors.length} tone="text-red-700">
+          <table className="w-full">
+            <thead><tr><th className={TH}>แถว</th><th className={TH}>พนักงาน</th><th className={TH}>ข้อความ</th></tr></thead>
+            <tbody>
+              {report.errors.map((e) => (
+                <tr key={e.row}><td className={TD}>{e.row}</td><td className={TD}>{e.employee}</td><td className={`${TD} text-red-600`}>{e.message}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
 
-      <Section title={`➕ พนักงานใหม่${report.dryRun ? " (จะสร้าง)" : " (สร้างแล้ว)"}`} count={report.created?.length || 0} tone="text-green-700">
-        <table className="w-full">
-          <thead><tr><th className={TH}>แถว</th><th className={TH}>EMP CODE</th><th className={TH}>ชื่อไทย</th><th className={TH}>ชื่ออังกฤษ</th><th className={TH}>ตำแหน่ง</th><th className={TH}>ส่วน</th></tr></thead>
-          <tbody>
-            {(report.created || []).map((r) => (
-              <tr key={r.row}>
-                <td className={TD}>{r.row}</td>
-                <td className={TD}>{r.empCode}</td>
-                <td className={TD}>{r.nameTH || "-"}</td>
-                <td className={TD}>{r.nameEN || "-"}</td>
-                <td className={TD}>
-                  {r.positionMatched || (
-                    <span className="text-amber-600">{r.position ? `“${r.position}” ไม่ตรงกับตำแหน่งในระบบ — เว้นว่าง` : "-"}</span>
-                  )}
-                </td>
-                <td className={TD}>{r.section === "new_sse" ? "NEW SSE" : "Permanent"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
+        <Section title={`➕ พนักงานใหม่${report.dryRun ? " (จะสร้าง)" : " (สร้างแล้ว)"}`} count={report.created?.length || 0} tone="text-green-700">
+          <table className="w-full">
+            <thead><tr><th className={TH}>แถว</th><th className={TH}>EMP CODE</th><th className={TH}>ชื่อไทย</th><th className={TH}>ชื่ออังกฤษ</th><th className={TH}>ตำแหน่ง</th><th className={TH}>ส่วน</th></tr></thead>
+            <tbody>
+              {(report.created || []).map((r) => (
+                <tr key={r.row}>
+                  <td className={TD}>{r.row}</td>
+                  <td className={TD}>{r.empCode}</td>
+                  <td className={TD}>{r.nameTH || "-"}</td>
+                  <td className={TD}>{r.nameEN || "-"}</td>
+                  <td className={TD}>
+                    {r.positionMatched || (
+                      <span className="text-amber-600">{r.position ? `“${r.position}” ไม่ตรงกับตำแหน่งในระบบ — เว้นว่าง` : "-"}</span>
+                    )}
+                  </td>
+                  <td className={TD}>{r.section === "new_sse" ? "NEW SSE" : "Permanent"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
 
-      <Section title="⚠ ไม่พบพนักงานในระบบ (จะถูกข้าม)" count={report.createMissing ? 0 : report.notFound.length} tone="text-red-700">
-        <div className="px-4 py-2 text-[12px] text-gray-500">
-          ไฟล์นี้ไม่มี Employee ID — ตรวจว่าชื่อไทยในหน้า Edit Worker ตรงกับไฟล์ แล้วกด Preview ใหม่
-        </div>
-        <table className="w-full">
-          <thead><tr><th className={TH}>แถว</th><th className={TH}>ชื่อไทย</th><th className={TH}>ชื่ออังกฤษ</th><th className={TH}>ส่วน</th></tr></thead>
-          <tbody>
-            {report.notFound.map((r) => (
-              <tr key={r.row}>
-                <td className={TD}>{r.row}</td><td className={TD}>{r.nameTH || "-"}</td><td className={TD}>{r.nameEN || "-"}</td>
-                <td className={TD}>{r.section === "new_sse" ? "New SSE" : "Permanent"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
+        <Section title="⚠ ไม่พบพนักงานในระบบ (จะถูกข้าม)" count={report.createMissing ? 0 : report.notFound.length} tone="text-red-700">
+          <div className="px-4 py-2 text-[12px] text-gray-500">
+            ไฟล์นี้ไม่มี Employee ID — ตรวจว่าชื่อไทยในหน้า Edit Worker ตรงกับไฟล์ แล้วกด Preview ใหม่
+          </div>
+          <table className="w-full">
+            <thead><tr><th className={TH}>แถว</th><th className={TH}>ชื่อไทย</th><th className={TH}>ชื่ออังกฤษ</th><th className={TH}>ส่วน</th></tr></thead>
+            <tbody>
+              {report.notFound.map((r) => (
+                <tr key={r.row}>
+                  <td className={TD}>{r.row}</td><td className={TD}>{r.nameTH || "-"}</td><td className={TD}>{r.nameEN || "-"}</td>
+                  <td className={TD}>{r.section === "new_sse" ? "New SSE" : "Permanent"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
 
-      <Section title="⚠ จับคู่ด้วยชื่ออังกฤษ (ชื่อไทยไม่ตรง — ตรวจว่าเป็นคนเดียวกัน · ถ้าในระบบยังไม่มีชื่อไทย จะเติมให้)" count={report.matchedByEnglishList?.length || 0} tone="text-amber-700">
-        <table className="w-full">
-          <thead><tr><th className={TH}>แถว</th><th className={TH}>ชื่อไทยในไฟล์</th><th className={TH}>ชื่อไทยในระบบ</th><th className={TH}>พนักงาน</th></tr></thead>
-          <tbody>
-            {report.matchedByEnglishList.map((r) => (
-              <tr key={r.row}><td className={TD}>{r.row}</td><td className={TD}>{r.fileTH || "-"}</td><td className={TD}>{r.systemTH}</td><td className={TD}>{r.employee}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
+        <Section title="⚠ จับคู่ด้วยชื่ออังกฤษ (ชื่อไทยไม่ตรง — ตรวจว่าเป็นคนเดียวกัน · ถ้าในระบบยังไม่มีชื่อไทย จะเติมให้)" count={report.matchedByEnglishList?.length || 0} tone="text-amber-700">
+          <table className="w-full">
+            <thead><tr><th className={TH}>แถว</th><th className={TH}>ชื่อไทยในไฟล์</th><th className={TH}>ชื่อไทยในระบบ</th><th className={TH}>พนักงาน</th></tr></thead>
+            <tbody>
+              {report.matchedByEnglishList.map((r) => (
+                <tr key={r.row}><td className={TD}>{r.row}</td><td className={TD}>{r.fileTH || "-"}</td><td className={TD}>{r.systemTH}</td><td className={TD}>{r.employee}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
 
-      <Section title="⚠ อยู่ในส่วน New SSE แต่ในระบบเป็น SSE อื่นอยู่แล้ว (ไม่เปลี่ยน)" count={report.roster.sseConflicts.length} tone="text-amber-700">
-        <table className="w-full">
-          <thead><tr><th className={TH}>แถว</th><th className={TH}>พนักงาน</th><th className={TH}>SSE ในระบบ</th></tr></thead>
-          <tbody>
-            {report.roster.sseConflicts.map((r) => (
-              <tr key={r.row}><td className={TD}>{r.row}</td><td className={TD}>{r.employee}</td><td className={TD}>{SSE_LABEL[r.current] || r.current}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
+        <Section title="⚠ อยู่ในส่วน New SSE แต่ในระบบเป็น SSE อื่นอยู่แล้ว (ไม่เปลี่ยน)" count={report.roster.sseConflicts.length} tone="text-amber-700">
+          <table className="w-full">
+            <thead><tr><th className={TH}>แถว</th><th className={TH}>พนักงาน</th><th className={TH}>SSE ในระบบ</th></tr></thead>
+            <tbody>
+              {report.roster.sseConflicts.map((r) => (
+                <tr key={r.row}><td className={TD}>{r.row}</td><td className={TD}>{r.employee}</td><td className={TD}>{SSE_LABEL[r.current] || r.current}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
 
-      <Section title="พนักงานซ้ำในไฟล์ (ใช้แถวแรก)" count={report.duplicatesInFile.length} tone="text-amber-700">
-        <table className="w-full">
-          <thead><tr><th className={TH}>แถว</th><th className={TH}>ซ้ำกับแถว</th><th className={TH}>ชื่อ</th></tr></thead>
-          <tbody>
-            {report.duplicatesInFile.map((d) => (
-              <tr key={d.row}><td className={TD}>{d.row}</td><td className={TD}>{d.firstRow}</td><td className={TD}>{d.name}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
+        <Section title="พนักงานซ้ำในไฟล์ (ใช้แถวแรก)" count={report.duplicatesInFile.length} tone="text-amber-700">
+          <table className="w-full">
+            <thead><tr><th className={TH}>แถว</th><th className={TH}>ซ้ำกับแถว</th><th className={TH}>ชื่อ</th></tr></thead>
+            <tbody>
+              {report.duplicatesInFile.map((d) => (
+                <tr key={d.row}><td className={TD}>{d.row}</td><td className={TD}>{d.firstRow}</td><td className={TD}>{d.name}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
 
-      <Section title="ไม่มีวันที่ตรวจร่างกาย (ข้าม PE record — ข้อมูลพนักงานยังอัปเดต)" count={report.noExamDate.length} tone="text-amber-700">
-        <table className="w-full">
-          <thead><tr><th className={TH}>แถว</th><th className={TH}>พนักงาน</th></tr></thead>
-          <tbody>
-            {report.noExamDate.map((r) => (
-              <tr key={r.row}><td className={TD}>{r.row}</td><td className={TD}>{r.employee}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
+        <Section title="ไม่มีวันที่ตรวจร่างกาย (ข้าม PE record — ข้อมูลพนักงานยังอัปเดต)" count={report.noExamDate.length} tone="text-amber-700">
+          <table className="w-full">
+            <thead><tr><th className={TH}>แถว</th><th className={TH}>พนักงาน</th></tr></thead>
+            <tbody>
+              {report.noExamDate.map((r) => (
+                <tr key={r.row}><td className={TD}>{r.row}</td><td className={TD}>{r.employee}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
 
-      <Section title="🟩 จะติ๊ก Permanent Worker" count={report.roster.permanent.length} tone="text-green-700">
-        <table className="w-full">
-          <thead><tr><th className={TH}>แถว</th><th className={TH}>พนักงาน</th></tr></thead>
-          <tbody>
-            {report.roster.permanent.map((r) => (
-              <tr key={r.row}><td className={TD}>{r.row}</td><td className={TD}>{r.employee}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
+        <Section title="🟩 จะติ๊ก Permanent Worker" count={report.roster.permanent.length} tone="text-green-700">
+          <table className="w-full">
+            <thead><tr><th className={TH}>แถว</th><th className={TH}>พนักงาน</th></tr></thead>
+            <tbody>
+              {report.roster.permanent.map((r) => (
+                <tr key={r.row}><td className={TD}>{r.row}</td><td className={TD}>{r.employee}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
 
-      <Section title="🆕 จะตั้ง SSE Level = NEW SSE" count={report.roster.newSse.length} tone="text-green-700">
-        <table className="w-full">
-          <thead><tr><th className={TH}>แถว</th><th className={TH}>พนักงาน</th></tr></thead>
-          <tbody>
-            {report.roster.newSse.map((r) => (
-              <tr key={r.row}><td className={TD}>{r.row}</td><td className={TD}>{r.employee}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
+        <Section title="🆕 จะตั้ง SSE Level = NEW SSE" count={report.roster.newSse.length} tone="text-green-700">
+          <table className="w-full">
+            <thead><tr><th className={TH}>แถว</th><th className={TH}>พนักงาน</th></tr></thead>
+            <tbody>
+              {report.roster.newSse.map((r) => (
+                <tr key={r.row}><td className={TD}>{r.row}</td><td className={TD}>{r.employee}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
 
-      <Section title="เติมข้อมูลพนักงานที่ยังว่าง (ชื่อไทย / วันเกิด / สถานที่ทำงาน / แผนก)" count={report.backfills.length}>
-        <table className="w-full">
-          <thead><tr><th className={TH}>พนักงาน</th><th className={TH}>เติม</th></tr></thead>
-          <tbody>
-            {report.backfills.map((b, i) => (
-              <tr key={i}>
-                <td className={TD}>{b.employee}</td>
-                <td className={TD}>{Object.entries(b.fields).map(([k, v]) => `${BACKFILL_LABEL[k] || k}: ${v}`).join(" · ")}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
+        <Section title="เติมข้อมูลพนักงานที่ยังว่าง (ชื่อไทย / วันเกิด / สถานที่ทำงาน / แผนก)" count={report.backfills.length}>
+          <table className="w-full">
+            <thead><tr><th className={TH}>พนักงาน</th><th className={TH}>เติม</th></tr></thead>
+            <tbody>
+              {report.backfills.map((b, i) => (
+                <tr key={i}>
+                  <td className={TD}>{b.employee}</td>
+                  <td className={TD}>{Object.entries(b.fields).map(([k, v]) => `${BACKFILL_LABEL[k] || k}: ${v}`).join(" · ")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
 
-      <Section
-        title={`รายการเปลี่ยนแปลง${report.changesTruncated ? " (แสดง 500 รายการแรก)" : ""}`}
-        count={report.changes.length}
-        tone="text-blue-700"
-      >
-        <table className="w-full">
-          <thead><tr><th className={TH}>พนักงาน</th><th className={TH}>วันตรวจ</th><th className={TH}>ประเภท</th><th className={TH}>รายละเอียด</th></tr></thead>
-          <tbody>
-            {report.changes.map((ch, i) => (
-              <tr key={i}>
-                <td className={`${TD} whitespace-nowrap`}>{ch.employee}</td>
-                <td className={`${TD} whitespace-nowrap`}>{ch.examDate}</td>
-                <td className={TD}>
-                  <span className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${ch.kind === "create" ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
-                    {ch.kind === "create" ? "ใหม่" : "อัปเดต"}
-                  </span>
-                </td>
-                <td className={`${TD} text-[12px] text-gray-700`}>{ch.detail}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
+        <Section
+          title={`รายการเปลี่ยนแปลง${report.changesTruncated ? " (แสดง 500 รายการแรก)" : ""}`}
+          count={report.changes.length}
+          tone="text-blue-700"
+        >
+          <table className="w-full">
+            <thead><tr><th className={TH}>พนักงาน</th><th className={TH}>วันตรวจ</th><th className={TH}>ประเภท</th><th className={TH}>รายละเอียด</th></tr></thead>
+            <tbody>
+              {report.changes.map((ch, i) => (
+                <tr key={i}>
+                  <td className={`${TD} whitespace-nowrap`}>{ch.employee}</td>
+                  <td className={`${TD} whitespace-nowrap`}>{ch.examDate}</td>
+                  <td className={TD}>
+                    <span className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${ch.kind === "create" ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                      {ch.kind === "create" ? "ใหม่" : "อัปเดต"}
+                    </span>
+                  </td>
+                  <td className={`${TD} text-[12px] text-gray-700`}>{ch.detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
+      </div>
     </>
   );
 }

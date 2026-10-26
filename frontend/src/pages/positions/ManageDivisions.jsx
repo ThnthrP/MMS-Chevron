@@ -1,25 +1,16 @@
 import { useState, useEffect, useContext, useMemo } from "react";
 import axios from "axios";
 import { toast } from "react-toastify";
+import { Check, Pencil, Trash2, X } from "lucide-react";
 import { AppContent } from "../../context/AppContext";
 
 // ══════════════════════════════════════════════════════════
 // constants
 // ══════════════════════════════════════════════════════════
-const CARD = "overflow-hidden rounded-[10px] border border-gray-200 bg-white";
 const INPUT =
-  "box-border rounded-lg border border-gray-300 px-3 py-[9px] text-[13px] outline-none focus:border-blue-400";
-
-const BTN =
-  "cursor-pointer whitespace-nowrap rounded-md border-none px-3 py-1.5 text-xs font-semibold transition-all hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
-const BTN_SAVE = `${BTN} bg-[#d1e7dd] text-[#0f5132] shadow-[0_1px_3px_rgba(25,135,84,0.25),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(25,135,84,0.35),0_2px_3px_rgba(0,0,0,0.08)]`;
-const BTN_CANCEL = `${BTN} bg-gray-100 text-gray-700 shadow-[0_1px_3px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(0,0,0,0.18),0_2px_3px_rgba(0,0,0,0.08)]`;
-const BTN_RENAME = `${BTN} bg-[#e7f1ff] text-blue-600 shadow-[0_1px_3px_rgba(13,110,253,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(13,110,253,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
-const BTN_DELETE = `${BTN} bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(220,53,69,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
-
-const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
-const TH =
-  "sticky top-0 z-[1] bg-white px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-[0.3px] text-gray-500 shadow-[inset_0_-1px_0_#e9ecef]";
+  "box-border h-9 rounded-lg border border-gray-200 bg-white px-3 text-[13px] outline-none focus:border-blue-400";
+const ICON =
+  "inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-none bg-transparent disabled:cursor-not-allowed disabled:opacity-50";
 
 // ══════════════════════════════════════════════════════════
 // main
@@ -135,166 +126,161 @@ export default function ManageDivisions() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return divisions;
-    return divisions.filter((d) => d.name.toLowerCase().includes(q));
+    const list = q
+      ? divisions.filter((d) => d.name.toLowerCase().includes(q))
+      : divisions;
+    // เรียงตามตัวอักษร — อ่านไล่ลงทีละคอลัมน์ได้ง่าย
+    return [...list].sort((a, b) =>
+      a.name.localeCompare(b.name, "th", { sensitivity: "base" }),
+    );
   }, [divisions, search]);
 
+  // จำนวนพนักงาน — โชว์เฉพาะเมื่อ API ส่งมา (ยังไม่ส่งก็ไม่แสดง ไม่พัง)
+  const countOf = (d) => d._count?.employees ?? d.employeeCount ?? null;
+
   return (
-    <div className="mx-auto w-full min-w-0 max-w-[1800px] space-y-4">
-      {/* ════════ Header — เต็มความกว้างแบบหน้าอื่น ════════ */}
-      <div className={`${CARD} p-4 sm:p-[18px]`}>
-        <div className="text-xl font-extrabold">🗂 Manage Departments</div>
-        <div className="mt-1 text-xs text-gray-500">
+    <div className="mx-auto flex w-full min-w-0 max-w-[1800px] flex-col">
+      {/* ════════ Header ════════ */}
+      <div className="pb-3">
+        <h1 className="m-0 text-lg font-bold">Departments</h1>
+        <div className="text-xs text-gray-500">
           รายการแผนก/ดิวิชั่น ใช้เป็นตัวเลือกตอน Add/Edit Worker
         </div>
       </div>
 
-      {/* ════════ เนื้อหา — กว้างไม่เกิน 1100px (มีแค่คอลัมน์ชื่อ) ════════ */}
-      <div className="max-w-[1100px] space-y-4">
-        {/* Add + Search */}
-        <div
-          className={`${CARD} flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-end`}
-        >
-          <div className="min-w-0 flex-1">
-            <label className={FILTER_LABEL}>เพิ่ม Department ใหม่</label>
-            <div className="flex gap-2.5">
-              <input
-                type="text"
-                placeholder="ชื่อ department ใหม่…"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-                className={`${INPUT} min-w-0 flex-1`}
-              />
-              <button
-                onClick={handleAdd}
-                disabled={adding}
-                className="shrink-0 cursor-pointer whitespace-nowrap rounded-lg border-none bg-blue-600 px-[18px] py-[9px] text-[13px] font-semibold text-white shadow-[0_2px_5px_rgba(13,110,253,0.35)] transition-all hover:-translate-y-px hover:shadow-[0_4px_8px_rgba(13,110,253,0.45)] disabled:cursor-not-allowed disabled:bg-gray-400 disabled:shadow-none disabled:hover:translate-y-0"
+      {/* ════════ Add + Search — แถวเดียว ════════ */}
+      <div className="flex flex-col gap-2 border-y border-gray-200 py-3 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 flex-1 gap-2">
+          <input
+            type="text"
+            placeholder="＋ ชื่อ department ใหม่… (Enter เพื่อเพิ่ม)"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            className={`${INPUT} min-w-0 flex-1 sm:max-w-[360px]`}
+          />
+          <button
+            onClick={handleAdd}
+            disabled={adding || !newName.trim()}
+            className="h-9 shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none bg-[#2B2F78] px-3.5 text-xs font-semibold text-white hover:bg-[#22265f] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {adding ? "Adding…" : "+ Add"}
+          </button>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="whitespace-nowrap text-xs text-gray-500">
+            {search
+              ? `พบ ${filtered.length} จาก ${divisions.length}`
+              : `ทั้งหมด ${divisions.length} รายการ`}
+          </span>
+          <input
+            type="text"
+            placeholder="🔍 ค้นหา department…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className={`${INPUT} w-full sm:w-[260px]`}
+          />
+        </div>
+      </div>
+
+      {/* ════════ List — หลายคอลัมน์ตามความกว้างจอ (อ่านไล่ลงทีละคอลัมน์) ════════ */}
+      {loading ? (
+        <div className="p-7 text-center text-[13px] text-gray-500">
+          Loading…
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="p-7 text-center text-[13px] text-gray-500">
+          {search
+            ? `ไม่พบ "${search}"`
+            : "ยังไม่มี department — เพิ่มด้านบนได้เลย"}
+        </div>
+      ) : (
+        <div className="columns-1 gap-x-8 pt-1 sm:columns-[230px]">
+          {filtered.map((d) => {
+            const isEditing = editId === d.id;
+            const count = countOf(d);
+            return (
+              <div
+                key={d.id}
+                className="flex h-9 break-inside-avoid items-center gap-1.5 border-b border-gray-100 px-1 text-[13px] hover:bg-gray-50"
               >
-                {adding ? "Adding…" : "＋ Add"}
-              </button>
-            </div>
-          </div>
-
-          {/* เส้นคั่น — เฉพาะจอ sm+ */}
-          <div className="mx-1 hidden w-px self-stretch bg-gray-200 sm:block" />
-
-          <div className="min-w-0 sm:w-[340px]">
-            <label className={FILTER_LABEL}>ค้นหา Department</label>
-            <input
-              type="text"
-              placeholder="🔍 พิมพ์ชื่อ department…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className={`${INPUT} w-full`}
-            />
-          </div>
+                {isEditing ? (
+                  <>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveEdit(d);
+                        if (e.key === "Escape") cancelEdit();
+                      }}
+                      autoFocus
+                      className="box-border h-7 min-w-0 flex-1 rounded border border-blue-400 px-2 text-[13px] outline-none"
+                    />
+                    <button
+                      onClick={() => handleSaveEdit(d)}
+                      disabled={savingEdit}
+                      title="บันทึก (Enter)"
+                      className={`${ICON} text-[#198754] hover:bg-[#d1e7dd]`}
+                    >
+                      <Check size={15} />
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      disabled={savingEdit}
+                      title="ยกเลิก (Esc)"
+                      className={`${ICON} text-gray-500 hover:bg-gray-200`}
+                    >
+                      <X size={15} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      className="min-w-0 flex-1 cursor-text truncate font-medium text-gray-900"
+                      title={`${d.name} — ดับเบิลคลิกเพื่อเปลี่ยนชื่อ`}
+                      onDoubleClick={() => startEdit(d)}
+                    >
+                      {d.name}
+                    </span>
+                    {count != null && (
+                      <span
+                        className={`shrink-0 text-[11px] ${
+                          count > 0 ? "text-gray-500" : "text-gray-300"
+                        }`}
+                        title="จำนวนพนักงานในแผนกนี้"
+                      >
+                        {count} คน
+                      </span>
+                    )}
+                    {/* ปุ่มแก้ไข/ลบ โชว์ตลอด — เห็นทันทีว่าทำอะไรได้ */}
+                    <span className="flex shrink-0 gap-0.5">
+                      <button
+                        onClick={() => startEdit(d)}
+                        title="เปลี่ยนชื่อ"
+                        className={`${ICON} text-blue-600 hover:bg-[#e7f1ff]`}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(d)}
+                        title="ลบ"
+                        className={`${ICON} text-[#dc3545] hover:bg-[#fff5f5]`}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </span>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
+      )}
 
-        {/* Table */}
-        <div className={CARD}>
-          <div className="flex items-center justify-between border-b border-gray-200 px-3.5 py-2 text-xs text-gray-500">
-            <span>
-              {search
-                ? `พบ ${filtered.length} จาก ${divisions.length} รายการ`
-                : `ทั้งหมด ${divisions.length} รายการ`}
-            </span>
-          </div>
-
-          {loading ? (
-            <div className="p-7 text-center text-gray-500">Loading…</div>
-          ) : filtered.length === 0 ? (
-            <div className="p-7 text-center text-gray-500">
-              {search
-                ? `ไม่พบ "${search}"`
-                : "ยังไม่มี department — เพิ่มด้านบนได้เลย"}
-            </div>
-          ) : (
-            <div className="overflow-auto lg:max-h-[calc(100vh-360px)]">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <th className={`${TH} text-left`}>Department</th>
-                    <th className={`${TH} w-[200px] text-right`}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((d) => {
-                    const isEditing = editId === d.id;
-                    return (
-                      <tr key={d.id} className="hover:bg-gray-50">
-                        <td
-                          colSpan={isEditing ? 2 : 1}
-                          className="border-b border-gray-100 px-3.5 py-3 align-middle text-[13px]"
-                        >
-                          {isEditing ? (
-                            // โหมดแก้ไข — มือถือ: ช่องกรอกเต็มแถว ปุ่มลงบรรทัดใหม่
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                              <input
-                                type="text"
-                                value={editName}
-                                onChange={(e) => setEditName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") handleSaveEdit(d);
-                                  if (e.key === "Escape") cancelEdit();
-                                }}
-                                autoFocus
-                                className={`${INPUT} w-full px-2.5 py-1.5 sm:max-w-[300px]`}
-                              />
-                              <div className="flex justify-end gap-1.5">
-                                <button
-                                  onClick={() => handleSaveEdit(d)}
-                                  disabled={savingEdit}
-                                  className={BTN_SAVE}
-                                >
-                                  {savingEdit ? "Saving…" : "Save"}
-                                </button>
-                                <button
-                                  onClick={cancelEdit}
-                                  disabled={savingEdit}
-                                  className={BTN_CANCEL}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="break-words font-semibold">
-                              {d.name}
-                            </span>
-                          )}
-                        </td>
-                        {!isEditing && (
-                          <td className="border-b border-gray-100 px-3.5 py-3 text-right align-middle">
-                            <div className="flex justify-end gap-1.5">
-                              <button
-                                onClick={() => startEdit(d)}
-                                className={BTN_RENAME}
-                              >
-                                Rename
-                              </button>
-                              <button
-                                onClick={() => handleDelete(d)}
-                                className={BTN_DELETE}
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        <div className="pl-1 text-[11px] text-gray-400">
-          * ลบ department ที่ยังมีพนักงานใช้อยู่ไม่ได้ (ระบบจะแจ้งเตือน) ·
-          เปลี่ยนชื่อจะอัปเดตให้พนักงานที่ใช้ชื่อเดิมโดยอัตโนมัติ
-        </div>
+      <div className="pt-3 text-[11px] text-gray-400">
+        * ลบ department ที่ยังมีพนักงานใช้อยู่ไม่ได้ (ระบบจะแจ้งเตือน) ·
+        เปลี่ยนชื่อจะอัปเดตให้พนักงานที่ใช้ชื่อเดิมโดยอัตโนมัติ · ดับเบิลคลิกชื่อเพื่อแก้ได้เลย
       </div>
     </div>
   );

@@ -36,22 +36,33 @@ export async function getReviewProjects() {
 export async function getReviewDetail(projectId) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    include: { contract: { include: { client: true } } },
+    include: {
+      contract: { include: { client: true } },
+      masterProjectRecord: { select: { projectCode: true } },
+    },
   });
   if (!project) return null;
 
   const assignments = await prisma.assignment.findMany({
     where: { projectId },
-    include: { employee: { include: { position: true } } },
+    include: {
+      employee: { include: { position: true } },
+      position: { select: { name: true } }, // ตำแหน่งที่ลงงานจริง (snapshot ตอน deploy)
+    },
     orderBy: { createdAt: "asc" },
   });
 
   const reviews = await prisma.performanceReview.findMany({
     where: { projectId },
+    include: { reviewedBy: { select: { name: true, titlePrefix: true } } },
   });
   const reviewByEmp = new Map(reviews.map((r) => [r.employeeId, r]));
 
-  const workers = assignments.map((a) => {
+  // 1 คนอาจมีหลาย assignment ในโปรเจกต์เดียว (ลงซ้ำ) — review เป็นรายคน จึงเก็บรอบล่าสุด
+  const latestByEmp = new Map();
+  for (const a of assignments) latestByEmp.set(a.employeeId, a);
+
+  const workers = [...latestByEmp.values()].map((a) => {
     const e = a.employee;
     const rev = reviewByEmp.get(e.id) || null;
     return {
@@ -60,7 +71,8 @@ export async function getReviewDetail(projectId) {
       empCode: e.empCode,
       empId: e.empId,
       fullName: e.fullName,
-      position: e.position?.name ?? null,
+      fullNameTH: e.fullNameTH ?? null,
+      position: a.position?.name ?? e.position?.name ?? null,
       platform: a.platform,
       mobDate: a.mobDate,
       demobDate: a.demobDate,
@@ -71,6 +83,9 @@ export async function getReviewDetail(projectId) {
             rehire: rev.rehire,
             comment: rev.comment,
             reviewedAt: rev.updatedAt,
+            reviewer: rev.reviewedBy
+              ? `${rev.reviewedBy.titlePrefix ?? ""}${rev.reviewedBy.name ?? ""}`
+              : null,
           }
         : null,
     };
@@ -82,6 +97,8 @@ export async function getReviewDetail(projectId) {
       name: project.name,
       status: project.status,
       client: project.contract?.client?.name ?? null,
+      location: project.location ?? null,
+      projectCode: project.masterProjectRecord?.projectCode ?? null,
       startDate: project.startDate,
       endDate: project.endDate,
     },

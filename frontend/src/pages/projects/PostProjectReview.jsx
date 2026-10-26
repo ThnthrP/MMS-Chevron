@@ -2,7 +2,7 @@ import { useState, useEffect, useContext } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import Select from "react-select";
 
 // ══════════════════════════════════════════════════════════
@@ -29,30 +29,36 @@ const REHIRE = [
   ["no", "No", "danger"],
 ];
 
-const CARD = "rounded-[10px] border border-gray-200 bg-white";
-const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const FILTER_LABEL =
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
+const ROW_FILTERS = [
+  ["all", "ทั้งหมด"],
+  ["todo", "ยังไม่ประเมิน"],
+  ["done", "ประเมินแล้ว"],
+];
+const DAY_MS = 86400000;
 const STATUS_FILTERS = [
   ["all", "ทั้งหมด"],
   ["active", "Active"],
   ["completed", "Completed"],
 ];
 const TH =
-  "whitespace-nowrap border-b border-gray-200 px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.3px] text-gray-500";
+  "whitespace-nowrap border-b border-gray-200 bg-gray-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500";
 const TD = "border-b border-gray-100 px-3 py-2.5 align-middle text-[13px]";
 
 // react-select ใช้ styles API ของไลบรารี
 const projectSelectStyles = {
   control: (p) => ({
     ...p,
-    borderColor: "#ced4da",
+    borderColor: "#e5e7eb",
     borderRadius: "8px",
-    minHeight: "40px",
-    fontSize: "14px",
+    minHeight: "36px",
+    fontSize: "13px",
     boxShadow: "none",
     "&:hover": { borderColor: "#86b7fe" },
   }),
   option: (p) => ({ ...p, fontSize: "13px" }),
-  placeholder: (p) => ({ ...p, fontSize: "14px", color: "#6c757d" }),
+  placeholder: (p) => ({ ...p, fontSize: "13px", color: "#6c757d" }),
   menuPortal: (p) => ({ ...p, zIndex: 9999 }),
   // มือถือ: ไม่ให้เมนูกว้างเกินจอ
   menu: (p) => ({ ...p, minWidth: "min(560px, calc(100vw - 24px))" }),
@@ -65,7 +71,7 @@ const projectSelectStyles = {
     overflow: "visible",
     lineHeight: "1.3",
   }),
-  valueContainer: (p) => ({ ...p, padding: "6px 8px" }),
+  valueContainer: (p) => ({ ...p, padding: "2px 8px" }),
 };
 
 // ══════════════════════════════════════════════════════════
@@ -78,6 +84,23 @@ const ymd = (d) => {
   const date = new Date(d);
   return isNaN(date.getTime()) ? "—" : date.toLocaleDateString("en-CA");
 };
+
+const dayStart = (d) => {
+  const x = new Date(d);
+  return new Date(x.getFullYear(), x.getMonth(), x.getDate());
+};
+// สถานะหน้างานของแต่ละคน — ประเมินได้ดีที่สุดหลัง D-MOB
+const workState = (r) => {
+  if (!r.demobDate) return { text: "ยังไม่กำหนด D-MOB", cls: "text-gray-400" };
+  const n = Math.round((dayStart(r.demobDate) - dayStart(new Date())) / DAY_MS);
+  if (n > 0) return { text: `ยังอยู่หน้างาน · D-MOB อีก ${n} วัน`, cls: "text-[#0d6efd]" };
+  if (n === 0) return { text: "D-MOB วันนี้", cls: "text-[#b08900]" };
+  return { text: `ลงจากงานแล้ว ${-n} วัน`, cls: "text-gray-500" };
+};
+const fmtDateTime = (d) =>
+  d
+    ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : "";
 
 const fmtProjectDate = (d) =>
   d
@@ -186,6 +209,8 @@ export default function PostProjectReview() {
   const [savingId, setSavingId] = useState(null);
   const [completing, setCompleting] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all"); // กรองรายการโปรเจกต์ใน dropdown
+  const [rowFilter, setRowFilter] = useState("all"); // ทั้งหมด / ยังไม่ประเมิน / ประเมินแล้ว
+  const [savingAll, setSavingAll] = useState(false);
 
   const fetchProjects = () =>
     axios
@@ -205,6 +230,8 @@ export default function PostProjectReview() {
       rehire: w.review?.rehire ?? "maybe", // ค่าที่จะส่งจริงถ้ากด save — ตรงกับ DB default
       rehireTouched: !!w.review, // ผู้ใช้เคยเลือกจริงแล้วหรือยัง
       comment: w.review?.comment ?? "",
+      reviewer: w.review?.reviewer ?? null,
+      reviewedAt: w.review?.reviewedAt ?? null,
       saved: !!w.review,
       dirty: false,
     }));
@@ -243,10 +270,10 @@ export default function PostProjectReview() {
       ),
     );
 
-  const saveRow = async (row) => {
+  const saveRow = async (row, { quiet = false } = {}) => {
     if (!row.rating) {
-      alert("ใส่คะแนน (rating) ก่อนบันทึก");
-      return;
+      if (!quiet) alert("ใส่คะแนน (rating) ก่อนบันทึก");
+      return false;
     }
     try {
       setSavingId(row.employeeId);
@@ -265,16 +292,39 @@ export default function PostProjectReview() {
       setRows((prev) =>
         prev.map((r) =>
           r.employeeId === row.employeeId
-            ? { ...r, saved: true, dirty: false, rehireTouched: true }
+            ? {
+                ...r,
+                saved: true,
+                dirty: false,
+                rehireTouched: true,
+                reviewer: userData?.name ?? r.reviewer,
+                reviewedAt: new Date().toISOString(),
+              }
             : r,
         ),
       );
+      return true;
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Save failed — ดู console");
+      if (!quiet) alert(err.response?.data?.message || "Save failed — ดู console");
+      return false;
     } finally {
       setSavingId(null);
     }
+  };
+
+  // บันทึกทุกแถวที่แก้ไว้และให้คะแนนแล้ว
+  const saveAll = async () => {
+    const targets = rows.filter((r) => r.dirty && r.rating);
+    if (targets.length === 0) return;
+    setSavingAll(true);
+    let failed = 0;
+    for (const r of targets) {
+      // eslint-disable-next-line no-await-in-loop
+      if (!(await saveRow(r, { quiet: true }))) failed += 1;
+    }
+    setSavingAll(false);
+    if (failed) alert(`บันทึกไม่สำเร็จ ${failed} คน — ลองกด Save รายคนอีกครั้ง`);
   };
 
   const markCompleted = async () => {
@@ -350,6 +400,11 @@ export default function PostProjectReview() {
   const isCompleted = project?.status === "completed";
   const canComplete = canManageReview && project && !isCompleted && !completing;
   const reviewedCount = rows.filter((r) => r.saved && !r.dirty).length;
+  const dirtyRated = rows.filter((r) => r.dirty && r.rating).length;
+  const shownRows = rows.filter((r) =>
+    rowFilter === "todo" ? !r.saved || r.dirty : rowFilter === "done" ? r.saved && !r.dirty : true,
+  );
+  const reviewPct = rows.length ? Math.round((reviewedCount / rows.length) * 100) : 0;
 
   // ── ส่วนที่ใช้ทั้งตารางและการ์ด ──
   const renderSave = (r) => {
@@ -404,202 +459,279 @@ export default function PostProjectReview() {
   );
 
   const emptyBox = (text) => (
-    <div className="p-7 text-center text-[13px] text-gray-500">{text}</div>
+    <div className="border-b border-gray-200 p-7 text-center text-[13px] text-gray-500">
+      {text}
+    </div>
   );
+
+  const renderWorker = (r) => (
+    <>
+      <div className="font-semibold">
+        {r.fullName}
+        {r.fullNameTH && (
+          <span className="ml-1.5 font-normal text-gray-500">{r.fullNameTH}</span>
+        )}
+      </div>
+      <div className="text-[11px] text-gray-500">{r.empId || r.empCode}</div>
+    </>
+  );
+
+  const renderReviewer = (r) =>
+    r.saved && r.reviewer ? (
+      <>
+        <div className="text-xs font-semibold text-gray-800">{r.reviewer}</div>
+        <div className="text-[11px] text-gray-400">{fmtDateTime(r.reviewedAt)}</div>
+      </>
+    ) : r.saved ? (
+      <span className="text-[11px] text-gray-400">{fmtDateTime(r.reviewedAt)}</span>
+    ) : (
+      <span className="text-[11px] text-[#b08900]">ยังไม่ประเมิน</span>
+    );
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
-      {/* ════════ Header ════════ */}
-      <div className={`${CARD} p-4 sm:p-[18px]`}>
-        <div className="text-xl font-extrabold">⭐ Post-Project Review</div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-          <span className="rounded-md bg-[#e7e9ec] px-2 py-0.5 font-bold">
-            Phase 4
-          </span>
-          Step 12: Performance Review → Status: 'Available'
-        </div>
+      {/* ════════ Header — ชื่อหน้าอยู่ที่แท็บแล้ว ════════ */}
+      <div className="flex flex-wrap items-center gap-2 pb-3 text-xs text-gray-500">
+        <span className="rounded-md bg-gray-200 px-2 py-0.5 font-bold">Phase 4</span>
+        Step 12: ประเมินพนักงานหลังจบงาน (คะแนน · จ้างซ้ำ · หมายเหตุ) → ปิดโปรเจกต์ = พนักงานกลับเป็น
+        Available · ผลการประเมินแสดงที่ Manpower Calendar › ผู้ประเมิน
       </div>
 
       {/* ════════ เลือกโปรเจกต์ ════════ */}
-      <div className={`${CARD} mt-4 px-4 py-3.5 sm:px-[18px]`}>
-        <div className="mb-3 text-[13px] font-bold text-gray-900">
-          🔍 เลือกโปรเจกต์
+      <div className="flex flex-col gap-3 border-y border-gray-200 py-3 lg:flex-row lg:items-end">
+        <div className="shrink-0">
+          <label className={FILTER_LABEL}>สถานะโปรเจกต์</label>
+          <div className="flex flex-wrap gap-1.5">
+            {STATUS_FILTERS.map(([key, label]) => {
+              const active = statusFilter === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setStatusFilter(key)}
+                  className={`h-9 cursor-pointer whitespace-nowrap rounded-md border px-3.5 text-xs ${
+                    active
+                      ? "border-[#2B2F78] bg-[#2B2F78] font-bold text-white"
+                      : "border-gray-200 bg-white font-medium text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {label} ({countBy(key)})
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="shrink-0">
-            <label className={FILTER_LABEL}>สถานะโปรเจกต์</label>
-            <div className="flex flex-wrap gap-1.5">
-              {STATUS_FILTERS.map(([key, label]) => {
-                const active = statusFilter === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setStatusFilter(key)}
-                    className={`h-10 cursor-pointer whitespace-nowrap rounded-md border px-3.5 text-xs ${
-                      active
-                        ? "border-blue-600 bg-blue-600 font-bold text-white"
-                        : "border-gray-200 bg-white font-medium text-gray-700 hover:bg-gray-50"
-                    }`}
-                  >
-                    {label} ({countBy(key)})
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="w-full min-w-0 lg:max-w-[760px] lg:flex-1">
-            <label className={FILTER_LABEL}>
-              Project (ON Number / ชื่องาน / Client / Location)
-            </label>
-            <Select
-              options={projectOptions}
-              styles={projectSelectStyles}
-              menuPortalTarget={
-                typeof document !== "undefined" ? document.body : null
-              }
-              menuPosition="fixed"
-              value={selectedOption}
-              onChange={(o) => setSelectedProjectId(o ? o.value : "")}
-              placeholder="🔍 พิมพ์ค้นหา หรือเลือกโปรเจกต์..."
-              isClearable
-              noOptionsMessage={() => "ไม่พบโปรเจกต์"}
-            />
-          </div>
+        <div className="w-full min-w-0 lg:flex-1">
+          <label className={FILTER_LABEL}>
+            Project{" "}
+            <span className="normal-case tracking-normal text-gray-400">
+              (ON Number / ชื่องาน / Client / Location)
+            </span>
+          </label>
+          <Select
+            options={projectOptions}
+            styles={projectSelectStyles}
+            menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+            menuPosition="fixed"
+            value={selectedOption}
+            onChange={(o) => setSelectedProjectId(o ? o.value : "")}
+            placeholder="🔍 พิมพ์ค้นหา หรือเลือกโปรเจกต์..."
+            isClearable
+            noOptionsMessage={() => "ไม่พบโปรเจกต์"}
+          />
         </div>
       </div>
 
-      {/* ════════ สรุปโปรเจกต์ที่เลือก + ปิดโปรเจกต์ ════════ */}
+      {/* ════════ สรุปโปรเจกต์ที่เลือก ════════ */}
       {project && (
-        <div
-          className={`${CARD} mt-4 flex flex-col gap-3 px-4 py-3 sm:px-[18px] md:flex-row md:items-center md:justify-between`}
-        >
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="min-w-0 break-words text-[14px] font-bold">
-              {project.name}
-            </span>
-            <StatusBadge completed={isCompleted} />
+        <div className="flex flex-col gap-3 border-b border-gray-200 py-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              {project.projectCode && (
+                <span className="font-mono text-[13px] font-semibold text-blue-700">
+                  {project.projectCode}
+                </span>
+              )}
+              <span className="min-w-0 break-words text-[15px] font-bold">{project.name}</span>
+              <StatusBadge completed={isCompleted} />
+            </div>
+            <div className="mt-0.5 text-xs text-gray-500">
+              {[
+                project.client,
+                project.location,
+                project.startDate &&
+                  `${fmtProjectDate(project.startDate)} – ${fmtProjectDate(project.endDate) || "—"}`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
             {rows.length > 0 && (
-              <span className="text-xs text-gray-500">
-                Reviewed{" "}
-                <strong
-                  className={
-                    reviewedCount === rows.length
-                      ? "text-[#198754]"
-                      : "text-gray-900"
-                  }
-                >
-                  {reviewedCount}/{rows.length}
-                </strong>
-              </span>
+              <div className="mt-2 flex items-center gap-2.5">
+                <div className="h-1.5 w-[180px] overflow-hidden rounded-full bg-gray-200">
+                  <div
+                    className={reviewPct === 100 ? "h-full bg-[#198754]" : "h-full bg-[#f59e0b]"}
+                    style={{ width: `${reviewPct}%` }}
+                  />
+                </div>
+                <span className="text-xs text-gray-600">
+                  ประเมินแล้ว{" "}
+                  <b className={reviewPct === 100 ? "text-[#198754]" : "text-gray-900"}>
+                    {reviewedCount}/{rows.length}
+                  </b>{" "}
+                  คน
+                </span>
+              </div>
             )}
           </div>
-          {canManageReview && !isCompleted && (
-            <button
-              type="button"
-              onClick={markCompleted}
-              disabled={!canComplete}
-              className={`shrink-0 whitespace-nowrap rounded-lg border px-4 py-[9px] text-[13px] font-bold transition-all ${
-                canComplete
-                  ? "cursor-pointer border-[#198754] bg-[#198754] text-white shadow-[0_2px_5px_rgba(25,135,84,0.35)] hover:-translate-y-px hover:shadow-[0_4px_8px_rgba(25,135,84,0.45)]"
-                  : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-              }`}
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to={`/projects-overview/${project.id}`}
+              className="rounded-md border border-gray-300 bg-white px-3 py-[7px] text-xs font-semibold text-gray-700 no-underline hover:bg-gray-50"
+              title="ดูผังผู้ประเมินและความคืบหน้าทั้งหมดของ requirement นี้"
             >
-              {completing ? "กำลังปิดโปรเจกต์…" : "✔ Mark Project Completed"}
-            </button>
-          )}
+              Manpower Calendar →
+            </Link>
+            {canManageReview && dirtyRated > 0 && (
+              <button
+                type="button"
+                onClick={saveAll}
+                disabled={savingAll}
+                className="cursor-pointer rounded-md border-none bg-[#2B2F78] px-3.5 py-[7px] text-xs font-semibold text-white hover:bg-[#22265f] disabled:cursor-wait disabled:opacity-70"
+              >
+                {savingAll ? "Saving…" : `Save all (${dirtyRated})`}
+              </button>
+            )}
+            {canManageReview && !isCompleted && (
+              <button
+                type="button"
+                onClick={markCompleted}
+                disabled={!canComplete}
+                className={`whitespace-nowrap rounded-md border px-3.5 py-[7px] text-xs font-bold ${
+                  canComplete
+                    ? "cursor-pointer border-[#198754] bg-[#198754] text-white hover:bg-[#157347]"
+                    : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                }`}
+              >
+                {completing ? "กำลังปิดโปรเจกต์…" : "✔ Mark Project Completed"}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
       {/* ════════ Workers + Review ════════ */}
-      <div className={`${CARD} mt-4 overflow-hidden`}>
-        {loading ? (
-          emptyBox("Loading…")
-        ) : !project ? (
-          emptyBox("Select a project to review deployed workers.")
-        ) : rows.length === 0 ? (
-          emptyBox("No deployed workers for this project.")
-        ) : (
-          <>
-            {/* ── ต่ำกว่า lg: การ์ด ── */}
-            <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2 lg:hidden">
-              {rows.map((r) => (
-                <div
-                  key={r.employeeId}
-                  className={`rounded-lg border p-3 text-[13px] ${
-                    r.dirty
-                      ? "border-blue-300 bg-blue-50/30"
-                      : "border-gray-200 bg-white"
+      {loading ? (
+        emptyBox("Loading…")
+      ) : !project ? (
+        emptyBox("เลือกโปรเจกต์ด้านบน เพื่อประเมินพนักงานที่ลงงานในโปรเจกต์นั้น")
+      ) : rows.length === 0 ? (
+        emptyBox("ยังไม่มีพนักงานลงงานในโปรเจกต์นี้")
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-1.5 py-3">
+            {ROW_FILTERS.map(([key, label]) => {
+              const n =
+                key === "all"
+                  ? rows.length
+                  : key === "todo"
+                    ? rows.length - reviewedCount
+                    : reviewedCount;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setRowFilter(key)}
+                  className={`cursor-pointer rounded-full border px-3 py-1 text-xs ${
+                    rowFilter === key
+                      ? "border-[#2B2F78] bg-[#2B2F78] font-bold text-white"
+                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-bold">{r.fullName}</div>
-                      <div className="text-[11px] text-gray-500">{r.empId}</div>
-                    </div>
-                    {renderSave(r)}
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {r.position}
-                    {r.platform && ` · ${r.platform}`}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {ymd(r.mobDate)} → {ymd(r.demobDate)}
-                  </div>
+                  {label} ({n})
+                </button>
+              );
+            })}
+          </div>
 
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2.5">
-                    {renderStars(r)}
-                    {renderRehire(r)}
-                  </div>
-                  <div className="mt-2">{renderComment(r)}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* ── lg+: ตาราง ── */}
-            <div className="hidden overflow-x-auto lg:block">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <th className={TH}>Worker</th>
-                    <th className={TH}>Position</th>
-                    <th className={TH}>Platform</th>
-                    <th className={TH}>MOB → D-MOB</th>
-                    <th className={TH}>Rating</th>
-                    <th className={TH}>Rehire?</th>
-                    <th className={TH}>Comment</th>
-                    <th className={TH}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr
+          {shownRows.length === 0 ? (
+            emptyBox("ไม่มีรายการในหมวดนี้")
+          ) : (
+            <>
+              {/* ── ต่ำกว่า lg: รายการคั่นเส้น ── */}
+              <div className="divide-y divide-gray-100 border-y border-gray-200 lg:hidden">
+                {shownRows.map((r) => {
+                  const ws = workState(r);
+                  return (
+                    <div
                       key={r.employeeId}
-                      className={r.dirty ? "bg-blue-50/30" : ""}
+                      className={`py-3 text-[13px] ${r.dirty ? "bg-blue-50/40" : ""}`}
                     >
-                      <td className={TD}>
-                        <div className="font-bold">{r.fullName}</div>
-                        <div className="text-[11px] text-gray-500">
-                          {r.empId}
-                        </div>
-                      </td>
-                      <td className={TD}>{r.position}</td>
-                      <td className={TD}>{r.platform || "—"}</td>
-                      <td className={`${TD} whitespace-nowrap text-gray-500`}>
-                        {ymd(r.mobDate)} → {ymd(r.demobDate)}
-                      </td>
-                      <td className={TD}>{renderStars(r)}</td>
-                      <td className={TD}>{renderRehire(r)}</td>
-                      <td className={TD}>{renderComment(r)}</td>
-                      <td className={TD}>{renderSave(r)}</td>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">{renderWorker(r)}</div>
+                        {renderSave(r)}
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {r.position}
+                        {r.platform && ` · ${r.platform}`} · {ymd(r.mobDate)} → {ymd(r.demobDate)}
+                      </div>
+                      <div className={`text-[11px] ${ws.cls}`}>{ws.text}</div>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        {renderStars(r)}
+                        {renderRehire(r)}
+                      </div>
+                      <div className="mt-2">{renderComment(r)}</div>
+                      <div className="mt-1.5">{renderReviewer(r)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* ── lg+: ตาราง ── */}
+              <div className="hidden overflow-x-auto border-b border-gray-200 lg:block">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className={TH}>Worker</th>
+                      <th className={TH}>Position · Platform</th>
+                      <th className={TH}>MOB → D-MOB</th>
+                      <th className={TH}>Rating</th>
+                      <th className={TH}>Rehire?</th>
+                      <th className={TH}>Comment</th>
+                      <th className={TH}>ผู้ประเมิน</th>
+                      <th className={`${TH} text-center`}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </div>
+                  </thead>
+                  <tbody>
+                    {shownRows.map((r) => {
+                      const ws = workState(r);
+                      return (
+                        <tr key={r.employeeId} className={r.dirty ? "bg-blue-50/40" : ""}>
+                          <td className={TD}>{renderWorker(r)}</td>
+                          <td className={TD}>
+                            <div>{r.position || "—"}</div>
+                            <div className="text-[11px] text-gray-500">{r.platform || "—"}</div>
+                          </td>
+                          <td className={`${TD} whitespace-nowrap`}>
+                            <div className="text-gray-700">
+                              {ymd(r.mobDate)} → {ymd(r.demobDate)}
+                            </div>
+                            <div className={`text-[11px] ${ws.cls}`}>{ws.text}</div>
+                          </td>
+                          <td className={TD}>{renderStars(r)}</td>
+                          <td className={TD}>{renderRehire(r)}</td>
+                          <td className={TD}>{renderComment(r)}</td>
+                          <td className={`${TD} whitespace-nowrap`}>{renderReviewer(r)}</td>
+                          <td className={`${TD} text-center`}>{renderSave(r)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }

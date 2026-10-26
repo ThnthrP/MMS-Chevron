@@ -2,117 +2,20 @@ import { useState, useEffect, useContext } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import { Link, useNavigate } from "react-router-dom";
-import AsyncSelect from "react-select/async";
-import Select from "react-select";
+import NewRequirementModal, {
+  TravelModeField,
+  splitTravel,
+  joinTravel,
+  DEFAULT_RESPONSE_DAYS,
+} from "./NewRequirementModal";
+
+// ══════════════════════════════════════════════════════════
+// Projects (ON Number) — Master Project Register
+// อยู่ที่เมนู Projects & Positions › Projects (ข้อมูลตั้งต้นจากระบบบัญชี / import)
+// การเปิด requirement ใหม่ใช้การ์ดเดียวกับหน้า Manpower Requirements (NewRequirementModal.jsx)
+// ══════════════════════════════════════════════════════════
 
 const PAGE_SIZE = 15;
-
-// วิธีเดินทางขาไป — ค่าเดียวกับ enum TravelMode ใน schema.prisma
-const TRAVEL_MODE_OPTIONS = [
-  ["boat", "🚢 เรือ"],
-  ["helicopter", "🚁 เฮลิคอปเตอร์"],
-  ["vehicle", "🚐 รถ"],
-  ["other", "อื่นๆ"],
-];
-
-const TRAVEL_KNOWN = TRAVEL_MODE_OPTIONS.map(([v]) => v);
-
-// ค่าใน DB → ฟอร์ม: ค่าที่ไม่อยู่ในรายการ = "อื่นๆ" ที่พิมพ์เอง
-const splitTravel = (v) =>
-  !v
-    ? { travelMode: "", travelOther: "" }
-    : TRAVEL_KNOWN.includes(v)
-      ? { travelMode: v, travelOther: "" }
-      : { travelMode: "other", travelOther: v };
-
-// ฟอร์ม → ค่าที่ส่ง backend: "อื่นๆ" ส่งข้อความที่พิมพ์ (ถ้าไม่พิมพ์ส่ง "other")
-const joinTravel = (f) =>
-  f.travelMode === "other"
-    ? f.travelOther.trim() || "other"
-    : f.travelMode || null;
-
-// แถวตำแหน่งใน New manpower requirement — key ใช้เป็น React key เท่านั้น
-let positionRowSeq = 0;
-const newPositionRow = () => ({
-  key: ++positionRowSeq,
-  positionId: "",
-  quantity: "1",
-});
-
-// ฟอร์มเริ่มต้นของ New manpower requirement
-const emptyStartForm = () => ({
-  location: "",
-  startDate: "",
-  endDate: "",
-  isOffshore: false,
-  travelMode: "",
-  travelOther: "",
-  responseDays: String(DEFAULT_RESPONSE_DAYS),
-  notes: "",
-});
-
-// react-select ให้หน้าตาเท่ากับ input อื่นในฟอร์ม + เมนูลอยเหนือ modal
-const SELECT_STYLES = {
-  control: (base) => ({
-    ...base,
-    borderColor: "#d1d5db",
-    borderRadius: "8px",
-    minHeight: "38px",
-    fontSize: "13px",
-  }),
-  option: (base) => ({ ...base, fontSize: "13px" }),
-  menuPortal: (base) => ({ ...base, zIndex: 1000001 }),
-};
-const MENU_PORTAL = typeof document !== "undefined" ? document.body : null;
-
-// ค่าเริ่มต้น "ตอบกลับภายใน" = วันนี้ + 10 วัน (แก้ได้ในฟอร์ม)
-const DEFAULT_RESPONSE_DAYS = 10;
-// const defaultResponseDeadline = () => {
-//   const d = new Date();
-//   d.setDate(d.getDate() + DEFAULT_RESPONSE_DAYS);
-//   const mm = String(d.getMonth() + 1).padStart(2, "0");
-//   const dd = String(d.getDate()).padStart(2, "0");
-//   return `${d.getFullYear()}-${mm}-${dd}`;
-// };
-
-function TravelModeField({ form, setForm }) {
-  return (
-    <div>
-      <label className={LABEL}>ขาไป (วิธีเดินทาง)</label>
-      <select
-        value={form.travelMode}
-        onChange={(e) =>
-          setForm((prev) => ({
-            ...prev,
-            travelMode: e.target.value,
-            travelOther: e.target.value === "other" ? prev.travelOther : "",
-          }))
-        }
-        className={INPUT}
-      >
-        <option value="">— ไม่ระบุ —</option>
-        {TRAVEL_MODE_OPTIONS.map(([v, l]) => (
-          <option key={v} value={v}>
-            {l}
-          </option>
-        ))}
-      </select>
-      {form.travelMode === "other" && (
-        <input
-          type="text"
-          value={form.travelOther}
-          maxLength={50}
-          autoFocus
-          placeholder="ระบุวิธีเดินทาง เช่น เครื่องบิน / เรือเร็ว"
-          onChange={(e) =>
-            setForm((prev) => ({ ...prev, travelOther: e.target.value }))
-          }
-          className={`${INPUT} mt-2`}
-        />
-      )}
-    </div>
-  );
-}
 
 const DETAIL_FIELDS = [
   ["owner", "เจ้าของงาน"],
@@ -253,15 +156,9 @@ export default function Project() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  // ── New manpower requirement modal (เดิม: Start New Project) ──
-  const [startModalOpen, setStartModalOpen] = useState(false);
-  const [selectedMasterRecord, setSelectedMasterRecord] = useState(null);
-  const [startContractId, setStartContractId] = useState("");
-  const [startForm, setStartForm] = useState(emptyStartForm);
-  const [startPositions, setStartPositions] = useState(() => [newPositionRow()]);
-  const [showMoreOptions, setShowMoreOptions] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const [positions, setPositions] = useState([]);
+  // ── New manpower requirement (การ์ดใช้ร่วมกับหน้า Manpower Requirements) ──
+  // null = ปิด / { record } = เปิด (record = ON Number ที่เลือกไว้ให้ ถ้ามี)
+  const [newReq, setNewReq] = useState(null);
 
   const fetchYears = async () => {
     try {
@@ -307,29 +204,9 @@ export default function Project() {
     }
   };
 
-  // รายการตำแหน่งสำหรับเลือกใน New manpower requirement (endpoint เดียวกับหน้า ProjectDetail)
-  const fetchPositions = async () => {
-    try {
-      const res = await axios.get(`${backendUrl}/api/positions/manage`, {
-        withCredentials: true,
-      });
-      setPositions(res.data);
-    } catch {
-      try {
-        const res2 = await axios.get(`${backendUrl}/api/positions`, {
-          withCredentials: true,
-        });
-        setPositions(res2.data);
-      } catch (e2) {
-        console.error(e2);
-      }
-    }
-  };
-
   useEffect(() => {
     fetchYears();
     fetchClients();
-    fetchPositions();
   }, []);
 
   useEffect(() => {
@@ -352,151 +229,7 @@ export default function Project() {
     setPage(1);
   };
 
-  // ── auto-match client จาก record.company (best-effort, ยัง override ได้) ──
-  const guessContract = (record) => {
-    if (!record?.company) return "";
-    const q = record.company.toLowerCase();
-    for (const c of clients) {
-      if (
-        c.name.toLowerCase().includes(q) ||
-        q.includes(c.name.toLowerCase())
-      ) {
-        if (c.contracts?.length === 1) return c.contracts[0].id;
-      }
-    }
-    return "";
-  };
-
-  // ── โหลด options สำหรับ AsyncSelect ค้นหา ON Number ──
-  const loadMasterRecordOptions = async (inputValue) => {
-    try {
-      const res = await axios.get(`${backendUrl}/api/projects/master-records`, {
-        withCredentials: true,
-        params: { search: inputValue },
-      });
-      return res.data.map((r) => ({
-        value: r.id,
-        label: `${r.projectCode} — ${r.jobTitle}`,
-        record: r,
-      }));
-    } catch (error) {
-      console.error(error);
-      return [];
-    }
-  };
-
-  const openStartModal = (prefillRecord = null) => {
-    if (prefillRecord) {
-      setSelectedMasterRecord({
-        value: prefillRecord.id,
-        label: `${prefillRecord.projectCode} — ${prefillRecord.jobTitle}`,
-        record: prefillRecord,
-      });
-      setStartContractId(guessContract(prefillRecord));
-    } else {
-      setSelectedMasterRecord(null);
-      setStartContractId("");
-    }
-    setStartForm(emptyStartForm());
-    setStartPositions([newPositionRow()]);
-    setShowMoreOptions(false);
-    setStartModalOpen(true);
-  };
-
-  const closeStartModal = () => {
-    setStartModalOpen(false);
-    setSelectedMasterRecord(null);
-    setStartContractId("");
-    setStartForm(emptyStartForm());
-    setStartPositions([newPositionRow()]);
-    setShowMoreOptions(false);
-  };
-
-  // ── แถวตำแหน่ง ──
-  const updatePositionRow = (key, patch) =>
-    setStartPositions((rows) =>
-      rows.map((r) => (r.key === key ? { ...r, ...patch } : r)),
-    );
-  const addPositionRow = () =>
-    setStartPositions((rows) => [...rows, newPositionRow()]);
-  const removePositionRow = (key) =>
-    setStartPositions((rows) =>
-      rows.length > 1 ? rows.filter((r) => r.key !== key) : [newPositionRow()],
-    );
-
-  const positionName = (pid) => positions.find((p) => p.id === pid)?.name || "";
-
-  // ตำแหน่งที่เลือกแล้ว (ข้ามแถวว่าง)
-  const chosenPositions = startPositions.filter((r) => r.positionId);
-
-  // ข้อความแรกที่ยังขาด — null = ส่งได้
-  const startMissing = (() => {
-    if (!selectedMasterRecord) return "กรุณาเลือก Project (ON Number)";
-    if (!startContractId) return "กรุณาเลือก Client / Contract";
-    if (!startForm.startDate) return "กรุณาระบุ Working start";
-    if (!startForm.endDate) return "กรุณาระบุ Working end";
-    if (startForm.endDate < startForm.startDate)
-      return "Working end ต้องไม่ก่อน Working start";
-    if (!startForm.location.trim()) return "กรุณาระบุ Working location";
-    if (chosenPositions.length === 0) return "กรุณาเลือกตำแหน่งอย่างน้อย 1 ตำแหน่ง";
-    if (chosenPositions.some((r) => !(Number(r.quantity) >= 1)))
-      return "Quantity ต้องเป็น 1 ขึ้นไป";
-    return null;
-  })();
-
-  const handleStartSubmit = async () => {
-    if (startMissing) {
-      alert(startMissing);
-      return;
-    }
-    try {
-      setStarting(true);
-      const res = await axios.post(
-        `${backendUrl}/api/projects`,
-        {
-          masterProjectRecordId: selectedMasterRecord.value,
-          contractId: startContractId,
-          location: startForm.location.trim() || null,
-          startDate: startForm.startDate || null,
-          endDate: startForm.endDate || null,
-          isOffshore: startForm.isOffshore,
-          travelMode: joinTravel(startForm),
-          responseDays: Number(startForm.responseDays) || DEFAULT_RESPONSE_DAYS,
-          notes: startForm.notes || null,
-        },
-        { withCredentials: true },
-      );
-      const projectId = res.data.id;
-
-      // สร้าง position request ทีละตำแหน่ง (ลำดับตามที่กรอก) — endpoint เดียวกับ + Add Position ในหน้า ProjectDetail
-      const failed = [];
-      for (const r of chosenPositions) {
-        try {
-          await axios.post(
-            `${backendUrl}/api/projects/${projectId}/requests`,
-            { positionId: r.positionId, quantity: Number(r.quantity) },
-            { withCredentials: true },
-          );
-        } catch (err) {
-          console.error(err);
-          failed.push(positionName(r.positionId) || r.positionId);
-        }
-      }
-      if (failed.length) {
-        alert(
-          `สร้าง requirement แล้ว แต่เพิ่มตำแหน่งไม่สำเร็จ ${failed.length} ตำแหน่ง:\n${failed.join("\n")}\n\nเพิ่มต่อได้ที่ปุ่ม + Add Position ในหน้าถัดไป`,
-        );
-      }
-
-      closeStartModal();
-      navigate(`/projects/${projectId}`);
-    } catch (error) {
-      console.error(error);
-      alert(error.response?.data?.message || "สร้าง requirement ไม่สำเร็จ");
-    } finally {
-      setStarting(false);
-    }
-  };
+  const openStartModal = (record = null) => setNewReq({ record });
 
   const openEditModal = (project) => {
     setEditingProject(project);
@@ -678,25 +411,20 @@ export default function Project() {
     </div>
   );
 
-  const startDisabled = !!startMissing || starting;
-
   return (
     // lg ขึ้นไป: สูงเต็มจอ ตาราง scroll ภายในการ์ด
     // ต่ำกว่า lg: สูงตามเนื้อหา ทั้งหน้า scroll ปกติ
     <div className="flex flex-col lg:h-[calc(100vh-90px)]">
       <div className="mx-auto flex min-h-0 w-full max-w-[1800px] flex-1 flex-col">
-        {/* Header Card */}
-        <div className="mb-4 rounded-[10px] border border-gray-200 bg-white px-4 py-4 sm:px-6">
+        {/* Header */}
+        <div className="pb-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-              <span className="text-xl">🗂</span>
-              <span className="text-lg font-bold">Projects</span>
-              <span className="rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600">
-                Phase 3
-              </span>
-              <span className="basis-full text-xs text-gray-500 md:basis-auto">
-                Master Project Register — เลือก ON Number เพื่อเปิด/ดู Project
-              </span>
+            <div className="min-w-0">
+              <h1 className="m-0 text-lg font-bold">Projects (ON Number)</h1>
+              <div className="text-xs text-gray-500">
+                Master Project Register — ดูรายละเอียด ON Number และเปิด requirement ใหม่จาก ON
+                นั้น · รายการตำแหน่งที่ขอทั้งหมดอยู่ที่เมนู Manpower Requirements
+              </div>
             </div>
 
             {canManageProjects && (
@@ -711,10 +439,7 @@ export default function Project() {
         </div>
 
         {/* ════════ Search & Filter ════════ */}
-        <div className="mb-4 shrink-0 rounded-[10px] border border-gray-200 bg-white px-4 py-3.5">
-          <div className="mb-3 text-[13px] font-bold text-gray-900">
-            🔍 Search &amp; Filter
-          </div>
+        <div className="mb-3 shrink-0 border-y border-gray-200 py-3">
           <label className="mb-1 block text-[11px] font-semibold text-gray-500">
             ค้นหา (ON Number / ชื่องาน / ลูกค้า / Engineer)
           </label>
@@ -1114,302 +839,16 @@ export default function Project() {
         </ModalShell>
       )}
 
-      {/* ════════ New manpower requirement Modal (เดิม: Start New Project) ════════ */}
-      {startModalOpen && canManageProjects && (
-        <ModalShell onClose={closeStartModal} maxW="max-w-[600px]">
-          <div className={MODAL_HEAD}>
-            <span className="text-base font-semibold">
-              New manpower requirement
-            </span>
-            <button onClick={closeStartModal} className={CLOSE_X}>
-              ✕
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-            {/* ── Project (ON Number) ── */}
-            <label className={LABEL}>Project *</label>
-            <AsyncSelect
-              cacheOptions
-              defaultOptions
-              loadOptions={loadMasterRecordOptions}
-              value={selectedMasterRecord}
-              onChange={(option) => {
-                setSelectedMasterRecord(option);
-                setStartContractId(
-                  option?.record ? guessContract(option.record) : "",
-                );
-              }}
-              placeholder="ค้นหา ON Number หรือชื่องาน..."
-              isClearable
-              noOptionsMessage={({ inputValue }) =>
-                inputValue
-                  ? "ไม่พบ ON Number ที่ตรงกัน"
-                  : "พิมพ์เพื่อค้นหา ON Number..."
-              }
-              styles={SELECT_STYLES}
-              menuPortalTarget={MENU_PORTAL}
-            />
-            {selectedMasterRecord && (
-              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500">
-                <span>
-                  🏢 Company:{" "}
-                  <strong className="text-gray-700">
-                    {selectedMasterRecord.record.company || "—"}
-                  </strong>
-                </span>
-                <span>
-                  Customer:{" "}
-                  <strong className="text-gray-700">
-                    {selectedMasterRecord.record.customerName || "—"}
-                  </strong>
-                </span>
-              </div>
-            )}
-
-            {/* ── Client / Contract (เลือกให้อัตโนมัติจาก Company ถ้าเดาได้) ── */}
-            <div className="mt-4">
-              <label className={LABEL}>Client / Contract *</label>
-              <select
-                value={startContractId}
-                onChange={(e) => setStartContractId(e.target.value)}
-                className={INPUT}
-              >
-                <option value="">Select client...</option>
-                {clients.map((c) =>
-                  c.contracts?.map((ct) => (
-                    <option key={ct.id} value={ct.id}>
-                      {c.name} — {ct.name}
-                    </option>
-                  )),
-                )}
-              </select>
-              <div className="mt-1 text-[11px] text-gray-400">
-                ใช้ Training Matrix ของ contract นี้คำนวณ % Match · ชื่อ
-                requirement ใช้ "Project / Job" ของ ON Number อัตโนมัติ
-              </div>
-            </div>
-
-            {/* ── Working start / end ── */}
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className={LABEL}>Working start *</label>
-                <input
-                  type="date"
-                  value={startForm.startDate}
-                  max={startForm.endDate || undefined}
-                  onChange={(e) =>
-                    setStartForm((prev) => ({
-                      ...prev,
-                      startDate: e.target.value,
-                    }))
-                  }
-                  className={INPUT}
-                />
-              </div>
-              <div>
-                <label className={LABEL}>Working end *</label>
-                <input
-                  type="date"
-                  value={startForm.endDate}
-                  min={startForm.startDate || undefined}
-                  onChange={(e) =>
-                    setStartForm((prev) => ({
-                      ...prev,
-                      endDate: e.target.value,
-                    }))
-                  }
-                  className={INPUT}
-                />
-              </div>
-            </div>
-
-            {/* ── Working location + Onshore/Offshore ── */}
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[1fr_170px]">
-              <div>
-                <label className={LABEL}>Working location *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Erawan WP-12 / Songkhla Workshop 4"
-                  value={startForm.location}
-                  onChange={(e) =>
-                    setStartForm((prev) => ({
-                      ...prev,
-                      location: e.target.value,
-                    }))
-                  }
-                  className={INPUT}
-                />
-              </div>
-              <div>
-                <label className={LABEL}>Onshore / Offshore</label>
-                <select
-                  value={startForm.isOffshore ? "offshore" : "onshore"}
-                  onChange={(e) =>
-                    setStartForm((prev) => ({
-                      ...prev,
-                      isOffshore: e.target.value === "offshore",
-                    }))
-                  }
-                  className={INPUT}
-                >
-                  <option value="onshore">Onshore</option>
-                  <option value="offshore">Offshore</option>
-                </select>
-              </div>
-            </div>
-
-            {/* ── Positions ── */}
-            <div className="mt-4">
-              <div className="mb-1.5 grid grid-cols-[1fr_76px_28px] gap-2">
-                <span className="text-[13px] font-semibold">Position *</span>
-                <span className="text-[13px] font-semibold">Quantity *</span>
-                <span />
-              </div>
-              <div className="flex flex-col gap-2">
-                {startPositions.map((row) => {
-                  // ตำแหน่งที่แถวอื่นเลือกไปแล้ว — ไม่ให้เลือกซ้ำ
-                  const takenElsewhere = new Set(
-                    startPositions
-                      .filter((r) => r.key !== row.key && r.positionId)
-                      .map((r) => r.positionId),
-                  );
-                  const options = positions
-                    .filter((p) => !takenElsewhere.has(p.id))
-                    .map((p) => ({ value: p.id, label: p.name }));
-                  return (
-                    <div
-                      key={row.key}
-                      className="grid grid-cols-[1fr_76px_28px] items-center gap-2"
-                    >
-                      <Select
-                        options={options}
-                        value={
-                          options.find((o) => o.value === row.positionId) ||
-                          null
-                        }
-                        onChange={(o) =>
-                          updatePositionRow(row.key, {
-                            positionId: o?.value || "",
-                          })
-                        }
-                        placeholder="— Select position —"
-                        noOptionsMessage={() => "ไม่พบตำแหน่ง"}
-                        styles={SELECT_STYLES}
-                        menuPortalTarget={MENU_PORTAL}
-                      />
-                      <input
-                        type="number"
-                        min={1}
-                        value={row.quantity}
-                        onChange={(e) =>
-                          updatePositionRow(row.key, {
-                            quantity: e.target.value,
-                          })
-                        }
-                        className={`${INPUT} text-center`}
-                      />
-                      <button
-                        type="button"
-                        title="ลบแถวนี้"
-                        onClick={() => removePositionRow(row.key)}
-                        className="h-7 w-7 cursor-pointer rounded-md border-none bg-transparent text-base leading-none text-gray-400 hover:bg-red-50 hover:text-red-600"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-              <button
-                type="button"
-                onClick={addPositionRow}
-                disabled={startPositions.length >= positions.length}
-                className="mt-2 cursor-pointer border-none bg-transparent p-0 text-[13px] font-semibold text-blue-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
-              >
-                + Add another position
-              </button>
-            </div>
-
-            {/* ── Remarks ── */}
-            <div className="mt-4">
-              <label className={LABEL}>Remarks</label>
-              <textarea
-                rows={2}
-                placeholder="Certificates needed, shift, etc."
-                value={startForm.notes}
-                onChange={(e) =>
-                  setStartForm((prev) => ({ ...prev, notes: e.target.value }))
-                }
-                className={`${INPUT} resize-y`}
-              />
-            </div>
-
-            {/* ── ตัวเลือกเพิ่มเติม (ใช้ไม่บ่อย — พับไว้, มีค่าเริ่มต้นให้แล้ว) ── */}
-            <div className="mt-4 rounded-lg border border-gray-200">
-              <button
-                type="button"
-                onClick={() => setShowMoreOptions((v) => !v)}
-                className="flex w-full cursor-pointer items-center justify-between border-none bg-gray-50 px-3 py-2 text-left text-xs font-semibold text-gray-600 hover:bg-gray-100"
-              >
-                <span>
-                  ตัวเลือกเพิ่มเติม — วิธีเดินทาง · ตอบรับภายใน{" "}
-                  {startForm.responseDays || DEFAULT_RESPONSE_DAYS} วัน
-                </span>
-                <span>{showMoreOptions ? "▲" : "▼"}</span>
-              </button>
-              {showMoreOptions && (
-                <div className="grid grid-cols-1 gap-4 p-3 sm:grid-cols-2">
-                  <TravelModeField form={startForm} setForm={setStartForm} />
-                  <div>
-                    <label className={LABEL}>
-                      พนักงานต้องตอบรับภายใน (วัน)
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={90}
-                      value={startForm.responseDays}
-                      onChange={(e) =>
-                        setStartForm((prev) => ({
-                          ...prev,
-                          responseDays: e.target.value,
-                        }))
-                      }
-                      className={INPUT}
-                    />
-                    <div className="mt-1 text-[11px] text-gray-400">
-                      นับจากวันที่ approve ที่หน้า Allocation — แสดงให้พนักงานเห็นใน
-                      Worker App
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className={`${MODAL_FOOT} items-center`}>
-            {startMissing && !starting && (
-              <span className="mr-auto text-[11px] text-gray-400">
-                {startMissing}
-              </span>
-            )}
-            <button onClick={closeStartModal} className={BTN_CANCEL}>
-              Cancel
-            </button>
-            <button
-              onClick={handleStartSubmit}
-              disabled={startDisabled}
-              className={`rounded-lg border-none px-5 py-2 text-[13px] font-semibold text-white ${
-                startDisabled
-                  ? "cursor-not-allowed bg-gray-400"
-                  : "cursor-pointer bg-blue-600 hover:bg-blue-700"
-              }`}
-            >
-              {starting ? "กำลังบันทึก..." : "Submit requirement"}
-            </button>
-          </div>
-        </ModalShell>
+      {/* ════════ New manpower requirement ════════ */}
+      {newReq && canManageProjects && (
+        <NewRequirementModal
+          prefillRecord={newReq.record}
+          onClose={() => setNewReq(null)}
+          onCreated={(projectId) => {
+            setNewReq(null);
+            navigate(`/projects/${projectId}`);
+          }}
+        />
       )}
 
       {/* ════════ Edit Project Modal ════════ */}

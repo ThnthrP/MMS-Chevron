@@ -9,9 +9,8 @@ import { AppContent } from "../../context/AppContext";
 // ข้อมูลมาจาก middleware/auditTrail.js ฝั่ง backend (บันทึกอัตโนมัติ)
 // ══════════════════════════════════════════════════════════
 
-const CARD = "overflow-hidden rounded-[10px] border border-gray-200 bg-white";
 const FIELD_LABEL =
-  "mb-[5px] block text-[11px] font-bold uppercase tracking-[0.4px] text-gray-500";
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
 const INPUT =
   "box-border w-full rounded-lg border border-gray-300 bg-white px-3 py-[8px] text-[13px] outline-none focus:border-blue-400";
 const TH =
@@ -408,27 +407,28 @@ export default function AuditLogs() {
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
-      <div
-        className={`${CARD} mb-4 flex flex-col gap-3 p-4 sm:p-[18px] md:flex-row md:items-center md:justify-between`}
-      >
-        <div>
-          <div className="text-xl font-extrabold">🕵️ Audit Log</div>
-          <div className="mt-1 text-xs text-gray-500">
-            บันทึกการใช้งานระบบ · ใครทำอะไร เมื่อไร (เพิ่ม / แก้ไข / ลบ / อนุมัติ / เข้า-ออกระบบ)
+      <div className="flex flex-col gap-2 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="m-0 text-lg font-bold">Audit Log</h1>
+          <div className="text-xs text-gray-500">
+            บันทึกการใช้งานระบบ · ใครทำอะไร เมื่อไร (เพิ่ม / แก้ไข / ลบ / อนุมัติ / เข้า-ออกระบบ) · คลิกแถวเพื่อดูรายละเอียด
           </div>
         </div>
         <button
           onClick={exportCsv}
           disabled={exporting || total === 0}
-          className="cursor-pointer whitespace-nowrap rounded-lg border border-blue-600 bg-white px-4 py-[9px] text-[13px] font-bold text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none bg-[#2B2F78] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#22265f] disabled:cursor-default disabled:bg-gray-400 sm:w-auto"
         >
           {exporting ? "กำลังส่งออก…" : "⬇ Export CSV"}
         </button>
       </div>
 
-      {/* ════════ Filters ════════ */}
-      <div className={`${CARD} mb-4 p-3.5`}>
+      {/* ════════ Filters — คั่นด้วยเส้น ════════ */}
+      <div className="border-y border-gray-200 py-3">
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-xs font-semibold uppercase tracking-[0.4px] text-gray-500">
+            ช่วงเวลา
+          </span>
           {QUICK_RANGES.map((r) => (
             <button
               key={r.key}
@@ -438,7 +438,7 @@ export default function AuditLogs() {
               }}
               className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold ${
                 activeRange === r.key
-                  ? "border-blue-600 bg-blue-600 text-white"
+                  ? "border-[#2B2F78] bg-[#2B2F78] text-white"
                   : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
               }`}
             >
@@ -462,7 +462,6 @@ export default function AuditLogs() {
             className="rounded-md border border-gray-300 px-2 py-1 text-xs"
           />
         </div>
-
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <div className="lg:col-span-2">
             <label className={FIELD_LABEL}>ค้นหา</label>
@@ -531,20 +530,25 @@ export default function AuditLogs() {
           </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-          <span>
-            พบ <b className="text-gray-800">{total.toLocaleString()}</b> รายการ
-          </span>
-          {hasExtraFilters && (
-            <button onClick={resetFilters} className="cursor-pointer border-none bg-transparent text-xs font-semibold text-blue-600">
-              ล้างตัวกรอง
-            </button>
-          )}
-        </div>
+      </div>
+
+      {/* จำนวน + ล้างตัวกรอง */}
+      <div className="flex items-center gap-3 py-2 text-xs text-gray-500">
+        <span>
+          พบ <b className="text-gray-800">{total.toLocaleString()}</b> รายการ
+        </span>
+        {hasExtraFilters && (
+          <button
+            onClick={resetFilters}
+            className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#dc3545] hover:underline"
+          >
+            ✕ ล้างตัวกรอง
+          </button>
+        )}
       </div>
 
       {/* ════════ Table (desktop) ════════ */}
-      <div className={`${CARD} hidden md:block`}>
+      <div className="hidden border-y border-gray-200 md:block">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
@@ -557,7 +561,7 @@ export default function AuditLogs() {
                 <th className={TH}>IP</th>
               </tr>
             </thead>
-            <tbody className={loading ? "opacity-50" : ""}>
+            <tbody className={`[&>tr:last-child>td]:border-b-0 ${loading ? "opacity-50" : ""}`}>
               {rows.length === 0 && !loading && (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-sm text-gray-400">
@@ -594,7 +598,7 @@ export default function AuditLogs() {
                           e.stopPropagation();
                           if (r.userId) setFilter("userId", r.userId);
                         }}
-                        className="cursor-pointer border-none bg-transparent p-0 text-left text-[13px] font-semibold text-gray-800 hover:text-blue-600"
+                        className="cursor-pointer border-none bg-transparent p-0 text-left text-[13px] font-semibold text-gray-800 hover:text-[#2B2F78] hover:underline"
                       >
                         {r.actorName || "—"}
                       </button>
@@ -626,10 +630,10 @@ export default function AuditLogs() {
         </div>
       </div>
 
-      {/* ════════ Cards (mobile) ════════ */}
-      <div className="flex flex-col gap-2 md:hidden">
+      {/* ════════ รายการ (mobile) — คั่นด้วยเส้น ════════ */}
+      <div className="divide-y divide-gray-200 border-y border-gray-200 md:hidden">
         {rows.length === 0 && !loading && (
-          <div className={`${CARD} py-10 text-center text-sm text-gray-400`}>ไม่มีรายการในช่วงที่เลือก</div>
+          <div className="py-10 text-center text-sm text-gray-400">ไม่มีรายการในช่วงที่เลือก</div>
         )}
         {rows.map((r) => {
           const am = actionMeta(r.action);
@@ -638,7 +642,7 @@ export default function AuditLogs() {
               key={r.id}
               type="button"
               onClick={() => setDetailId(r.id)}
-              className={`${CARD} cursor-pointer p-3 text-left ${!r.success ? "border-red-200 bg-red-50/40" : ""}`}
+              className={`block w-full cursor-pointer border-none px-1 py-3 text-left ${!r.success ? "bg-red-50/40" : "bg-transparent"}`}
             >
               <div className="mb-1 flex items-center justify-between gap-2">
                 <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${am.tone}`}>{am.label}</span>

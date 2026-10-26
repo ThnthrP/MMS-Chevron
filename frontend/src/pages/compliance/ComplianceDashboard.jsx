@@ -13,8 +13,8 @@ import {
 // ══════════════════════════════════════════════════════════
 // constants
 // ══════════════════════════════════════════════════════════
-const CARD = "rounded-[10px] border border-gray-200 bg-white";
-const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const FILTER_LABEL =
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
 const LINK =
   "cursor-pointer text-[11px] font-semibold text-blue-600 hover:underline";
 
@@ -29,6 +29,8 @@ const TONE = {
 const STAT_CARDS = [
   {
     key: "expired",
+    color: "#dc3545",
+    tint: "#fff5f5",
     icon: "🔴",
     label: "Expired",
     bg: "bg-[#fff5f5]",
@@ -38,6 +40,8 @@ const STAT_CARDS = [
   },
   {
     key: "critical",
+    color: "#cc8400",
+    tint: "#fff8e1",
     icon: "🔥",
     label: "Critical (<30d)",
     bg: "bg-[#fff8e1]",
@@ -47,6 +51,8 @@ const STAT_CARDS = [
   },
   {
     key: "warning",
+    color: "#0aa2c0",
+    tint: "#e8f8fc",
     icon: "🟡",
     label: "Warning (30-90d)",
     bg: "bg-[#e8f4fd]",
@@ -56,6 +62,8 @@ const STAT_CARDS = [
   },
   {
     key: "upcoming",
+    color: "#4f46e5",
+    tint: "#eef2ff",
     icon: "🔵",
     label: "Upcoming (90-120d)",
     bg: "bg-[#eef2ff]",
@@ -65,6 +73,8 @@ const STAT_CARDS = [
   },
   {
     key: "valid",
+    color: "#198754",
+    tint: "#f0faf4",
     icon: "✅",
     label: "Valid (>120d)",
     bg: "bg-[#f0fff4]",
@@ -786,139 +796,111 @@ export default function ComplianceDashboard() {
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
-      <div
-        className={`${CARD} mb-4 flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6`}
-      >
+      <div className="flex flex-col gap-2 pb-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <div className="mb-1 flex flex-wrap items-center gap-2.5">
-            <span className="text-xl">🛡️</span>
-            <span className="text-lg font-bold">Compliance Center</span>
-            <span className="rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600">
-              Phase 2
-            </span>
-          </div>
-          <div className="text-[13px] text-gray-500">
-            Certification Monitoring, Gap Analysis & Position Matching
-          </div>
-          <div className="mt-1 text-[11px] text-gray-400">
-            ตัวเลขการ์ดด้านล่างและคอลัมน์ Training Alerts นับเฉพาะใบรับรอง
-            training · ผลตรวจสุขภาพดูที่คอลัมน์ Medical
+          <h1 className="m-0 text-lg font-bold">Compliance Center</h1>
+          <div className="text-xs text-gray-500">
+            Certification Monitoring, Gap Analysis &amp; Position Matching ·
+            ตัวเลขด้านล่างและคอลัมน์ Training Alerts นับเฉพาะใบรับรอง training ·
+            ผลตรวจสุขภาพดูที่คอลัมน์ Medical
           </div>
         </div>
         <button
           onClick={exportPETracking}
           disabled={exportingPE}
           title="ผลตรวจสุขภาพรายคน (Physical Examination) ตาม layout PE tracking ของ HR"
-          className="w-full shrink-0 cursor-pointer whitespace-nowrap rounded-lg border-none bg-[#1e3a5f] px-4 py-[9px] text-[13px] font-bold text-white hover:bg-[#162c48] disabled:cursor-default disabled:bg-gray-400 sm:w-auto"
+          className="w-full shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none bg-[#2B2F78] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#22265f] disabled:cursor-default disabled:bg-gray-400 sm:w-auto"
         >
           {exportingPE ? "Exporting…" : "⬇ Export PE Tracking (.xlsx)"}
         </button>
       </div>
 
-      {/* ════════ Stats Cards — คลิกเพื่อกรอง ════════ */}
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
+      {/* ════════ ตัวเลขสถานะ — คลิกเพื่อกรอง (แบบเดียวกับ Dashboard) ════════ */}
+      <div className="grid grid-cols-2 gap-px border-b border-gray-200 bg-gray-200 sm:grid-cols-3 lg:grid-cols-5 [&>*]:bg-white">
         {STAT_CARDS.map((card) => {
           const active = statusFilter === card.key;
           return (
-            <div
+            <button
               key={card.key}
+              type="button"
               onClick={() => setStatusFilter(active ? "all" : card.key)}
-              className={`${CARD} flex cursor-pointer flex-col overflow-hidden transition-shadow hover:shadow-md ${
-                active ? `ring-2 ${card.ring}` : ""
-              }`}
+              title={active ? "กดอีกครั้งเพื่อยกเลิกการกรอง" : "กดเพื่อกรองรายชื่อตามสถานะนี้"}
+              className="cursor-pointer border-x-0 border-b-0 border-t-[3px] border-solid px-4 py-3 text-left transition-colors hover:bg-[var(--tint)]"
+              style={{
+                borderTopColor: card.color,
+                "--tint": card.tint,
+                ...(active ? { background: card.tint } : {}),
+              }}
             >
-              <div className="flex flex-1 items-center gap-3 px-3 py-3 sm:px-[18px] sm:py-3.5">
-                <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${card.bg}`}
-                >
-                  <span className="text-[17px]">{card.icon}</span>
-                </div>
-                <div className="min-w-0">
-                  <div
-                    className={`text-[22px] font-bold leading-none ${card.text}`}
-                  >
-                    {stats[card.key]}
-                  </div>
-                  <div className="text-[11px] leading-snug text-gray-500">
-                    {card.label}
-                  </div>
-                </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-gray-500">
+                  {card.icon} {card.label}
+                </span>
+                {active && (
+                  <span className="text-[10px] font-bold" style={{ color: card.color }}>
+                    กำลังกรอง ✕
+                  </span>
+                )}
               </div>
-              <div className={`mt-auto h-1 ${card.bar}`} />
-            </div>
+              <div
+                className="mt-1 text-[26px] font-extrabold leading-tight"
+                style={{ color: card.color }}
+              >
+                {stats[card.key]}
+              </div>
+            </button>
           );
         })}
       </div>
 
-      {/* ════════ Filters ════════ */}
-      <div className={`${CARD} mb-4 px-4 py-3.5`}>
-        <div className="mb-3 text-[13px] font-bold text-gray-900">
-          🔍 Search &amp; Filter
+      {/* ════════ Filters — คั่นด้วยเส้น ════════ */}
+      <div className="grid grid-cols-1 gap-3 border-b border-gray-200 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1.6fr)_minmax(0,1.1fr)_minmax(0,1fr)] lg:items-end">
+        <div className="min-w-0">
+          <label className={FILTER_LABEL}>
+            Worker{" "}
+            <span className="normal-case tracking-normal text-gray-400">
+              (ID / ชื่อไทย / อังกฤษ)
+            </span>
+          </label>
+          <Select
+            options={workerOptions}
+            value={workerOptions.find((o) => o.value === workerFilter) || null}
+            onChange={(o) => setWorkerFilter(o ? o.value : "")}
+            filterOption={filterWorkerOption}
+            placeholder="🔍 ค้นหาด้วย ID หรือชื่อ (ไทย/อังกฤษ)..."
+            isClearable
+            styles={customSelectStyles}
+            noOptionsMessage={() => "ไม่พบ worker"}
+          />
         </div>
-        <div className="flex flex-wrap gap-3 sm:gap-4">
-          <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[440px] sm:flex-[1_1_300px]">
-            <label className={FILTER_LABEL}>
-              Worker (Employee ID / ชื่อไทย / ชื่ออังกฤษ)
-            </label>
-            <Select
-              options={workerOptions}
-              value={
-                workerOptions.find((o) => o.value === workerFilter) || null
-              }
-              onChange={(o) => setWorkerFilter(o ? o.value : "")}
-              filterOption={filterWorkerOption}
-              placeholder="🔍 ค้นหาด้วย ID หรือชื่อ (ไทย/อังกฤษ)..."
-              isClearable
-              styles={customSelectStyles}
-              noOptionsMessage={() => "ไม่พบ worker"}
-            />
-          </div>
-          <div className="min-w-[160px] flex-[1_1_45%] sm:max-w-[480px] sm:flex-[1_1_300px]">
-            <label className={FILTER_LABEL}>Position</label>
-            <Select
-              options={positionOptions}
-              value={
-                positionOptions.find((o) => o.value === positionFilter) || null
-              }
-              onChange={(o) => setPositionFilter(o ? o.value : "")}
-              placeholder="Position..."
-              isClearable
-              styles={customSelectStyles}
-              noOptionsMessage={() => "ไม่พบตำแหน่ง"}
-            />
-          </div>
-          <div className="min-w-[160px] flex-[1_1_45%] sm:max-w-[320px] sm:flex-[1_1_220px]">
-            <label className={FILTER_LABEL}>Department</label>
-            <Select
-              options={departmentOptions}
-              value={
-                departmentOptions.find((o) => o.value === departmentFilter) ||
-                null
-              }
-              onChange={(o) => setDepartmentFilter(o ? o.value : "")}
-              placeholder="Department..."
-              isClearable
-              styles={customSelectStyles}
-              noOptionsMessage={() => "ไม่พบแผนก"}
-            />
-          </div>
-          <div className="min-w-[160px] flex-[1_1_45%] sm:flex-[0_1_210px]">
-            <label className={FILTER_LABEL}>Status</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="box-border h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] outline-none focus:border-blue-400"
-            >
-              <option value="all">All Status</option>
-              <option value="expired">🔴 Expired</option>
-              <option value="critical">🔥 Critical (&lt;30 days)</option>
-              <option value="warning">🟡 Warning (30-90 days)</option>
-              <option value="upcoming">🔵 Upcoming (90-120 days)</option>
-              <option value="valid">✅ No Alerts (training + medical)</option>
-            </select>
-          </div>
-          {hasFilter && (
-            <div className="flex items-end">
+        <div className="min-w-0">
+          <label className={FILTER_LABEL}>Position</label>
+          <Select
+            options={positionOptions}
+            value={positionOptions.find((o) => o.value === positionFilter) || null}
+            onChange={(o) => setPositionFilter(o ? o.value : "")}
+            placeholder="All Positions"
+            isClearable
+            styles={customSelectStyles}
+            noOptionsMessage={() => "ไม่พบตำแหน่ง"}
+          />
+        </div>
+        <div className="min-w-0">
+          <label className={FILTER_LABEL}>Department</label>
+          <Select
+            options={departmentOptions}
+            value={departmentOptions.find((o) => o.value === departmentFilter) || null}
+            onChange={(o) => setDepartmentFilter(o ? o.value : "")}
+            placeholder="All Departments"
+            isClearable
+            styles={customSelectStyles}
+            noOptionsMessage={() => "ไม่พบแผนก"}
+          />
+        </div>
+        <div className="min-w-0">
+          <label className={`${FILTER_LABEL} flex items-center justify-between`}>
+            <span>Status</span>
+            {hasFilter && (
               <button
                 onClick={() => {
                   setWorkerFilter("");
@@ -926,19 +908,33 @@ export default function ComplianceDashboard() {
                   setDepartmentFilter("");
                   setStatusFilter("all");
                 }}
-                className="h-9 cursor-pointer whitespace-nowrap rounded-lg border border-[#dc3545] bg-white px-3.5 text-[13px] text-[#dc3545] hover:bg-red-50"
+                className="cursor-pointer border-none bg-transparent p-0 text-[11px] font-semibold normal-case tracking-normal text-[#dc3545] underline"
               >
-                ✕ Clear
+                ✕ ล้างทั้งหมด
               </button>
-            </div>
-          )}
+            )}
+          </label>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="box-border h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] outline-none focus:border-blue-400"
+          >
+            <option value="all">All Status</option>
+            <option value="expired">🔴 Expired</option>
+            <option value="critical">🔥 Critical (&lt;30 days)</option>
+            <option value="warning">🟡 Warning (30-90 days)</option>
+            <option value="upcoming">🔵 Upcoming (90-120 days)</option>
+            <option value="valid">✅ No Alerts (training + medical)</option>
+          </select>
         </div>
       </div>
 
       {/* ════════ Worker Compliance ════════ */}
-      <div className={`${CARD} overflow-hidden`}>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3.5 sm:px-5">
-          <span className="text-sm font-bold">Worker Compliance Overview</span>
+      <div className="border-b border-gray-200">
+        <div className="flex flex-wrap items-center justify-between gap-2 py-3">
+          <span className="border-l-[3px] border-[#2B2F78] pl-2.5 text-[15px] font-bold leading-tight">
+            Worker Compliance Overview
+          </span>
           <span className="text-xs text-gray-500">
             {filteredWorkers.length} of {workers.length}
           </span>
@@ -951,12 +947,9 @@ export default function ComplianceDashboard() {
               {emptyText}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2">
+            <div className="divide-y divide-gray-100 border-t border-gray-200">
               {filteredWorkers.map((w) => (
-                <div
-                  key={w.id}
-                  className="rounded-lg border border-gray-200 bg-white p-3 text-[13px]"
-                >
+                <div key={w.id} className="py-3 text-[13px]">
                   <div className="mb-2">
                     {renderWorker(w)}
                     <div className="mt-1 text-xs text-gray-500">
@@ -990,11 +983,11 @@ export default function ComplianceDashboard() {
         <div className="hidden overflow-x-auto lg:block">
           <table className="w-full table-fixed border-collapse text-[13px]">
             <thead>
-              <tr className="border-b border-gray-200">
+              <tr className="border-y border-gray-200">
                 {TABLE_HEADERS.map(([h, align, width]) => (
                   <th
                     key={h}
-                    className={`whitespace-nowrap bg-white px-3.5 py-2.5 text-[11px] font-semibold tracking-[0.5px] text-gray-500 ${align} ${width}`}
+                    className={`whitespace-nowrap bg-gray-50 px-3.5 py-2 text-[11px] font-semibold tracking-[0.5px] text-gray-500 ${align} ${width}`}
                   >
                     {h}
                   </th>

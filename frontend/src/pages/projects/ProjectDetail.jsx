@@ -181,7 +181,7 @@ export default function ProjectDetail() {
       await axios.delete(`${backendUrl}/api/projects/${id}`, {
         withCredentials: true,
       });
-      navigate("/projects");
+      navigate("/requirements");
     } catch (error) {
       console.error(error);
       alert(error.response?.data?.message || "ลบ Project ไม่สำเร็จ");
@@ -518,10 +518,10 @@ export default function ProjectDetail() {
       {/* Back + Header */}
       <div className="mb-5">
         <Link
-          to="/projects"
+          to="/requirements"
           className="mb-2 inline-block text-[13px] text-gray-500 no-underline hover:text-gray-700"
         >
-          ← Back to Projects
+          ← Manpower Requirements
         </Link>
         <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
@@ -529,6 +529,11 @@ export default function ProjectDetail() {
               {project.name}
             </h4>
             <span className="text-[13px] text-gray-500">
+              {project.masterProjectRecord?.projectCode && (
+                <span className="mr-1.5 font-mono text-blue-700">
+                  {project.masterProjectRecord.projectCode}
+                </span>
+              )}
               {project.contract?.client?.name} — {project.contract?.name}
             </span>
           </div>
@@ -652,7 +657,7 @@ export default function ProjectDetail() {
                       {[
                         "POSITION",
                         "HEADCOUNT",
-                        "ASSIGNED",
+                        "BOOKED", // จองงานแล้ว (หลัง approve) — ชื่อที่จัดแล้วดูที่ Manpower Requirements / Assign Names
                         "STATUS",
                         ...(canManageProjects ? [""] : []),
                       ].map((h, hi) => (

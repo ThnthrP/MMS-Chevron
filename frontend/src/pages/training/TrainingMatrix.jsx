@@ -3,8 +3,7 @@ import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import Select from "react-select";
 
-const CARD = "rounded-[10px] border border-gray-200 bg-white";
-const LABEL = "mb-1.5 block text-[13px] font-semibold text-gray-900";
+const LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
 
 // react-select ใช้ styles API ของไลบรารี (ใส่ className ตรงๆ ไม่ได้)
 const customSelectStyles = {
@@ -127,115 +126,100 @@ export default function TrainingMatrix() {
     (group) => !selectedPosition || group.positionId === selectedPosition,
   );
 
-  const selectedContractLabel =
-    contractOptions.find((o) => o.value === selectedContract)?.label || "";
+  const totalRequired = filteredGroups.reduce(
+    (sum, g) => sum + g.requirements.length,
+    0,
+  );
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
-      {/* Header Card */}
-      <div className={`${CARD} mb-4 px-4 py-4 sm:px-6`}>
-        <div className="mb-1 flex items-start gap-2.5">
-          <span className="text-lg">☑️</span>
-          <span className="text-lg font-bold">
-            Training Matrix — Client Requirements
-          </span>
-        </div>
-        <div className="text-[13px] text-gray-500">
-          Required certifications per position for offshore eligibility
-          (Chevron)
-        </div>
+      {/* ════════ Header ════════ */}
+      <div className="pb-3 text-xs text-gray-500">
+        Client Requirements — required certifications per position for
+        offshore eligibility (Chevron)
       </div>
 
-      {/* Filter Card */}
-      <div className={`${CARD} mb-4 px-4 py-4 sm:px-6`}>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
-          <div>
-            <label className={LABEL}>Select Client</label>
-            <Select
-              options={contractOptions}
-              styles={customSelectStyles}
-              value={
-                contractOptions.find((o) => o.value === selectedContract) ||
-                null
-              }
-              onChange={handleContractChange}
-              placeholder="Type to search Client..."
-              isClearable
-              noOptionsMessage={() => "No clients found"}
-            />
-          </div>
-          <div>
-            <label className={LABEL}>Search Position</label>
-            <Select
-              options={positionOptions}
-              styles={customSelectStyles}
-              value={
-                positionOptions.find((o) => o.value === selectedPosition) ||
-                null
-              }
-              onChange={handlePositionChange}
-              placeholder="🔍 e.g. Welder, Rigger, Scaffolder..."
-              isClearable
-              isDisabled={!selectedContract}
-              noOptionsMessage={() => "No positions found"}
-            />
-          </div>
+      {/* ════════ Filter — แถวเดียว คั่นด้วยเส้น ════════ */}
+      <div className="grid grid-cols-1 gap-3 border-y border-gray-200 py-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] md:items-end">
+        <div className="min-w-0">
+          <label className={LABEL}>Client</label>
+          <Select
+            options={contractOptions}
+            styles={customSelectStyles}
+            value={
+              contractOptions.find((o) => o.value === selectedContract) || null
+            }
+            onChange={handleContractChange}
+            placeholder="Type to search Client..."
+            isClearable
+            noOptionsMessage={() => "No clients found"}
+          />
         </div>
+        <div className="min-w-0">
+          <label className={LABEL}>Position</label>
+          <Select
+            options={positionOptions}
+            styles={customSelectStyles}
+            value={
+              positionOptions.find((o) => o.value === selectedPosition) || null
+            }
+            onChange={handlePositionChange}
+            placeholder="🔍 e.g. Welder, Rigger, Scaffolder..."
+            isClearable
+            isDisabled={!selectedContract}
+            noOptionsMessage={() => "No positions found"}
+          />
+        </div>
+        {!loading && filteredGroups.length > 0 && (
+          <div className="whitespace-nowrap pb-2 text-xs text-gray-500">
+            <b className="text-gray-900">{filteredGroups.length}</b> ตำแหน่ง ·{" "}
+            <b className="text-gray-900">{totalRequired}</b> requirements
+          </div>
+        )}
       </div>
 
-      {/* Output Area */}
+      {/* ════════ Output ════════ */}
       {loading ? (
-        <div className="p-10 text-center text-sm text-gray-500 sm:p-[60px]">
+        <div className="border-b border-gray-200 p-10 text-center text-sm text-gray-500 sm:p-[60px]">
           Loading Training Matrix...
         </div>
       ) : filteredGroups.length === 0 ? (
-        <div className="p-10 text-center text-sm text-gray-500 sm:p-[60px]">
+        <div className="border-b border-gray-200 p-10 text-center text-sm text-gray-500 sm:p-[60px]">
           {selectedContract
             ? "No training requirements found for this selection."
             : "Please select a Client to view the data."}
         </div>
       ) : (
         filteredGroups.map((group) => (
-          <div
+          <section
             key={group.positionId}
-            className={`${CARD} mb-4 overflow-hidden`}
+            className="border-b border-gray-200 py-4"
           >
             {/* Group Header */}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3.5 sm:px-6">
-              <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
-                <span className="break-words text-base font-bold">
-                  {group.positionName}
-                </span>
-                {selectedContractLabel && (
-                  <span className="rounded-md bg-[#e7f1ff] px-2.5 py-[3px] text-xs font-semibold text-blue-600">
-                    {selectedContractLabel}
-                  </span>
-                )}
-              </div>
-              <span className="shrink-0 rounded-md bg-[#fff3cd] px-3 py-[3px] text-xs font-semibold text-[#664d03]">
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <span className="min-w-0 break-words text-[15px] font-bold">
+                {group.positionName}
+              </span>
+              <span className="shrink-0 rounded-md bg-[#fff3cd] px-2.5 py-0.5 text-xs font-semibold text-[#664d03]">
                 {group.requirements.length} required
               </span>
             </div>
 
-            {/* Requirements — มือถือ 1 คอลัมน์, md+ 2 คอลัมน์ */}
-            <div className="px-4 py-3 sm:px-6 sm:py-4">
-              <div className="grid grid-cols-1 gap-x-6 md:grid-cols-2">
-                {group.requirements.map((item, i) => (
-                  <div
-                    key={item.id}
-                    className="flex items-start gap-2 border-b border-gray-100 px-1 py-2 text-[13px]"
-                  >
-                    <span className="min-w-[24px] font-semibold text-gray-500">
-                      {i + 1}.
-                    </span>
-                    <span className="min-w-0 break-words text-gray-900">
-                      {item.trainingName}
-                    </span>
-                  </div>
-                ))}
-              </div>
+            {/* Requirements — มือถือ 1 คอลัมน์, md 2, xl 3 */}
+            <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2 xl:grid-cols-3">
+              {group.requirements.map((item, i) => (
+                <div
+                  key={item.id}
+                  className="flex items-start gap-2 border-b border-gray-100 py-1.5 text-[13px]"
+                >
+                  <span className="min-w-[24px] text-gray-400">{i + 1}.</span>
+                  <span className="min-w-0 break-words text-gray-900">
+                    {item.trainingName}
+                  </span>
+                </div>
+              ))}
             </div>
-          </div>
+          </section>
         ))
       )}
     </div>

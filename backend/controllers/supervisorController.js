@@ -31,3 +31,14 @@ export async function getProjectHistory(req, res) {
     res.status(error.status || 500).json({ message: error.message });
   }
 }
+
+// Manpower Requirements — รายการ position request ทั้งหมด
+export async function getRequirements(req, res) {
+  try {
+    const data = await service.getRequirements();
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}

@@ -84,16 +84,15 @@ const today = () => new Date().toISOString().slice(0, 10);
 // ══════════════════════════════════════════════════════════
 // small components
 // ══════════════════════════════════════════════════════════
+// section คั่นด้วยเส้น (ไม่มีกรอบ card) — หัวข้อมีแถบซ้ายแบบหน้า Dashboard
 function Card({ title, children, className = "" }) {
   return (
-    <div
-      className={`min-w-0 overflow-hidden rounded-[10px] border border-gray-200 bg-white ${className}`}
-    >
-      <div className="border-b border-gray-200 px-4 py-3.5 text-[15px] font-bold sm:px-[18px]">
+    <section className={`min-w-0 py-4 ${className}`}>
+      <div className="mb-3 border-l-[3px] border-[#2B2F78] pl-2.5 text-[15px] font-bold leading-tight">
         {title}
       </div>
-      <div className="p-4 sm:p-[18px]">{children}</div>
-    </div>
+      {children}
+    </section>
   );
 }
 
@@ -242,21 +241,19 @@ export default function AnalyticsReports() {
     (siteType.unspecified || 0);
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-[1800px] space-y-4">
+    <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
-      <div className="flex flex-col gap-3 rounded-[10px] border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-[18px]">
+      <div className="flex flex-col gap-2 pb-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="text-xl font-extrabold">
-            📊 Analytics &amp; Reports
-          </div>
-          <div className="mt-1 text-xs text-gray-500">
-            Workforce Intelligence Dashboard
+          <h1 className="m-0 text-lg font-bold">Analytics &amp; Reports</h1>
+          <div className="text-xs text-gray-500">
+            Workforce Intelligence — การลงงานรายตำแหน่ง/โปรเจกต์, กำลังคน, Cert
           </div>
         </div>
         <div className="flex flex-col gap-2.5 sm:flex-row">
           <button
             onClick={exportCSV}
-            className="cursor-pointer whitespace-nowrap rounded-lg border-none bg-[#198754] px-4 py-[9px] text-[13px] font-bold text-white hover:bg-[#157347]"
+            className="cursor-pointer whitespace-nowrap rounded-md border-none bg-[#198754] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#157347]"
           >
             ⬇ Export CSV Report
           </button>
@@ -264,9 +261,9 @@ export default function AnalyticsReports() {
       </div>
 
       {/* ════════ Filter: Year + Quarter ════════ */}
-      <div className="flex flex-wrap items-center gap-3 rounded-[10px] border border-gray-200 bg-white px-4 py-3.5 sm:px-[18px]">
-        <span className="text-[13px] font-semibold text-gray-700">
-          ช่วงเวลา:
+      <div className="flex flex-wrap items-center gap-3 border-y border-gray-200 py-3">
+        <span className="text-xs font-semibold uppercase tracking-[0.4px] text-gray-500">
+          ช่วงเวลา (การลงงาน)
         </span>
         <select
           value={selectedYear}
@@ -300,7 +297,7 @@ export default function AnalyticsReports() {
       </div>
 
       {/* ════════ Position Usage + Onshore/Offshore ════════ */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
+      <div className="grid grid-cols-1 border-b border-gray-200 lg:grid-cols-[1.4fr_1fr] lg:divide-x lg:divide-gray-200 lg:[&>*:last-child]:pl-6 lg:[&>*:first-child]:pr-6">
         <Card title="Position Usage — ตำแหน่งที่ถูกใช้จริง (Deployed)">
           {loadingDeployment ? (
             <Muted>Loading…</Muted>
@@ -384,7 +381,7 @@ export default function AnalyticsReports() {
       </div>
 
       {/* ════════ Breakdown by Project ════════ */}
-      <Card title="Breakdown by Project (ON Number)">
+      <Card title="Breakdown by Project (ON Number)" className="border-b border-gray-200">
         {loadingDeployment ? (
           <Muted>Loading…</Muted>
         ) : !byProject.length ? (
@@ -456,7 +453,7 @@ export default function AnalyticsReports() {
       </Card>
 
       {/* ════════ Department + Top Positions ════════ */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 border-b border-gray-200 lg:grid-cols-2 lg:divide-x lg:divide-gray-200 lg:[&>*:last-child]:pl-6 lg:[&>*:first-child]:pr-6">
         <Card title="Headcount by Department">
           {deptData.length ? (
             <ResponsiveContainer width="100%" height={320}>
@@ -542,7 +539,7 @@ export default function AnalyticsReports() {
       </div>
 
       {/* ════════ Summary + Cert ════════ */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 border-b border-gray-200 lg:grid-cols-2 lg:divide-x lg:divide-gray-200 lg:[&>*:last-child]:pl-6 lg:[&>*:first-child]:pr-6">
         <Card title="Workforce Summary">
           <SummaryRow label="Total Workers" value={data.totalWorkers} strong />
           <SummaryRow label="Total Projects" value={data.projects.total} />

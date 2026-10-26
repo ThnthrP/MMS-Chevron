@@ -14,7 +14,9 @@ async function computeComplianceData() {
       availabilityStatus: true,
       mobilizationStatus: true,
       fullName: true,
+      fullNameTH: true,
       empCode: true,
+      empId: true,
       position: { select: { name: true } },
       trainings: {
         where: { isLatest: true },
@@ -63,7 +65,10 @@ async function computeComplianceData() {
 
       if (b === "expired" || b === "expiring") {
         alerts.push({
+          employeeId: e.id,
           fullName: e.fullName,
+          fullNameTH: e.fullNameTH || null,
+          empId: e.empId || null,
           empCode: e.empCode,
           position: e.position?.name || null,
           training: name,
@@ -87,7 +92,10 @@ async function computeComplianceData() {
 
       if (b === "expired" || b === "expiring") {
         alerts.push({
+          employeeId: e.id,
           fullName: e.fullName,
+          fullNameTH: e.fullNameTH || null,
+          empId: e.empId || null,
           empCode: e.empCode,
           position: e.position?.name || null,
           training: name,
@@ -123,8 +131,12 @@ export async function getDashboard() {
   const onSiteEmployeeIds = new Set(onSiteAssignments.map((a) => a.employeeId));
   const onSiteCount = onSiteEmployeeIds.size;
 
-  const { employees, valid, expiring, expired, byType, alerts } =
-    await computeComplianceData();
+  const [{ employees, valid, expiring, expired, byType, alerts }, pendingBookings, demobSoon] =
+    await Promise.all([
+      computeComplianceData(),
+      getPendingBookings().catch((e) => (console.error(e), null)),
+      getDemobSoon(todayStart).catch((e) => (console.error(e), null)),
+    ]);
 
   const mobilization = { pending: 0, ready: 0, on_site: onSiteCount };
   const availability = { available: 0, unavailable: 0 };
@@ -144,11 +156,11 @@ export async function getDashboard() {
       total: x.valid + x.expiring + x.expired,
     }))
     .filter((x) => x.alerts > 0)
+    // ส่งครบทุกประเภท (เดิม cap 10 → ตาราง alert บางแถวนับไม่ครบ) — กราฟตัดเองฝั่งหน้าเว็บ
     .sort(
       (a, b) =>
         b.expired - a.expired || b.expiring - a.expiring || b.total - a.total,
-    )
-    .slice(0, 10);
+    );
 
   return {
     generatedAt: new Date().toISOString(),
@@ -163,7 +175,79 @@ export async function getDashboard() {
     certCompliance: { valid, expiring, expired },
     certByType,
     alerts: alerts.slice(0, 15),
+    pendingBookings, // { training: {items, batches}, medical: {items, batches} } | null
+    demobSoon, // [{ employeeId, fullName, ..., demobDate, project }] | null
   };
+}
+
+// ════════════════════════════════════════════════════════════════
+// Booking ที่รอ HR ยืนยัน (Training / Medical) — นับรายคน (item) + จำนวนคำขอ (batch)
+// ════════════════════════════════════════════════════════════════
+async function getPendingBookings() {
+  const where = { status: "pending", batch: { status: "pending" } };
+  const [tItems, mItems] = await Promise.all([
+    prisma.trainingRequestItem.findMany({ where, select: { batchId: true } }),
+    prisma.medicalRequestItem.findMany({ where, select: { batchId: true } }),
+  ]);
+  const summary = (items) => ({
+    items: items.length,
+    batches: new Set(items.map((i) => i.batchId)).size,
+  });
+  return { training: summary(tItems), medical: summary(mItems) };
+}
+
+// ════════════════════════════════════════════════════════════════
+// พนักงานที่จะ D-MOB ภายใน 7 วัน (นับจากวันนี้) — เตรียมคนผลัดต่อ
+// ════════════════════════════════════════════════════════════════
+const DEMOB_SOON_DAYS = 7;
+
+async function getDemobSoon(todayStart) {
+  const until = new Date(todayStart);
+  until.setDate(until.getDate() + DEMOB_SOON_DAYS);
+  until.setHours(23, 59, 59, 999);
+
+  const rows = await prisma.assignment.findMany({
+    where: { demobDate: { gte: todayStart, lte: until } },
+    orderBy: { demobDate: "asc" },
+    take: 200,
+    select: {
+      employeeId: true,
+      mobDate: true,
+      demobDate: true,
+      platform: true,
+      projectLabel: true,
+      position: { select: { name: true } },
+      employee: {
+        select: {
+          fullName: true,
+          fullNameTH: true,
+          empId: true,
+          position: { select: { name: true } },
+        },
+      },
+      project: {
+        select: {
+          id: true,
+          name: true,
+          masterProjectRecord: { select: { projectCode: true } },
+        },
+      },
+    },
+  });
+
+  return rows.map((a) => ({
+    employeeId: a.employeeId,
+    fullName: a.employee?.fullName ?? null,
+    fullNameTH: a.employee?.fullNameTH ?? null,
+    empId: a.employee?.empId ?? null,
+    position: a.position?.name ?? a.employee?.position?.name ?? null,
+    mobDate: a.mobDate,
+    demobDate: a.demobDate,
+    platform: a.platform,
+    projectId: a.project?.id ?? null,
+    projectName: a.project?.name ?? a.projectLabel ?? null,
+    projectCode: a.project?.masterProjectRecord?.projectCode ?? null,
+  }));
 }
 
 // ════════════════════════════════════════════════════════════════

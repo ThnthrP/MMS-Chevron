@@ -47,7 +47,8 @@ const emptyAddForm = {
   employeeId: "",
 };
 
-const CARD = "overflow-hidden rounded-[10px] border border-gray-200 bg-white";
+// กรอบ modal (หน้าเพจหลักไม่ใช้การ์ดแล้ว — คั่นด้วยเส้นแทน)
+const MODAL_BOX = "overflow-hidden rounded-[10px] border border-gray-200 bg-white";
 const FIELD_LABEL =
   "mb-[5px] block text-[11px] font-bold uppercase tracking-[0.4px] text-gray-500";
 const INPUT =
@@ -57,14 +58,15 @@ const SELECT_SM =
 const BTN_SM =
   "cursor-pointer whitespace-nowrap rounded-md border px-3 py-[5px] text-xs font-semibold disabled:cursor-not-allowed";
 const BTN_PRIMARY =
-  "cursor-pointer rounded-lg border-none bg-blue-600 px-4 py-2 text-[13px] font-bold text-white hover:bg-blue-700 disabled:cursor-default disabled:bg-gray-400";
+  "cursor-pointer rounded-md border-none bg-[#2B2F78] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#22265f] disabled:cursor-default disabled:bg-gray-400";
 const BTN_GHOST =
   "cursor-pointer rounded-lg border border-gray-200 bg-white px-4 py-2 text-[13px] font-semibold text-gray-500 hover:bg-gray-50";
-const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const FILTER_LABEL =
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
 const FIELD =
   "box-border h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500";
 const TH =
-  "whitespace-nowrap border-b border-gray-200 px-3.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.3px] text-gray-500";
+  "whitespace-nowrap border-b border-gray-200 bg-gray-50 px-3.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.3px] text-gray-500";
 const TD = "border-b border-gray-100 px-3.5 py-3 align-middle text-[13px]";
 const ACT_BTN =
   "inline-flex h-7 cursor-pointer items-center justify-center whitespace-nowrap rounded-md border-none px-3 text-xs font-semibold transition-all disabled:cursor-not-allowed";
@@ -132,7 +134,7 @@ function Modal({ title, maxW = "max-w-[440px]", onClose, footer, children }) {
       onClick={onClose}
     >
       <div
-        className={`${CARD} flex max-h-[90vh] w-full ${maxW} flex-col`}
+        className={`${MODAL_BOX} flex max-h-[90vh] w-full ${maxW} flex-col`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between bg-[#1e3a5f] px-5 py-3.5 text-white">
@@ -688,7 +690,7 @@ export default function AdminUsers() {
             <button
               onClick={() => handleSaveRole(u.id)}
               disabled={saving}
-              className={`${BTN_SM} border-blue-600 bg-blue-600 text-white hover:bg-blue-700`}
+              className={`${BTN_SM} border-[#2B2F78] bg-[#2B2F78] text-white hover:bg-[#22265f]`}
             >
               {saving ? "…" : "Save"}
             </button>
@@ -838,55 +840,40 @@ export default function AdminUsers() {
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
-      {/* ════════ Header ════════ */}
-      <div
-        className={`${CARD} mb-4 flex flex-col gap-3 p-4 sm:p-[18px] md:flex-row md:items-center md:justify-between`}
-      >
-        <div>
-          <div className="text-xl font-extrabold">👤 User Management</div>
-          <div className="mt-1 text-xs text-gray-500">
-            จัดการบัญชีผู้ใช้ · role · การผูกกับ worker
-          </div>
+      {/* ════════ Header — ชื่อหน้าแสดงที่แท็บ "Users" ด้านบนแล้ว ════════ */}
+      <div className="flex flex-col gap-2 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-xs text-gray-500">
+          จัดการบัญชีผู้ใช้ · role หลัก / role เสริม · การผูกกับ worker
         </div>
-        <div className="flex gap-2.5">
+        <div className="flex gap-2">
           <button
             onClick={() => setShowRoles(true)}
-            className="flex-1 cursor-pointer whitespace-nowrap rounded-lg border border-blue-600 bg-white px-4 py-[9px] text-[13px] font-bold text-blue-600 hover:bg-blue-50 md:flex-none"
+            className="flex-1 cursor-pointer whitespace-nowrap rounded-md border border-[#2B2F78] bg-white px-4 py-2 text-[13px] font-semibold text-[#2B2F78] hover:bg-[#2B2F78]/5 sm:flex-none"
           >
             ⚙ Manage Roles
           </button>
           <button
             onClick={() => setShowAdd(true)}
-            className={`${BTN_PRIMARY} flex-1 whitespace-nowrap py-[9px] md:flex-none`}
+            className={`${BTN_PRIMARY} flex-1 whitespace-nowrap sm:flex-none`}
           >
             ＋ Add User
           </button>
         </div>
       </div>
 
-      {/* ════════ Search & Filter ════════ */}
-      <div className={`${CARD} mb-4 px-4 py-3.5`}>
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <span className="text-[13px] font-bold text-gray-900">
-            🔍 Search &amp; Filter
-          </span>
-          {hasFilter && (
-            <button
-              onClick={resetFilters}
-              className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#dc3545] underline hover:text-[#a71d2a]"
-            >
-              ✕ ล้าง filter
-            </button>
-          )}
-        </div>
+      {/* ════════ Filters — คั่นด้วยเส้น ════════ */}
+      <div className="border-y border-gray-200 py-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr]">
-          <div className="min-w-0">
+          <div className="min-w-0 sm:col-span-2 lg:col-span-1">
             <label className={FILTER_LABEL}>
-              ค้นหา (ชื่อ / Email / Worker ที่ผูก)
+              Search{" "}
+              <span className="normal-case tracking-normal text-gray-400">
+                (ชื่อ / Email / Worker ที่ผูก)
+              </span>
             </label>
             <input
               type="text"
-              placeholder="เช่น สมชาย, hr@experteam.co.th..."
+              placeholder="🔍 เช่น สมชาย, hr@experteam.co.th..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className={FIELD}
@@ -920,8 +907,12 @@ export default function AdminUsers() {
             </select>
           </div>
         </div>
-        {!loading && (
-          <div className="mt-2.5 text-xs text-gray-500">
+      </div>
+
+      {/* จำนวน + ล้าง filter */}
+      {!loading && (
+        <div className="flex items-center gap-3 py-2 text-xs text-gray-500">
+          <span>
             {hasFilter ? (
               <>
                 พบ <strong className="text-gray-900">{filtered.length}</strong>{" "}
@@ -930,12 +921,20 @@ export default function AdminUsers() {
             ) : (
               <>ทั้งหมด {users.length} คน</>
             )}
-          </div>
-        )}
-      </div>
+          </span>
+          {hasFilter && (
+            <button
+              onClick={resetFilters}
+              className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#dc3545] hover:underline"
+            >
+              ✕ ล้างทั้งหมด
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ════════ List ════════ */}
-      <div className={CARD}>
+      <div className="border-y border-gray-200">
         {loading ? (
           <div className="p-7 text-center text-gray-500">Loading…</div>
         ) : filtered.length === 0 ? (
@@ -944,13 +943,10 @@ export default function AdminUsers() {
           </div>
         ) : (
           <>
-            {/* ── ต่ำกว่า lg: การ์ด ── */}
-            <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2 lg:hidden">
+            {/* ── ต่ำกว่า lg: รายการคั่นเส้น ── */}
+            <div className="divide-y divide-gray-200 lg:hidden">
               {filtered.map((u) => (
-                <div
-                  key={u.id}
-                  className="rounded-lg border border-gray-200 p-3 text-[13px]"
-                >
+                <div key={u.id} className="py-3 text-[13px]">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div>{renderName(u)}</div>
@@ -960,7 +956,7 @@ export default function AdminUsers() {
                     </div>
                     {renderActions(u)}
                   </div>
-                  <div className="mt-2.5 space-y-2 border-t border-gray-100 pt-2.5">
+                  <div className="mt-2.5 space-y-2">
                     <div className="flex items-center gap-2">
                       <span className="w-[52px] shrink-0 text-[10px] font-semibold uppercase text-gray-400">
                         Role
@@ -999,7 +995,7 @@ export default function AdminUsers() {
                     <th className={TH}>Actions</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="[&>tr:last-child>td]:border-b-0">
                   {filtered.map((u) => (
                     <tr key={u.id} className="hover:bg-gray-50">
                       <td className={TD}>{renderName(u)}</td>
@@ -1233,7 +1229,7 @@ export default function AdminUsers() {
                         <button
                           onClick={() => handleSaveRoleName(r)}
                           disabled={savingRoleId === r.id}
-                          className="cursor-pointer whitespace-nowrap rounded-md border-none bg-blue-600 px-2.5 py-1 text-[11px] font-bold text-white disabled:bg-gray-400"
+                          className="cursor-pointer whitespace-nowrap rounded-md border-none bg-[#2B2F78] px-2.5 py-1 text-[11px] font-bold text-white disabled:bg-gray-400"
                         >
                           {savingRoleId === r.id ? "..." : "บันทึก"}
                         </button>

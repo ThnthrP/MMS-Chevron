@@ -820,6 +820,24 @@ export default function Allocation() {
   const [shortlist, setShortlist] = useState([]);
   const [loadingShortlist, setLoadingShortlist] = useState(false);
   const [approvedExpanded, setApprovedExpanded] = useState({});
+  // แผง "รายชื่อที่จัดแล้ว" — ปุ่มที่หัวตำแหน่ง กดแล้วแสดงทับเนื้อหาด้านล่าง
+  const [assignedOpen, setAssignedOpen] = useState(false);
+  const assignedRef = useRef(null);
+  useEffect(() => {
+    if (!assignedOpen) return;
+    const onDown = (e) => {
+      // คลิกนอกแผง → ปิด (แต่ไม่ปิดถ้าคลิกใน modal / dropdown ที่ portal ไปที่ body)
+      if (assignedRef.current && !assignedRef.current.contains(e.target) && !e.target.closest?.("[role=dialog], [class*=-menu]"))
+        setAssignedOpen(false);
+    };
+    const onKey = (e) => e.key === "Escape" && setAssignedOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [assignedOpen]);
 
   // ── Modals ──
   const [eligibilityModal, setEligibilityModal] = useState(null);
@@ -1677,6 +1695,25 @@ export default function Allocation() {
   const selectedShortlist = selectedRequest
     ? shortlist.find((s) => s.requestId === selectedRequest.id)
     : null;
+  // จำนวนสำหรับ badge บนปุ่ม "รายชื่อที่จัดแล้ว"
+  const assignedCounts = (() => {
+    const all = selectedShortlist?.candidates ?? [];
+    const visible = all.filter((c) => !(c.viaPeApproval && c.status === "approved"));
+    return {
+      proposed: visible.filter((c) => c.status !== "approved").length,
+      approved: visible.filter((c) => c.status === "approved").length,
+      pePending: selectedShortlist?.peExceptions?.pending?.length ?? 0,
+      peRejected: selectedShortlist?.peExceptions?.rejected?.length ?? 0,
+    };
+  })();
+  const assignedTotal =
+    assignedCounts.proposed +
+    assignedCounts.approved +
+    assignedCounts.pePending +
+    assignedCounts.peRejected;
+  const BADGE =
+    "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none text-white";
+
   const renderAssigned = (req) => {
     if (!req) return null;
     const pe = req.peExceptions ?? { pending: [], rejected: [] };
@@ -1695,12 +1732,12 @@ export default function Allocation() {
     if (!all.length && !pe.pending.length && !pe.rejected.length)
       return (
         <div className="py-3 text-[13px] text-gray-400">
-          ยังไม่มีรายชื่อ — เพิ่มจาก Worker Pool ด้านล่าง
+          ยังไม่มีรายชื่อ — กด “+ เพิ่ม” ในตาราง Worker Pool
         </div>
       );
 
     return (
-      <div className="grid grid-cols-1 gap-x-6 gap-y-2 xl:grid-cols-2">
+      <div className="flex flex-col gap-y-2">
         {/* ซ้าย: รออนุมัติ (Proposed) + Approved */}
         <div className="min-w-0">
           {visible.length === 0 && (
@@ -2066,71 +2103,159 @@ export default function Allocation() {
                   </div>
                 ) : (
                   <>
-                    {/* หัวตำแหน่ง */}
-                    <div className="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                      <h2 className="m-0 text-lg font-bold">
-                        {selectedRequest.position?.name}
-                        <span className="ml-1.5 text-sm font-normal text-gray-500">
-                          × {selectedRequest.quantity}
-                        </span>
-                      </h2>
-                      <span className="flex flex-wrap gap-x-3 text-xs text-gray-500">
-                        <span>
-                          จัดแล้ว{" "}
-                          <strong
-                            className={
-                              currentRequestShortlisted > 0
-                                ? "text-[#198754]"
-                                : "text-gray-500"
-                            }
-                          >
-                            {currentRequestShortlisted}
-                          </strong>
-                        </span>
-                        <span>
-                          ยังขาด{" "}
-                          <strong
-                            className={
-                              remaining > 0
-                                ? "text-[#dc3545]"
-                                : "text-[#198754]"
-                            }
-                          >
-                            {remaining}
-                          </strong>
-                        </span>
-                        {exceptionCounts.pending + exceptionCounts.approved >
-                          0 && (
-                          <span title="คำขออนุมัติ PE (% Match ไม่ครบ) ของตำแหน่งนี้">
-                            PE: รอ{" "}
-                            <strong className="text-[#b08900]">
-                              {exceptionCounts.pending}
-                            </strong>
-                            {" · "}อนุมัติ{" "}
-                            <strong className="text-[#198754]">
-                              {exceptionCounts.approved}
+                    {/* หัวตำแหน่ง + ปุ่มรายชื่อที่จัดแล้ว (แผงลอยทับเนื้อหา) */}
+                    <div className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-gray-200 pb-3">
+                      <div className="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-1">
+                        <h2 className="m-0 text-lg font-bold">
+                          {selectedRequest.position?.name}
+                          <span className="ml-1.5 text-sm font-normal text-gray-500">
+                            × {selectedRequest.quantity}
+                          </span>
+                        </h2>
+                        <span className="flex flex-wrap gap-x-3 text-xs text-gray-500">
+                          <span>
+                            จัดแล้ว{" "}
+                            <strong
+                              className={
+                                currentRequestShortlisted > 0
+                                  ? "text-[#198754]"
+                                  : "text-gray-500"
+                              }
+                            >
+                              {currentRequestShortlisted}
                             </strong>
                           </span>
-                        )}
-                      </span>
-                    </div>
+                          <span>
+                            ยังขาด{" "}
+                            <strong
+                              className={
+                                remaining > 0
+                                  ? "text-[#dc3545]"
+                                  : "text-[#198754]"
+                              }
+                            >
+                              {remaining}
+                            </strong>
+                          </span>
+                          {exceptionCounts.pending + exceptionCounts.approved >
+                            0 && (
+                            <span title="คำขออนุมัติ PE (% Match ไม่ครบ) ของตำแหน่งนี้">
+                              PE: รอ{" "}
+                              <strong className="text-[#b08900]">
+                                {exceptionCounts.pending}
+                              </strong>
+                              {" · "}อนุมัติ{" "}
+                              <strong className="text-[#198754]">
+                                {exceptionCounts.approved}
+                              </strong>
+                            </span>
+                          )}
+                        </span>
+                      </div>
 
-                    {/* ── รายชื่อที่จัดแล้ว ── */}
-                    <div className="border-b border-gray-200 pb-3">
-                      <div className={SECTION_HEAD}>รายชื่อที่จัดแล้ว</div>
-                      {loadingShortlist && !selectedShortlist ? (
-                        <div className="py-3 text-[13px] text-gray-400">
-                          Loading...
-                        </div>
-                      ) : (
-                        renderAssigned(
-                          selectedShortlist || {
-                            requestId: selectedRequest.id,
-                            position: selectedRequest.position,
-                            candidates: [],
-                          },
-                        )
-                      )}
+                      <div ref={assignedRef} className="relative ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => setAssignedOpen((o) => !o)}
+                          aria-expanded={assignedOpen}
+                          title={
+                            assignedCounts.proposed ||
+                            assignedCounts.pePending ||
+                            assignedCounts.peRejected
+                              ? "มีรายการรอดำเนินการ — กดเพื่อดู"
+                              : "ดูรายชื่อที่จัดแล้ว"
+                          }
+                          className={`inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-[13px] font-semibold transition-colors ${
+                            assignedOpen
+                              ? "border-[#2B2F78] bg-[#2B2F78] text-white"
+                              : assignedCounts.proposed
+                                ? "border-[#f0b400] bg-[#fffbeb] text-gray-800 hover:bg-[#fff3cd]"
+                                : "border-gray-300 bg-white text-gray-800 hover:bg-gray-50"
+                          }`}
+                        >
+                          รายชื่อที่จัดแล้ว
+                          {assignedCounts.approved > 0 && (
+                            <span
+                              className={`${BADGE} bg-[#198754]`}
+                              title={`Approved ${assignedCounts.approved} คน`}
+                            >
+                              {assignedCounts.approved}
+                            </span>
+                          )}
+                          {assignedCounts.proposed > 0 && (
+                            <span
+                              className={`${BADGE} bg-[#e0a800]`}
+                              title={`รอ Approve ${assignedCounts.proposed} คน`}
+                            >
+                              {assignedCounts.proposed}
+                            </span>
+                          )}
+                          {assignedCounts.pePending > 0 && (
+                            <span
+                              className={`${BADGE} bg-[#fd7e14]`}
+                              title={`รอ PE อนุมัติ ${assignedCounts.pePending} คน`}
+                            >
+                              {assignedCounts.pePending}
+                            </span>
+                          )}
+                          {assignedCounts.peRejected > 0 && (
+                            <span
+                              className={`${BADGE} bg-[#dc3545]`}
+                              title={`PE ไม่อนุมัติ ${assignedCounts.peRejected} คน`}
+                            >
+                              {assignedCounts.peRejected}
+                            </span>
+                          )}
+                          {assignedTotal === 0 && (
+                            <span className="text-xs font-normal opacity-70">0</span>
+                          )}
+                          <span className="text-[10px] opacity-70">
+                            {assignedOpen ? "▲" : "▼"}
+                          </span>
+                        </button>
+
+                        {assignedOpen && (
+                          <div className="absolute right-0 top-full z-30 mt-2 w-[min(560px,calc(100vw-32px))] rounded-lg border border-gray-200 bg-white shadow-[0_10px_30px_rgba(0,0,0,0.15)]">
+                            <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-2.5">
+                              <div className="min-w-0 text-[13px] font-bold">
+                                รายชื่อที่จัดแล้ว ·{" "}
+                                <span className="font-semibold text-gray-500">
+                                  {selectedRequest.position?.name}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setAssignedOpen(false)}
+                                title="ปิด (Esc)"
+                                className="cursor-pointer border-none bg-transparent px-1 text-base leading-none text-gray-400 hover:text-gray-700"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 border-b border-gray-100 px-4 py-1.5 text-[11px] text-gray-500">
+                              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#198754]" />Approved</span>
+                              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#e0a800]" />รอ Approve</span>
+                              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#fd7e14]" />รอ PE อนุมัติ</span>
+                              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#dc3545]" />PE ไม่อนุมัติ</span>
+                            </div>
+                            <div className="max-h-[60vh] overflow-y-auto px-4 py-3">
+                              {loadingShortlist && !selectedShortlist ? (
+                                <div className="py-3 text-[13px] text-gray-400">
+                                  Loading...
+                                </div>
+                              ) : (
+                                renderAssigned(
+                                  selectedShortlist || {
+                                    requestId: selectedRequest.id,
+                                    position: selectedRequest.position,
+                                    candidates: [],
+                                  },
+                                )
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* ── เพิ่มจาก Worker Pool ── */}

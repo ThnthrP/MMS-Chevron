@@ -71,8 +71,8 @@ const LIFT_WHITE =
 const LIFT_RED =
   "bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.15),0_1px_2px_rgba(0,0,0,0.06)] hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(220,53,69,0.25),0_2px_3px_rgba(0,0,0,0.08)]";
 const BTN_DISABLED = "bg-gray-100 opacity-50 shadow-none";
-const CARD = "rounded-[10px] border border-gray-200 bg-white";
-const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const FILTER_LABEL =
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
 
 const customSelectStyles = {
   control: (provided) => ({
@@ -273,170 +273,146 @@ export default function Workers() {
     : "No matching records found.";
 
   return (
-    // xl+: สูงเต็มจอ ตาราง scroll ในการ์ด / ต่ำกว่านั้น: สูงตามเนื้อหา
+    // xl+: สูงเต็มจอ ตาราง scroll ในพื้นที่ที่เหลือ / ต่ำกว่านั้น: สูงตามเนื้อหา
     <div className="flex flex-col xl:h-[calc(100vh-108px)]">
       <div className="mx-auto flex min-h-0 w-full max-w-[1800px] flex-1 flex-col">
-        {/* Header Card */}
-        <div className={`${CARD} mb-4 px-4 py-4 sm:px-6`}>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-              <span className="text-xl">👷</span>
-              <span className="text-lg font-bold">Workers</span>
-              <span className="rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600">
-                Phase 1
+        {/* ════════ Header ════════ */}
+        <div className="flex flex-col gap-2 pb-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="m-0 text-lg font-bold">Workers</h1>
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
+              <span>Recruitment &amp; Data Entry</span>
+              <span>
+                Total <b className="text-gray-900">{totalWorkers}</b> · Active{" "}
+                <b className="text-[#198754]">{activeWorkers}</b> · Inactive{" "}
+                <b className="text-gray-700">{inactiveWorkers}</b>
               </span>
-              <span className="basis-full text-xs text-gray-500 md:basis-auto">
-                Recruitment & Data Entry
-              </span>
+              {hasFilter && (
+                <span>
+                  พบ <b className="text-blue-700">{filteredWorkers.length}</b> จาก{" "}
+                  {workers.length} คน
+                </span>
+              )}
             </div>
-            {canManageWorkers && (
-              <Link
-                to="/workers/add"
-                className="inline-block w-full shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-center text-[13px] font-semibold text-white no-underline hover:bg-blue-700 sm:w-auto"
-              >
-                + Add Worker
-              </Link>
-            )}
+          </div>
+          {canManageWorkers && (
+            <Link
+              to="/workers/add"
+              className="inline-block w-full shrink-0 rounded-md bg-[#2B2F78] px-3.5 py-2 text-center text-xs font-semibold text-white no-underline hover:bg-[#22265f] sm:w-auto"
+            >
+              + Add Worker
+            </Link>
+          )}
+        </div>
+
+        {/* ════════ Search & Filter — คั่นด้วยเส้น ════════
+            มือถือ 1 / sm 2 / lg+ 3 ช่องต่อแถว (2 บรรทัด — ช่องกว้างพอเห็นค่าเต็ม) */}
+        <div className="grid grid-cols-1 gap-x-3 gap-y-3 border-y border-gray-200 py-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>
+              Worker <span className="normal-case tracking-normal text-gray-400">(ID / ชื่อไทย / อังกฤษ)</span>
+            </label>
+            <Select
+              options={workerOptions}
+              styles={customSelectStyles}
+              {...MENU_PORTAL}
+              value={workerOptions.find((o) => o.value === workerFilter) || null}
+              onChange={(o) => setWorkerFilter(o ? o.value : "")}
+              filterOption={filterWorkerOption}
+              placeholder="🔍 ค้นหาด้วย ID หรือชื่อ (ไทย/อังกฤษ)..."
+              isClearable
+              noOptionsMessage={() => "ไม่พบ worker"}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>Department</label>
+            <Select
+              options={departmentOptions}
+              styles={customSelectStyles}
+              {...MENU_PORTAL}
+              value={departmentOptions.find((o) => o.value === department) || null}
+              onChange={(o) => setDepartment(o ? o.value : "")}
+              placeholder="All Departments"
+              isClearable
+              noOptionsMessage={() => "No departments found"}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>Position</label>
+            <Select
+              options={positionOptions}
+              styles={customSelectStyles}
+              {...MENU_PORTAL}
+              value={positionOptions.find((o) => o.value === position) || null}
+              onChange={(o) => setPosition(o ? o.value : "")}
+              placeholder="All Positions"
+              isClearable
+              noOptionsMessage={() => "No positions found"}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>Status</label>
+            <Select
+              options={statusOptions}
+              styles={customSelectStyles}
+              {...MENU_PORTAL}
+              value={statusOptions.find((o) => o.value === status) || null}
+              onChange={(o) => setStatus(o ? o.value : "")}
+              placeholder="All Status"
+              isClearable
+              isSearchable={false}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className={FILTER_LABEL}>Availability</label>
+            <Select
+              options={availabilityOptions}
+              styles={customSelectStyles}
+              {...MENU_PORTAL}
+              value={availabilityOptions.find((o) => o.value === availability) || null}
+              onChange={(o) => setAvailability(o ? o.value : "")}
+              placeholder="All Availability"
+              isClearable
+              isSearchable={false}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className={`${FILTER_LABEL} flex items-center justify-between`}>
+              <span>Mobilization</span>
+              {hasFilter && (
+                <button
+                  onClick={clearFilters}
+                  className="cursor-pointer border-none bg-transparent p-0 text-[11px] font-semibold normal-case tracking-normal text-[#dc3545] underline"
+                >
+                  ✕ ล้างทั้งหมด
+                </button>
+              )}
+            </label>
+            <Select
+              options={mobilizationOptions}
+              styles={customSelectStyles}
+              {...MENU_PORTAL}
+              value={mobilizationOptions.find((o) => o.value === mobilization) || null}
+              onChange={(o) => setMobilization(o ? o.value : "")}
+              placeholder="All Mobilization"
+              isClearable
+              isSearchable={false}
+            />
           </div>
         </div>
 
-        {/* Search & Filter Card — มือถือ 1 / sm 2 / lg 3 ช่องต่อแถว */}
-        <div className={`${CARD} mb-4 px-4 py-3.5 sm:px-5`}>
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <span className="text-[13px] font-bold text-gray-900">
-              🔍 Search &amp; Filter
-            </span>
-            {hasFilter && (
-              <button
-                onClick={clearFilters}
-                className="shrink-0 cursor-pointer whitespace-nowrap rounded-lg border border-red-200 bg-white px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
-              >
-                ✕ Clear
-              </button>
-            )}
-          </div>
-          <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="min-w-0">
-              <label className={FILTER_LABEL}>
-                Worker (Employee ID / ชื่อไทย / ชื่ออังกฤษ)
-              </label>
-              <Select
-                options={workerOptions}
-                styles={customSelectStyles}
-                {...MENU_PORTAL}
-                value={
-                  workerOptions.find((o) => o.value === workerFilter) || null
-                }
-                onChange={(o) => setWorkerFilter(o ? o.value : "")}
-                filterOption={filterWorkerOption}
-                placeholder="🔍 ค้นหาด้วย ID หรือชื่อ (ไทย/อังกฤษ)..."
-                isClearable
-                noOptionsMessage={() => "ไม่พบ worker"}
-              />
-            </div>
-            <div className="min-w-0">
-              <label className={FILTER_LABEL}>Department</label>
-              <Select
-                options={departmentOptions}
-                styles={customSelectStyles}
-                {...MENU_PORTAL}
-                value={departmentOptions.find((o) => o.value === department) || null}
-                onChange={(o) => setDepartment(o ? o.value : "")}
-                placeholder="All Departments"
-                isClearable
-                noOptionsMessage={() => "No departments found"}
-              />
-            </div>
-            <div className="min-w-0">
-              <label className={FILTER_LABEL}>Position</label>
-              <Select
-                options={positionOptions}
-                styles={customSelectStyles}
-                {...MENU_PORTAL}
-                value={positionOptions.find((o) => o.value === position) || null}
-                onChange={(o) => setPosition(o ? o.value : "")}
-                placeholder="All Positions"
-                isClearable
-                noOptionsMessage={() => "No positions found"}
-              />
-            </div>
-            <div className="min-w-0">
-              <label className={FILTER_LABEL}>Status</label>
-              <Select
-                options={statusOptions}
-                styles={customSelectStyles}
-                {...MENU_PORTAL}
-                value={statusOptions.find((o) => o.value === status) || null}
-                onChange={(o) => setStatus(o ? o.value : "")}
-                placeholder="All Status"
-                isClearable
-                isSearchable={false}
-              />
-            </div>
-            <div className="min-w-0">
-              <label className={FILTER_LABEL}>Availability</label>
-              <Select
-                options={availabilityOptions}
-                styles={customSelectStyles}
-                {...MENU_PORTAL}
-                value={availabilityOptions.find((o) => o.value === availability) || null}
-                onChange={(o) => setAvailability(o ? o.value : "")}
-                placeholder="All Availability"
-                isClearable
-                isSearchable={false}
-              />
-            </div>
-            <div className="min-w-0">
-              <label className={FILTER_LABEL}>Mobilization</label>
-              <Select
-                options={mobilizationOptions}
-                styles={customSelectStyles}
-                {...MENU_PORTAL}
-                value={mobilizationOptions.find((o) => o.value === mobilization) || null}
-                onChange={(o) => setMobilization(o ? o.value : "")}
-                placeholder="All Mobilization"
-                isClearable
-                isSearchable={false}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Workers Card */}
-        <div className={`${CARD} flex min-h-0 flex-1 flex-col overflow-hidden`}>
-          {/* Stats bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-2.5 text-[13px]">
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              <span className="text-gray-500">
-                Total: <strong className="text-gray-900">{totalWorkers}</strong>
-              </span>
-              <span className="text-gray-500">
-                Active:{" "}
-                <strong className="text-[#198754]">{activeWorkers}</strong>
-              </span>
-              <span className="text-gray-500">
-                Inactive:{" "}
-                <strong className="text-gray-500">{inactiveWorkers}</strong>
-              </span>
-            </div>
-            <span className="text-gray-500">
-              {filteredWorkers.length} of {workers.length}
-            </span>
-          </div>
-
-          {/* ── ต่ำกว่า xl: การ์ด (md: 2 คอลัมน์) ── */}
+        {/* ════════ List ════════ */}
+        <div className="flex min-h-0 flex-1 flex-col border-b border-gray-200">
+          {/* ── ต่ำกว่า xl: รายการคั่นเส้น ── */}
           <div className="xl:hidden">
             {loading || filteredWorkers.length === 0 ? (
               <div className="p-10 text-center text-[13px] text-gray-500">
                 {emptyText}
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2">
+              <div className="divide-y divide-gray-100">
                 {filteredWorkers.map((worker) => (
-                  <div
-                    key={worker.id}
-                    className="rounded-lg border border-gray-200 bg-white p-3"
-                  >
+                  <div key={worker.id} className="py-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <Link
@@ -502,7 +478,7 @@ export default function Workers() {
                   {TABLE_HEADERS.map(([h, align, width]) => (
                     <th
                       key={h}
-                      className={`sticky top-0 z-[1] whitespace-nowrap bg-white px-4 py-2.5 text-[11px] font-semibold tracking-[0.5px] text-gray-500 shadow-[inset_0_-1px_0_#dee2e6] ${
+                      className={`sticky top-0 z-[1] whitespace-nowrap bg-gray-50 px-3 py-2 text-[11px] font-semibold tracking-[0.4px] text-gray-500 shadow-[inset_0_-1px_0_#e5e7eb] ${
                         align === "center" ? "text-center" : "text-left"
                       } ${width}`}
                     >
@@ -537,13 +513,13 @@ export default function Workers() {
                           : ""
                       }`}
                     >
-                      <td className="whitespace-nowrap px-4 py-[11px] text-gray-400">
+                      <td className="whitespace-nowrap px-3 py-2 text-gray-400">
                         {worker.empCode}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-[11px] font-semibold text-gray-700">
+                      <td className="whitespace-nowrap px-3 py-2 font-semibold text-gray-700">
                         {worker.empId || "—"}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-[11px]">
+                      <td className="whitespace-nowrap px-3 py-2">
                         <Link
                           to={`/workers/${worker.id}`}
                           className="font-semibold text-blue-600 no-underline hover:underline"
@@ -556,20 +532,20 @@ export default function Workers() {
                           </div>
                         )}
                       </td>
-                      <td className="break-words px-4 py-[11px]">
+                      <td className="break-words px-3 py-2">
                         {worker.position?.name || "—"}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-[11px] text-gray-500">
+                      <td className="whitespace-nowrap px-3 py-2 text-gray-500">
                         {worker.division || "—"}
                       </td>
-                      <td className="px-4 py-[11px] text-center">
+                      <td className="px-3 py-2 text-center">
                         <Badge
                           map={STATUS_MAP}
                           value={worker.status}
                           fixedWidth
                         />
                       </td>
-                      <td className="px-4 py-[11px] text-center">
+                      <td className="px-3 py-2 text-center">
                         {isInactive(worker) ? (
                           dash
                         ) : (
@@ -580,7 +556,7 @@ export default function Workers() {
                           />
                         )}
                       </td>
-                      <td className="px-4 py-[11px] text-center">
+                      <td className="px-3 py-2 text-center">
                         {isInactive(worker) ? (
                           dash
                         ) : (
@@ -591,7 +567,7 @@ export default function Workers() {
                           />
                         )}
                       </td>
-                      <td className="px-2 py-[11px] text-center">
+                      <td className="px-2 py-2 text-center">
                         {renderActions(worker)}
                       </td>
                     </tr>

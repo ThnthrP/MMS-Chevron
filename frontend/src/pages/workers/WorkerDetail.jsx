@@ -19,18 +19,18 @@ const SSE_LABEL = { new_sse: "NEW SSE", sse1: "SSE1", sse2: "SSE2" };
 // ══════════════════════════════════════════════════════════
 // Tailwind class ที่ใช้ซ้ำ
 // ══════════════════════════════════════════════════════════
-const CARD =
-  "mb-4 overflow-hidden rounded-[10px] border border-gray-200 bg-white";
-const BODY = "p-4 sm:p-5";
+// section คั่นด้วยเส้น (ไม่มีกรอบ card) — เพิ่มพื้นที่แสดงผล
+const CARD = "border-b border-gray-200";
+const BODY = "pb-5 pt-1";
 const GRID3 = "grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3";
 const LABEL =
   "mb-1 block text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500";
 const VALUE = "text-sm font-medium text-gray-900 [overflow-wrap:anywhere]";
 const EMPTY_BOX =
-  "rounded-lg border border-dashed border-gray-200 bg-gray-50 p-7 text-center text-[13px] text-gray-500";
+  "rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-center text-[13px] text-gray-500";
 const TH =
-  "whitespace-nowrap px-5 py-2.5 text-left text-[11px] font-semibold tracking-[0.5px] text-gray-500";
-const TD = "px-5 py-3";
+  "whitespace-nowrap px-3 py-2 text-left text-[11px] font-semibold tracking-[0.5px] text-gray-500";
+const TD = "px-3 py-2.5";
 const EXPORT_BTN =
   "cursor-pointer whitespace-nowrap rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60";
 const NOTE_TEXT =
@@ -178,12 +178,10 @@ function MapBadge({ map, value, fallback = "—" }) {
 function SectionHeader({ number, title, subtitle, accent }) {
   return (
     <div
-      className={`flex flex-wrap items-center gap-2.5 border-b border-gray-200 px-4 py-3.5 sm:px-5 ${
-        accent ? "bg-[#fff5f5]" : "bg-white"
-      }`}
+      className={`flex flex-wrap items-center gap-2.5 pb-2 pt-5`}
     >
       <div
-        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white ${
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${
           accent ? "bg-[#e53e3e]" : "bg-blue-600"
         }`}
       >
@@ -499,7 +497,7 @@ export default function WorkerDetail() {
       {/* ════════ Header Card ════════ */}
       <div
         ref={headerRef}
-        className="mb-4 flex flex-col gap-4 rounded-[10px] border border-gray-200 bg-white px-4 py-5 sm:px-6 md:flex-row md:items-start md:justify-between"
+        className="flex flex-col gap-4 border-b border-gray-200 pb-4 md:flex-row md:items-start md:justify-between"
       >
         <div className="flex min-w-0 items-start gap-4">
           {w.photoUrl ? (
@@ -837,9 +835,9 @@ export default function WorkerDetail() {
           subtitle="(Project References ในเรซูเม่)"
         />
         {deployments.length === 0 ? (
-          <div className={`${EMPTY_BOX} m-5`}>No past deployment records.</div>
+          <div className={`${EMPTY_BOX} mb-5`}>No past deployment records.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="mb-5 overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-[13px]">
               <thead>
                 <tr className="bg-gray-50">
@@ -909,7 +907,7 @@ export default function WorkerDetail() {
       {/* ════════ Section 3: Certifications ════════ */}
       <div className={CARD}>
         <SectionHeader number="3" title="Certifications" />
-        <div className={certs.length === 0 ? "p-5" : "px-4 pt-5 sm:px-5"}>
+        <div className={certs.length === 0 ? "pb-5 pt-1" : "pt-1"}>
           {certs.length === 0 ? (
             <div className={EMPTY_BOX}>No certifications on record.</div>
           ) : (
@@ -930,7 +928,7 @@ export default function WorkerDetail() {
                   )}
                 </div>
               )}
-              <div className="mb-5 max-h-[420px] overflow-auto rounded-lg border border-gray-100">
+              <div className="mb-5 max-h-[420px] overflow-auto border-b border-gray-100">
                 <table className="w-full min-w-[480px] border-collapse text-[13px]">
                   <thead>
                     <tr>
@@ -1050,11 +1048,11 @@ export default function WorkerDetail() {
           subtitle="(ผลตรวจสุขภาพประจำปี)"
         />
         {examRecords.length === 0 ? (
-          <div className={`${EMPTY_BOX} m-5`}>
+          <div className={`${EMPTY_BOX} mb-5`}>
             No medical exam records on file.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="mb-5 overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse text-[13px]">
               <thead>
                 <tr className="bg-gray-50">

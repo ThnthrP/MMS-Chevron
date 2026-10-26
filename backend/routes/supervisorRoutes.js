@@ -8,5 +8,6 @@ router.use(userAuth);
 router.get("/projects-overview", controller.getProjectsOverview);
 router.get("/projects-overview/:id", controller.getProjectOverview);
 router.get("/projects-overview/:id/history", controller.getProjectHistory);
+router.get("/requirements", controller.getRequirements);
 
 export default router;

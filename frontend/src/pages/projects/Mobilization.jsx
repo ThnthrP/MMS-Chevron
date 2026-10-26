@@ -141,8 +141,8 @@ const HEALTH_TONE = {
   pending: ["Pending", "bg-gray-100 text-gray-500"],
 };
 
-const CARD =
-  "mb-4 overflow-hidden rounded-[10px] border border-gray-200 bg-white";
+// section คั่นด้วยเส้น (ไม่มีกรอบ card)
+const CARD = "border-b border-gray-200";
 // หัวคอลัมน์ขึ้นบรรทัดใหม่ได้ (เดิม nowrap → "Pre-Mob Checklist" ถูกตัด)
 const TH =
   "sticky top-0 z-[1] bg-white px-2.5 py-2.5 align-bottom text-[11px] font-bold uppercase leading-tight tracking-[0.3px] text-gray-500 shadow-[inset_0_-1px_0_#e9ecef]";
@@ -1723,9 +1723,9 @@ export default function Mobilization() {
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
-      <div className={`${CARD} px-4 py-4 sm:px-6`}>
-        <div className="text-lg font-extrabold sm:text-xl">🚀 Mobilization</div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+      {/* ชื่อหน้าอยู่ที่แท็บแล้ว — เหลือคำอธิบายบรรทัดเดียว */}
+      <div className="pb-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
           <span className="rounded-md bg-gray-200 px-2 py-0.5 font-bold">
             Phase 4
           </span>
@@ -1734,7 +1734,7 @@ export default function Mobilization() {
       </div>
 
       {/* ════════ เลือก Project ════════ */}
-      <div className={`${CARD} px-4 py-4 sm:px-6`}>
+      <div className="border-y border-gray-200 py-3">
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-full sm:min-w-[280px] sm:max-w-[700px] sm:flex-1">
             <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500">
@@ -1785,7 +1785,7 @@ export default function Mobilization() {
 
       {/* ════════ Step 10–11 ════════ */}
       <div className={CARD}>
-        <div className="flex flex-col gap-3 border-b border-gray-200 px-4 py-3.5 text-sm font-bold sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 border-b border-gray-200 py-3.5 text-sm font-bold lg:flex-row lg:items-center lg:justify-between">
           <span>
             Step 10–11: Checklist (PPE · Safety Induction · Medical Fit) →
             Deploy
@@ -1822,7 +1822,7 @@ export default function Mobilization() {
 
         {/* ── สรุปตามตำแหน่ง: การ์ดละตำแหน่ง กดเพื่อกรองได้ ── */}
         {hasRows && positionSummary.length > 0 && (
-          <div className="border-b border-gray-100 px-4 py-3 sm:px-6">
+          <div className="border-b border-gray-100 py-3">
             <div className="mb-2.5 flex flex-wrap items-end gap-3">
               {showPositionFilter && (
                 <div className="w-full sm:w-[320px]">
@@ -1873,7 +1873,7 @@ export default function Mobilization() {
 
         {/* ── หัวข้ออบรม (ทั้งหมด) ── */}
         {hasRows && (
-          <div className="border-b border-gray-100 px-4 py-2.5 sm:px-6">
+          <div className="border-b border-gray-100 py-2.5">
             <button
               type="button"
               onClick={() => setBulkExpanded((v) => !v)}
@@ -1888,7 +1888,7 @@ export default function Mobilization() {
         )}
 
         {hasRows && bulkExpanded && (
-          <div className="border-b border-gray-200 bg-gray-50 px-4 py-4 sm:px-6">
+          <div className="border-b border-gray-200 bg-gray-50 px-3 py-4">
             <div className="mb-3 text-xs text-gray-500">
               กรอกหัวข้อย่อยครั้งเดียว แล้วกด Apply
               เพื่อบันทึกให้พนักงานทุกคนในรายการนี้
@@ -1949,12 +1949,12 @@ export default function Mobilization() {
         ) : (
           <>
             {/* มือถือ / แท็บเล็ต (< lg): การ์ดทีละคน */}
-            <div className="flex flex-col gap-3 bg-gray-50 p-3 sm:p-4 lg:hidden">
+            <div className="flex flex-col divide-y divide-gray-100 lg:hidden">
               {filteredRows.map((r) => {
                 return (
                   <div
                     key={r.employeeId}
-                    className="rounded-[10px] border border-gray-200 bg-white p-3.5"
+                    className="bg-white py-3.5"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 text-sm">

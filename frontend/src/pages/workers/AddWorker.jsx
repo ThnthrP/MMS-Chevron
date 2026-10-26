@@ -204,9 +204,9 @@ const GENDER_OPTIONS = [
 // ══════════════════════════════════════════════════════════
 // Tailwind class ที่ใช้ซ้ำ (ชุดเดียวกับ EditWorker.jsx)
 // ══════════════════════════════════════════════════════════
-const CARD =
-  "mb-4 overflow-hidden rounded-[10px] border border-gray-200 bg-white";
-const BODY = "p-4 sm:p-5";
+// section คั่นด้วยเส้น (ไม่มีกรอบ card) — เพิ่มพื้นที่แสดงผล
+const CARD = "border-b border-gray-200";
+const BODY = "pb-5 pt-1";
 const GRID2 = "grid grid-cols-1 gap-4 sm:grid-cols-2";
 const GRID3 = "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3";
 const GRID4 = "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4";
@@ -261,13 +261,11 @@ const SELECT_PROPS = {
 function SectionHeader({ number, title, subtitle, accent, right }) {
   return (
     <div
-      className={`flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3.5 sm:px-5 ${
-        accent ? "bg-[#fff5f5]" : "bg-white"
-      }`}
+      className={`flex flex-wrap items-center justify-between gap-3 pb-2 pt-5`}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2.5">
         <div
-          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white ${
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${
             accent ? "bg-[#e53e3e]" : "bg-blue-600"
           }`}
         >
@@ -872,7 +870,7 @@ export default function AddWorker() {
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
-      <div className="mb-4 flex flex-col gap-3 rounded-[10px] border border-gray-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <div className="mb-3 flex flex-col gap-3 border-b border-gray-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="mb-1 flex flex-wrap items-center gap-2.5">
             <span className="text-lg font-bold">Add New Worker</span>
@@ -899,7 +897,7 @@ export default function AddWorker() {
       )}
 
       {/* ════════ Tab bar ════════ */}
-      <div className="sticky top-[59px] z-20 mb-4 flex gap-1 overflow-x-auto overflow-y-hidden border-b-2 border-gray-200 bg-gray-100">
+      <div className="sticky top-[59px] z-20 flex gap-1 overflow-x-auto overflow-y-hidden border-b-2 border-gray-200 bg-white">
         {TABS.map(([key, label]) => (
           <button
             key={key}
@@ -2183,7 +2181,7 @@ export default function AddWorker() {
         )}
 
         {/* ════════ Action Buttons ════════ */}
-        <div className="sticky bottom-0 z-20 -mx-4 mt-4 flex flex-col-reverse gap-2 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur sm:mx-0 sm:flex-row sm:justify-end sm:rounded-t-[10px] sm:border-x">
+        <div className="sticky bottom-0 z-20 -mx-4 mt-4 flex flex-col-reverse gap-2 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur sm:mx-0 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={() => navigate("/workers")}

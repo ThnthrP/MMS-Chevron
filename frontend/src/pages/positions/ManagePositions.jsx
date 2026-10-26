@@ -31,13 +31,13 @@ const autoGrow = (el) => {
 // ══════════════════════════════════════════════════════════
 // constants
 // ══════════════════════════════════════════════════════════
-const CARD = "rounded-[10px] border border-gray-200 bg-white";
+const BTN_PRIMARY =
+  "shrink-0 cursor-pointer rounded-md border-none bg-[#2B2F78] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#22265f]";
 const INPUT =
   "box-border w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-blue-400";
 const LABEL = "mb-1.5 block text-[13px] font-semibold";
-const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
 const FIELD =
-  "box-border h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500";
+  "box-border h-9 rounded-lg border border-gray-200 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500";
 const TH =
   "sticky top-0 z-[1] whitespace-nowrap bg-white px-4 py-2.5 text-[11px] font-semibold tracking-[0.5px] text-gray-500 shadow-[inset_0_-1px_0_#dee2e6]";
 const ICON_BTN =
@@ -272,99 +272,72 @@ export default function ManagePositions() {
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
-      <div
-        className={`${CARD} mb-4 flex flex-col gap-3 px-4 py-4 sm:px-6 md:flex-row md:items-center md:justify-between`}
-      >
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-          <span className="text-xl">🧰</span>
-          <span className="text-lg font-bold">Manage Positions</span>
-          <span className="basis-full text-xs text-gray-500 lg:basis-auto">
-            ตำแหน่งกลาง (canonical) — ใช้ในฟอร์ม worker/project &amp; training
-            matrix
-          </span>
+      <div className="flex flex-col gap-2 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 text-xs text-gray-500">
+          ตำแหน่งกลาง (canonical) — ใช้ในฟอร์ม worker/project &amp; training
+          matrix · <b className="text-gray-800">{positions.length}</b> ตำแหน่ง
         </div>
-        <button
-          onClick={openCreate}
-          className="w-full shrink-0 cursor-pointer rounded-lg border-none bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-blue-700 md:w-auto"
-        >
+        <button onClick={openCreate} className={`${BTN_PRIMARY} w-full sm:w-auto`}>
           + New Position
         </button>
       </div>
 
-      {/* ════════ Search & Filter ════════ */}
-      <div className={`${CARD} mb-4 px-4 py-3.5`}>
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <span className="text-[13px] font-bold text-gray-900">
-            🔍 Search &amp; Filter
-          </span>
-          {hasFilter && (
+      {/* ════════ Search & Filter — แถวเดียว คั่นด้วยเส้น ════════ */}
+      <div className="flex flex-wrap items-center gap-2 border-y border-gray-200 py-3">
+        <input
+          type="text"
+          placeholder="🔍 ค้นหาตำแหน่ง (EN / TH) เช่น Rigger, ช่างเชื่อม..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className={`${FIELD} min-w-[220px] flex-1`}
+        />
+        <select
+          value={workerFilter}
+          onChange={(e) => setWorkerFilter(e.target.value)}
+          className={FIELD}
+          title="Workers"
+        >
+          <option value="">Workers: ทั้งหมด</option>
+          <option value="has">มีพนักงาน</option>
+          <option value="none">ยังไม่มีพนักงาน (0 คน)</option>
+        </select>
+        <select
+          value={matrixFilter}
+          onChange={(e) => setMatrixFilter(e.target.value)}
+          className={FIELD}
+          title="Matrix"
+        >
+          <option value="">Matrix: ทั้งหมด</option>
+          <option value="has">มี matrix แล้ว</option>
+          <option value="none">⚠ no matrix</option>
+        </select>
+        <select
+          value={respFilter}
+          onChange={(e) => setRespFilter(e.target.value)}
+          className={FIELD}
+          title="CV Responsibility"
+        >
+          <option value="">CV Resp.: ทั้งหมด</option>
+          <option value="set">กรอกแล้ว</option>
+          <option value="unset">not set</option>
+        </select>
+        {hasFilter && (
+          <span className="flex items-center gap-2 text-xs text-gray-500">
+            พบ <strong className="text-gray-900">{filtered.length}</strong> จาก{" "}
+            {positions.length}
             <button
               onClick={resetFilters}
               className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#dc3545] underline hover:text-[#a71d2a]"
             >
               ✕ ล้าง filter
             </button>
-          )}
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">
-          <div className="min-w-0">
-            <label className={FILTER_LABEL}>ค้นหาตำแหน่ง (EN / TH)</label>
-            <input
-              type="text"
-              placeholder="เช่น Rigger, Pipe Fitter, ช่างเชื่อม..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className={FIELD}
-            />
-          </div>
-          <div className="min-w-0">
-            <label className={FILTER_LABEL}>Workers</label>
-            <select
-              value={workerFilter}
-              onChange={(e) => setWorkerFilter(e.target.value)}
-              className={FIELD}
-            >
-              <option value="">ทั้งหมด</option>
-              <option value="has">มีพนักงาน</option>
-              <option value="none">ยังไม่มีพนักงาน (0 คน)</option>
-            </select>
-          </div>
-          <div className="min-w-0">
-            <label className={FILTER_LABEL}>Matrix</label>
-            <select
-              value={matrixFilter}
-              onChange={(e) => setMatrixFilter(e.target.value)}
-              className={FIELD}
-            >
-              <option value="">ทั้งหมด</option>
-              <option value="has">มี matrix แล้ว</option>
-              <option value="none">⚠ no matrix</option>
-            </select>
-          </div>
-          <div className="min-w-0">
-            <label className={FILTER_LABEL}>CV Responsibility</label>
-            <select
-              value={respFilter}
-              onChange={(e) => setRespFilter(e.target.value)}
-              className={FIELD}
-            >
-              <option value="">ทั้งหมด</option>
-              <option value="set">กรอกแล้ว</option>
-              <option value="unset">not set</option>
-            </select>
-          </div>
-        </div>
-        {hasFilter && (
-          <div className="mt-2.5 text-xs text-gray-500">
-            พบ <strong className="text-gray-900">{filtered.length}</strong>{" "}
-            จาก {positions.length} ตำแหน่ง
-          </div>
+          </span>
         )}
       </div>
 
       {/* ════════ List ════════ */}
-      <div className={`${CARD} overflow-hidden`}>
-        {/* ── ต่ำกว่า lg: การ์ด ── */}
+      <div className="border-b border-gray-200">
+        {/* ── ต่ำกว่า lg: รายการคั่นเส้น ── */}
         <div className="lg:hidden">
           {loading || filtered.length === 0 ? (
             <div className="p-10 text-center text-[13px] text-gray-500">
@@ -372,12 +345,9 @@ export default function ManagePositions() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2">
+              <div className="divide-y divide-gray-100">
                 {filtered.map((p) => (
-                  <div
-                    key={p.id}
-                    className="rounded-lg border border-gray-200 bg-white p-3 text-[13px]"
-                  >
+                  <div key={p.id} className="py-3 text-[13px]">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="break-words font-semibold">
@@ -391,36 +361,26 @@ export default function ManagePositions() {
                       </div>
                       {renderActions(p)}
                     </div>
-                    <div className="mt-2.5 grid grid-cols-3 gap-2 border-t border-gray-100 pt-2.5 text-center">
-                      {[
-                        ["Workers", p._count?.employees ?? 0],
-                        [
-                          "Matrix",
-                          <MatrixCell
-                            key="m"
-                            count={p._count?.requirements ?? 0}
-                          />,
-                        ],
-                        [
-                          "CV Resp.",
-                          <RespCell
-                            key="r"
-                            lines={toItems(p.responsibilities)}
-                          />,
-                        ],
-                      ].map(([label, content]) => (
-                        <div key={label}>
-                          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.5px] text-gray-400">
-                            {label}
-                          </div>
-                          {content}
-                        </div>
-                      ))}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+                      <span>
+                        Workers:{" "}
+                        <b className="text-gray-900">
+                          {p._count?.employees ?? 0}
+                        </b>
+                      </span>
+                      <span>
+                        Matrix:{" "}
+                        <MatrixCell count={p._count?.requirements ?? 0} />
+                      </span>
+                      <span>
+                        CV Resp.:{" "}
+                        <RespCell lines={toItems(p.responsibilities)} />
+                      </span>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="flex justify-between border-t-2 border-gray-200 bg-gray-50 px-4 py-3 text-[13px] font-bold">
+              <div className="flex justify-between border-t border-gray-200 py-3 text-[13px] font-bold">
                 <span>รวม {filtered.length} ตำแหน่ง</span>
                 <span className="text-blue-600">{totalWorkers} คน</span>
               </div>
@@ -429,7 +389,7 @@ export default function ManagePositions() {
         </div>
 
         {/* ── lg+: ตาราง ── */}
-        <div className="hidden max-h-[76vh] overflow-y-auto lg:block">
+        <div className="hidden max-h-[calc(100vh-270px)] overflow-y-auto lg:block">
           <table className="w-full border-collapse text-[13px]">
             <thead>
               <tr>
@@ -459,34 +419,34 @@ export default function ManagePositions() {
                         : ""
                     }`}
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <div className="font-semibold">{p.name}</div>
                       {p.nameTH && (
                         <div className="text-xs text-gray-500">{p.nameTH}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-2.5 text-center">
                       {p._count?.employees ?? 0}
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-2.5 text-center">
                       <MatrixCell count={p._count?.requirements ?? 0} />
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-2.5 text-center">
                       <RespCell lines={toItems(p.responsibilities)} />
                     </td>
-                    <td className="px-4 py-3">{renderActions(p)}</td>
+                    <td className="px-4 py-2.5">{renderActions(p)}</td>
                   </tr>
                 ))
               )}
             </tbody>
             {!loading && filtered.length > 0 && (
               <tfoot>
-                <tr className="sticky bottom-0 bg-gray-50 shadow-[inset_0_2px_0_#dee2e6]">
-                  <td className="px-4 py-3 text-[13px] font-bold">
+                <tr className="sticky bottom-0 bg-white shadow-[inset_0_1px_0_#dee2e6]">
+                  <td className="px-4 py-2.5 text-[13px] font-bold">
                     รวม {filtered.length} ตำแหน่ง
                   </td>
                   <td
-                    className="px-4 py-3 text-center font-bold text-blue-600"
+                    className="px-4 py-2.5 text-center font-bold text-blue-600"
                     title="รวมพนักงานทุกตำแหน่ง"
                   >
                     {totalWorkers}

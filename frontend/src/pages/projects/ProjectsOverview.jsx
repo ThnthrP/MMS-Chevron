@@ -20,8 +20,8 @@ const TABS = [
   { key: "completed", label: "⚪ จบแล้ว" },
 ];
 
-const CARD = "rounded-[10px] border border-gray-200 bg-white";
-const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const FILTER_LABEL =
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
 const FIELD_BASE =
   "box-border h-9 rounded-lg border border-gray-200 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500";
 const FIELD = `${FIELD_BASE} w-full`;
@@ -29,7 +29,7 @@ const DATE_FIELD = `${FIELD_BASE} w-[150px]`;
 const CHIP =
   "cursor-pointer whitespace-nowrap rounded-full border px-3 py-1 text-xs";
 const TH =
-  "sticky top-0 z-[1] whitespace-nowrap bg-white px-3.5 py-2.5 text-left text-[11px] font-semibold tracking-[0.4px] text-gray-500 shadow-[inset_0_-1px_0_#e5e7eb]";
+  "sticky top-0 z-[1] whitespace-nowrap bg-gray-50 px-3.5 py-2 text-left text-[11px] font-semibold tracking-[0.4px] text-gray-500 shadow-[inset_0_-1px_0_#e5e7eb]";
 const TD = "px-3.5 py-3 align-middle";
 
 const toYMD = (d) => {
@@ -142,19 +142,16 @@ export default function ProjectsOverview() {
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* Header */}
-      <div className={`${CARD} mb-4 px-4 py-4 sm:px-6`}>
-        <div className="flex items-center gap-2.5">
-          <span className="text-xl">📅</span>
-          <span className="text-lg font-bold">Manpower Calendar</span>
-        </div>
-        <div className="mt-1 text-[13px] text-gray-500">
+      <div className="pb-3">
+        <h1 className="m-0 text-lg font-bold">Manpower Calendar</h1>
+        <div className="text-xs text-gray-500">
           ติดตามทุก requirement ว่าอยู่ขั้นตอนไหน · กดแถวเพื่อดู timeline
           ขั้นตอนและตารางวันทำงานรายคน
         </div>
       </div>
 
       {/* ════════ Search & Filter ════════ */}
-      <div className={`${CARD} mb-4 px-4 py-3.5`}>
+      <div className="border-y border-gray-200 py-3">
         <div>
           <label className={FILTER_LABEL}>
             ช่วงวันที่ทำงาน (Start → End ของ requirement)
@@ -253,8 +250,8 @@ export default function ProjectsOverview() {
       </div>
 
       {/* ════════ รายการ ════════ */}
-      <div className={`${CARD} overflow-hidden`}>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
+      <div className="border-b border-gray-200">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 py-3">
           <div className="flex flex-wrap gap-2">
             {TABS.map((tab) => {
               const active = activeTab === tab.key;
@@ -289,14 +286,14 @@ export default function ProjectsOverview() {
         ) : (
           <>
             {/* ── มือถือ / แท็บเล็ต: การ์ด ── */}
-            <div className="grid grid-cols-1 gap-2.5 p-3 md:grid-cols-2 xl:hidden">
+            <div className="divide-y divide-gray-100 xl:hidden">
               {projects.map((p) => {
                 const need = sum(p.requests, (r) => r.quantity);
                 return (
                   <div
                     key={p.id}
                     onClick={() => openDetail(p)}
-                    className="cursor-pointer rounded-lg border border-gray-200 p-3 text-[13px] hover:bg-gray-50"
+                    className="cursor-pointer py-3 text-[13px] hover:bg-gray-50"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">

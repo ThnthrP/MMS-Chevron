@@ -27,7 +27,6 @@ const STATUS = {
 
 const DECIDER_ROLES = ["project_engineer", "admin"];
 
-const CARD = "rounded-[10px] border border-gray-200 bg-white";
 const LABEL = "text-[11px] font-semibold text-gray-500";
 const INPUT =
   "box-border w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-[13px] outline-none focus:border-blue-400";
@@ -50,7 +49,8 @@ const projectLabel = (p) =>
     : (p?.name ?? "—");
 
 // ── filter helpers (แบบเดียวกับหน้า Requests for Training & Medical) ──
-const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const FILTER_LABEL =
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
 const FIELD_BASE =
   "box-border h-9 rounded-lg border border-gray-200 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500";
 const FIELD = `${FIELD_BASE} w-full`;
@@ -304,7 +304,7 @@ export default function PEApprovals() {
     return (
       <div
         key={it.id}
-        className="flex flex-col rounded-lg border border-gray-200 bg-white p-3.5"
+        className="flex flex-col border-b border-gray-200 py-3.5"
       >
         {/* ชื่อ + % + สถานะ */}
         <div className="flex items-start justify-between gap-3">
@@ -413,13 +413,10 @@ export default function PEApprovals() {
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
-      <div className={`${CARD} mb-4 px-4 py-4 sm:px-6`}>
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-          <span className="text-xl">✅</span>
-          <span className="text-lg font-bold">PE Approvals</span>
-          <span className="basis-full text-xs text-gray-500 md:basis-auto">
-            คำขอใช้พนักงานที่ % Match ไม่ครบ 100% จากหน้า Allocation
-          </span>
+      {/* ชื่อหน้าอยู่ที่แท็บแล้ว — เหลือคำอธิบายบรรทัดเดียว */}
+      <div className="pb-3">
+        <div className="text-xs text-gray-500">
+          คำขอใช้พนักงานที่ % Match ไม่ครบ 100% จากหน้า Allocation
         </div>
         {!canDecide && (
           <div className="mt-2.5 rounded-lg border border-[#ffe69c] bg-[#fff8e1] px-3 py-2 text-xs text-[#664d03]">
@@ -429,7 +426,7 @@ export default function PEApprovals() {
       </div>
 
       {/* ════════ Search & Filter ════════ */}
-      <div className={`${CARD} mb-4 px-4 py-3.5`}>
+      <div className="border-y border-gray-200 py-3">
         <div>
           <label className={FILTER_LABEL}>ช่วงวันที่ (วันที่ส่งคำขอ)</label>
           <div className="flex flex-wrap items-center gap-2">
@@ -540,7 +537,7 @@ export default function PEApprovals() {
       </div>
 
       {/* ════════ แถบสถานะ (เหนือรายการ) ════════ */}
-      <div className={`${CARD} mb-4 flex flex-wrap items-center justify-between gap-2 px-4 py-3`}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 py-3">
         <div className="flex flex-wrap gap-2">
           {TABS.map(([key, label]) => {
             const active = tab === key;
@@ -569,11 +566,11 @@ export default function PEApprovals() {
 
       {/* ════════ รายการ: โปรเจกต์ → ตำแหน่ง → รายคน ════════ */}
       {loading ? (
-        <div className={`${CARD} p-10 text-center text-[13px] text-gray-500`}>
+        <div className="p-10 text-center text-[13px] text-gray-500">
           Loading…
         </div>
       ) : groups.length === 0 ? (
-        <div className={`${CARD} p-10 text-center text-[13px] text-gray-500`}>
+        <div className="p-10 text-center text-[13px] text-gray-500">
           {hasFilter
             ? "ไม่พบคำขอตามเงื่อนไขที่เลือก"
             : tab === "pending"
@@ -581,11 +578,11 @@ export default function PEApprovals() {
               : "ไม่มีรายการในหมวดนี้"}
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
           {groups.map((g) => (
-            <div key={g.pid} className={`${CARD} overflow-hidden`}>
+            <section key={g.pid}>
               {/* หัวโปรเจกต์ */}
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#b6d4fe] border-l-4 border-l-blue-600 bg-[#d6e6fd] px-4 py-3 sm:px-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-l-4 border-l-blue-600 bg-[#eef4ff] px-4 py-2.5">
                 <div className="min-w-0">
                   <div className="break-words text-[15px] font-bold text-[#1e3a5f]">
                     {projectLabel(g.project)}
@@ -608,7 +605,7 @@ export default function PEApprovals() {
               </div>
 
               {/* แต่ละตำแหน่งในโปรเจกต์ */}
-              <div className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+              <div className="flex flex-col gap-4 pt-3">
                 {g.requests.map((r) => (
                   <div key={r.rid}>
                     <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -620,13 +617,13 @@ export default function PEApprovals() {
                         {r.items.length} คน
                       </span>
                     </div>
-                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-x-8 border-t border-gray-200 lg:grid-cols-2">
                       {r.items.map(renderItem)}
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
           ))}
         </div>
       )}

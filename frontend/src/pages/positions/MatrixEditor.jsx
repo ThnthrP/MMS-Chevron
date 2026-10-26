@@ -27,12 +27,11 @@ const displayValue = (v) => (v === "required" ? "mandatory" : v || "");
 const LS_CONTRACT = "matrixEditor.contractId";
 const LS_POSITION = "matrixEditor.positionId";
 
-const CARD = "rounded-[10px] border border-gray-200 bg-white";
 const LABEL = "mb-1.5 block text-xs font-semibold text-gray-500";
 const INPUT =
   "box-border w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-blue-400 disabled:cursor-not-allowed disabled:bg-gray-50";
 const BTN_PRIMARY =
-  "cursor-pointer rounded-lg border-none bg-blue-600 px-[18px] py-[9px] text-[13px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60";
+  "cursor-pointer rounded-lg border-none bg-[#2B2F78] px-[18px] py-[9px] text-[13px] font-semibold text-white hover:bg-[#22265f] disabled:cursor-not-allowed disabled:opacity-60";
 const BTN_GHOST =
   "cursor-pointer rounded-lg border border-gray-200 bg-white px-[18px] py-[9px] text-[13px] font-semibold text-gray-700 hover:bg-gray-50";
 
@@ -72,13 +71,9 @@ function MessageBanner({ msg }) {
   );
 }
 
-function Placeholder({ children, dashed }) {
+function Placeholder({ children }) {
   return (
-    <div
-      className={`rounded-[10px] border bg-white p-8 text-center text-sm text-gray-500 sm:p-12 ${
-        dashed ? "border-dashed border-gray-200" : "border-gray-200"
-      }`}
-    >
+    <div className="border-b border-gray-200 p-8 text-center text-sm text-gray-500 sm:p-12">
       {children}
     </div>
   );
@@ -521,22 +516,16 @@ export default function MatrixEditor() {
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
-      <div className={`${CARD} mb-4 px-4 py-4 sm:px-6`}>
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-          <span className="text-xl">🧩</span>
-          <span className="text-lg font-bold">Matrix Editor</span>
-          <span className="basis-full text-xs text-gray-500 lg:basis-auto">
-            กำหนด training ที่ตำแหน่งต้องมี ต่อ contract (M/X/O) — มีผลกับ
-            eligibility &amp; gap analysis
-          </span>
-        </div>
+      <div className="pb-3 text-xs text-gray-500">
+        กำหนด training ที่ตำแหน่งต้องมี ต่อ contract (M/X/O) — มีผลกับ
+        eligibility &amp; gap analysis
       </div>
 
-      {/* ════════ Selectors ════════ */}
-      <div
-        className={`${CARD} mb-4 grid grid-cols-1 gap-4 px-4 py-4 sm:px-6 md:grid-cols-2`}
-      >
-        <div>
+      {/* ════════ Selectors + Link Training — แถวเดียว คั่นด้วยเส้น ════════
+          การ link training เข้า contract ใช้แค่ contractId
+          จึงโชว์ปุ่มทันทีที่เลือก contract (ไม่ต้องเลือก position ก่อน) */}
+      <div className="mb-4 grid grid-cols-1 gap-3 border-y border-gray-200 py-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+        <div className="min-w-0">
           <label className={LABEL}>CONTRACT</label>
           <select
             value={contractId}
@@ -552,7 +541,7 @@ export default function MatrixEditor() {
             ))}
           </select>
         </div>
-        <div>
+        <div className="min-w-0">
           <label className={LABEL}>POSITION</label>
           <select
             value={positionId}
@@ -568,58 +557,39 @@ export default function MatrixEditor() {
             ))}
           </select>
         </div>
+        {contractId && (
+          <button
+            onClick={() => setShowLinkModal(true)}
+            title={`Link training เข้า ${
+              selectedContract?.clientName || selectedContract?.name || "contract"
+            } — ไม่ต้องเลือก position ก่อน`}
+            className="h-[38px] cursor-pointer whitespace-nowrap rounded-lg border-none bg-[#e7f1ff] px-3.5 text-[13px] font-semibold text-blue-600 hover:bg-[#d6e8ff]"
+          >
+            + Link Training
+          </button>
+        )}
       </div>
 
       <MessageBanner msg={msg} />
 
-      {/* ════════ Contract-level: Link Training ════════
-          การ link training เข้า contract ไม่เกี่ยวกับ position (ใช้แค่ contractId)
-          จึงโชว์ทันทีที่เลือก contract */}
-      {contractId && (
-        <div
-          className={`${CARD} mb-4 flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5`}
-        >
-          <div className="text-[13px] text-gray-700">
-            <strong>
-              {selectedContract?.clientName || selectedContract?.name}
-            </strong>
-            {selectedContract?.contractNo && (
-              <span className="text-gray-500">
-                {" "}
-                ({selectedContract.contractNo})
-              </span>
-            )}
-            <div className="text-[11px] text-gray-400">
-              Link training เข้า contract นี้ได้เลย — ไม่ต้องเลือก position ก่อน
-            </div>
-          </div>
-          <button
-            onClick={() => setShowLinkModal(true)}
-            className="cursor-pointer whitespace-nowrap rounded-lg border-none bg-[#e7f1ff] px-3.5 py-[7px] text-[13px] font-semibold text-blue-600 shadow-[0_1px_3px_rgba(13,110,253,0.2),0_1px_2px_rgba(0,0,0,0.06)] transition-all hover:-translate-y-px hover:shadow-[0_3px_6px_rgba(13,110,253,0.3),0_2px_3px_rgba(0,0,0,0.08)]"
-          >
-            + Link Training
-          </button>
-        </div>
-      )}
-
       {/* ════════ Body — matrix ต่อ position ════════ */}
       {!contractId ? (
-        <Placeholder dashed>
+        <Placeholder>
           เลือก <strong>Contract</strong> เพื่อเริ่มต้น
         </Placeholder>
       ) : !positionId ? (
-        <Placeholder dashed>
+        <Placeholder>
           เลือก <strong>Position</strong> เพิ่มเติม เพื่อดู/แก้ระดับ requirement
           (M/O) ของแต่ละตำแหน่ง
         </Placeholder>
       ) : loadingMatrix ? (
         <Placeholder>Loading matrix...</Placeholder>
       ) : (
-        <div className={CARD}>
+        <div>
           {/* Toolbar */}
-          <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3.5 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 border-b border-gray-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] text-gray-700">
-              <strong>{meta?.position?.name}</strong>
+              <strong className="text-[15px]">{meta?.position?.name}</strong>
               {meta?.contract && (
                 <span className="text-gray-500">
                   · {meta.contract.clientName || meta.contract.name} (
@@ -643,7 +613,7 @@ export default function MatrixEditor() {
                     onClick={() => setOnlyRequired(val)}
                     className={`flex-1 cursor-pointer whitespace-nowrap border-none px-3 py-[7px] ${
                       onlyRequired === val
-                        ? "bg-blue-600 text-white"
+                        ? "bg-[#2B2F78] text-white"
                         : "bg-white text-gray-600 hover:bg-gray-50"
                     }`}
                   >
@@ -669,11 +639,11 @@ export default function MatrixEditor() {
           ) : (
             <table className="w-full border-collapse text-[13px]">
               <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 sm:px-5">
+                <tr className="border-b border-gray-200">
+                  <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-gray-500">
                     TRAINING
                   </th>
-                  <th className="w-[150px] px-4 py-2.5 text-right text-[11px] font-semibold text-gray-500 sm:w-[200px] sm:px-5">
+                  <th className="w-[150px] px-2 py-2.5 text-right text-[11px] font-semibold text-gray-500 sm:w-[200px]">
                     REQUIREMENT
                   </th>
                 </tr>
@@ -693,11 +663,11 @@ export default function MatrixEditor() {
                     return (
                       <tr
                         key={it.clientTrainingId}
-                        className={`border-b border-gray-50 ${
+                        className={`border-b border-gray-100 ${
                           active ? "bg-[#fcfdff]" : "bg-white"
                         } hover:bg-gray-50`}
                       >
-                        <td className="px-4 py-2.5 sm:px-5">
+                        <td className="px-2 py-2">
                           <span className={active ? "font-semibold" : ""}>
                             {it.name}
                           </span>
@@ -707,7 +677,7 @@ export default function MatrixEditor() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 text-right sm:px-5">
+                        <td className="px-2 py-2 text-right">
                           <RequirementSelect
                             value={it.requirementType}
                             onChange={(v) => setLevel(it.clientTrainingId, v)}
@@ -723,10 +693,10 @@ export default function MatrixEditor() {
 
           {/* Footer — ติดขอบล่างจอ ไม่ต้องเลื่อนลงไปหาปุ่ม Save ท้าย 85 แถว */}
           <div
-            className={`sticky bottom-0 z-[1] flex flex-col gap-2 rounded-b-[10px] border-t px-4 py-3.5 sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:px-5 ${
+            className={`sticky bottom-0 z-[1] flex flex-col gap-2 border-t px-2 py-3 sm:flex-row sm:items-center sm:justify-end sm:gap-3 ${
               dirty
                 ? "border-[#ffe69c] bg-[#fffbea]"
-                : "border-gray-100 bg-white"
+                : "border-gray-200 bg-white"
             }`}
           >
             <span className="text-xs text-gray-500">

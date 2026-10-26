@@ -4,11 +4,10 @@
 // ============================================================
 //
 // เมนูจัดตาม flow ISO / โปรแกรมตัวอย่างของลูกค้า แบ่ง section ตามช่วงของ flow:
-//   OVERVIEW      My Dashboard · Manpower Calendar
-//   REQUIREMENTS  Manpower Requirements · Assign Names            (ISO 1–2)
-//   MOBILIZATION  Training Bookings · Medical Bookings · Worker Schedule             (ISO 3–11)
-//   WORKFORCE     Worker Pool
-//   SETTINGS      Projects & Positions
+//   OVERVIEW      My Dashboard · Compliance · Reports
+//   OPERATIONS    Manpower Requirements · Assign Names · Manpower Calendar ·
+//                 Training Bookings · Medical Bookings · Worker Schedule · Worker Pool   (ISO 1–12)
+//   SETTINGS      Projects & Positions · Training Matrix · Departments
 //   ADMIN         Users & Roles · Audit Log · Data Import (admin เท่านั้น)
 //
 // 1 เมนู = หลายหน้าเดิมได้ (tabs) — แสดงเป็นแท็บด้านบนของหน้า (MenuTabs.jsx)
@@ -27,6 +26,8 @@
 import {
   LayoutDashboard,
   CalendarRange,
+  BarChart3,
+  BadgeCheck,
   ClipboardList,
   UserPlus,
   GraduationCap,
@@ -34,6 +35,8 @@ import {
   Ship,
   Users,
   Settings2,
+  ListChecks,
+  Building2,
   ShieldCheck,
   History,
   Upload,
@@ -75,46 +78,46 @@ const R = {
 // tab: { name, path, roles, prefixes? }
 //   prefixes = หน้าลูกที่ถือว่าอยู่ใต้ tab นี้ (เช่น /workers/:id) — ใช้ไฮไลต์เมนู
 export const APP_MENU = [
-  // ── ภาพรวม: ดูสถานะทั้งหมด (ISO: "ตรวจ My Dashboard" + "ตรวจวันว่างใน Manpower Calendar") ──
+  // ── ภาพรวม: ดูสถานะ / ใบรับรอง / รายงาน ──
   {
     section: "OVERVIEW",
     items: [
       {
         name: "My Dashboard",
         icon: LayoutDashboard,
-        tabs: [
-          { name: "Overview", path: "/", roles: R.dashboard },
-          { name: "Compliance", path: "/compliance", roles: R.compliance },
-          { name: "Reports", path: "/reports", roles: R.reports },
-        ],
+        tabs: [{ name: "Overview", path: "/", roles: R.dashboard }],
         badge: true,
       },
+      // ใบรับรอง/ผลตรวจสุขภาพรายคน — HR ใช้ทุกวัน (เดิมเป็นแท็บใต้ My Dashboard)
       {
-        name: "Manpower Calendar",
-        icon: CalendarRange,
-        tabs: [
-          {
-            name: "Manpower Calendar",
-            path: "/projects-overview",
-            roles: R.projectsOverview,
-            prefixes: ["/projects-overview/"],
-          },
-        ],
+        name: "Compliance",
+        icon: BadgeCheck,
+        tabs: [{ name: "Compliance Center", path: "/compliance", roles: R.compliance }],
+      },
+      // รายงานสรุปของผู้บริหาร (เดิมเป็นแท็บ Reports ใต้ My Dashboard — หายาก)
+      // ปลายทางของ flow: หลังประเมิน (Post-Project Review) และปิดโปรเจกต์ → ดูภาพรวมรายไตรมาส/ปี
+      {
+        name: "Reports",
+        icon: BarChart3,
+        tabs: [{ name: "Analytics & Reports", path: "/reports", roles: R.reports }],
       },
     ],
   },
 
-  // ── ISO ขั้น 1–2: ลูกค้าแจ้งความต้องการ → จัดรายชื่อ ──
+  // ── งานหลัก (ISO ขั้น 1–12) เรียงตาม flow เป็นกลุ่มเดียว — แบบโปรแกรมตัวอย่าง ──
+  //   ลูกค้าแจ้งความต้องการ → จัดรายชื่อ (+ ตรวจวันว่างใน Manpower Calendar)
+  //   → อบรม/ตรวจสุขภาพ → ลงงาน/รับกลับ/ประเมิน → ข้อมูลพนักงาน
   {
-    section: "REQUIREMENTS",
+    section: "OPERATIONS",
     items: [
       {
         name: "Manpower Requirements",
         icon: ClipboardList,
         tabs: [
           {
+            // รายการตำแหน่งที่ขอทั้งหมด (แบบโปรแกรมตัวอย่าง) — คลิกแถว → /projects/:id
             name: "Requirements",
-            path: "/projects",
+            path: "/requirements",
             roles: R.projects,
             prefixes: ["/projects/"],
           },
@@ -128,13 +131,18 @@ export const APP_MENU = [
           { name: "PE Approvals", path: "/pe-approvals", roles: R.peApprovals },
         ],
       },
-    ],
-  },
-
-  // ── ISO ขั้น 3–11: อบรม/ตรวจสุขภาพ → เตรียมตัว → ตรวจ Hangar → ลงงาน → รับกลับ → ประเมิน ──
-  {
-    section: "MOBILIZATION",
-    items: [
+      {
+        name: "Manpower Calendar",
+        icon: CalendarRange,
+        tabs: [
+          {
+            name: "Manpower Calendar",
+            path: "/projects-overview",
+            roles: R.projectsOverview,
+            prefixes: ["/projects-overview/"],
+          },
+        ],
+      },
       {
         name: "Training Bookings",
         icon: GraduationCap,
@@ -174,13 +182,6 @@ export const APP_MENU = [
           { name: "Post-Project Review", path: "/review", roles: R.review },
         ],
       },
-    ],
-  },
-
-  // ── ข้อมูลพนักงาน ──
-  {
-    section: "WORKFORCE",
-    items: [
       {
         name: "Worker Pool",
         icon: Users,
@@ -204,20 +205,26 @@ export const APP_MENU = [
         name: "Projects & Positions",
         icon: Settings2,
         tabs: [
+          // ON Number (Master Project Register) — ย้ายมาจากเมนู Manpower Requirements
+          { name: "Projects", path: "/projects", roles: R.projects },
           { name: "Positions", path: "/positions", roles: R.settings },
-          {
-            name: "Training Matrix",
-            path: "/training-matrix",
-            roles: R.settings,
-          },
-          {
-            name: "Matrix Editor",
-            path: "/positions/matrix",
-            roles: R.settings,
-          },
-          { name: "Trainings", path: "/trainings", roles: R.settings },
-          { name: "Departments", path: "/divisions", roles: R.settings },
         ],
+      },
+      // ข้อกำหนด training ของลูกค้า — ดู (Matrix) → แก้ (Matrix Editor) → รายการ training กลาง
+      {
+        name: "Training Matrix",
+        icon: ListChecks,
+        tabs: [
+          { name: "Training Matrix", path: "/training-matrix", roles: R.settings },
+          { name: "Matrix Editor", path: "/positions/matrix", roles: R.settings },
+          { name: "Trainings", path: "/trainings", roles: R.settings },
+        ],
+      },
+      // ตัวเลือกแผนกในฟอร์มพนักงาน — หน้าเดียว
+      {
+        name: "Departments",
+        icon: Building2,
+        tabs: [{ name: "Departments", path: "/divisions", roles: R.settings }],
       },
     ],
   },
