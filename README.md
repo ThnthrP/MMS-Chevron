@@ -17,10 +17,11 @@ The system has two parts:
 ## Overview
 
 MMS is the internal system Experteam uses to manage its workforce across
-client contracts. It covers the full lifecycle: worker onboarding, training
-and medical compliance tracking, client requirement matching, PE approval
-for partially matched workers, project allocation, offshore
-mobilization/demobilization, and post-project review.
+client contracts. It covers the full lifecycle: client manpower requirements,
+assigning names (requirement matching), PE approval for partially matched
+workers, availability checks on the Manpower Calendar, training and medical
+bookings, offshore mobilization/demobilization, and post-project review,
+plus ongoing training and medical compliance tracking for every worker.
 
 **Client contracts currently supported:**
 
@@ -33,68 +34,76 @@ mobilization/demobilization, and post-project review.
 
 ## 📸 Screenshots
 
-### 🏠 Dashboard
-![Dashboard](screenshots/dashboard.png)
+> Screenshots use test data or have employee names and IDs blurred.
 
-### Workforce
+### Overview
 
-#### 👥 Workers
-Worker list with search and filters by department, position, status, availability, and mobilization.
-![Workers](screenshots/workers.png)
-
-#### 👷 Worker Detail
-Full profile with compact sticky header, roster, and document export.
-![Worker Detail](screenshots/worker-detail.png)
-
-#### ✏️ Edit Worker
-Tabbed form with sticky tabs and save bar.
-![Edit Worker](screenshots/edit-worker.png)
-
-### Compliance
+#### 🏠 My Dashboard
+KPIs, pending work (unfilled positions, PE approvals, projects starting in 30
+days, bookings awaiting HR, D-MOB in 7 days), worker status, and certification
+compliance by type.
+![My Dashboard](screenshots/dashboard.png)
 
 #### 🛡️ Compliance Center
+Click a status count to filter; training alerts and medical status in separate columns.
 ![Compliance Center](screenshots/compliance-center.png)
 
-#### 📋 Certifications
-![Certifications](screenshots/certifications.png)
-
-#### 🧩 Training Matrix
-Position-to-training requirements per contract (Mandatory / Assigned).
-![Training Matrix](screenshots/training-matrix.png)
-
-#### 📢 Requests
-Training and medical check-up requests for workers with missing, expired, or expiring records.
-![Requests](screenshots/requests-from-mp.png)
-
-#### 🎓 Manage Trainings
-![Manage Trainings](screenshots/manage-trainings.png)
+#### 📊 Analytics & Reports
+![Reports](screenshots/reports.png)
 
 ### Operations
 
-#### 🗂 Projects
-![Projects](screenshots/projects.png)
+#### 📋 Manpower Requirements
+Every open position request across projects, with progress, filters, and
+search by position, project, location, or worker name (Thai / English).
+![Manpower Requirements](screenshots/manpower-requirements.png)
 
-#### 💬 Project Detail & Discussion
-Position requests, employee timeline, and PE ↔ Manpower discussion with attachments.
-![Project Detail](screenshots/project-detail.png)
-
-#### 👥 Worker Allocation
-![Allocation](screenshots/allocation.png)
+#### 👥 Assign Names
+Match workers against client requirements (% match) and shortlist candidates.
+![Assign Names](screenshots/allocation.png)
 
 #### ✅ PE Approvals
 Workers below 100% match, grouped by project and position, approved or rejected by the Project Engineer.
 ![PE Approvals](screenshots/pe-approvals.png)
 
-#### 📄 CV Summary Export
-![CV Summary](screenshots/cv-summary.png)
+#### 📅 Manpower Calendar
+Projects with staffing progress and each worker's timeline, used to check availability.
+![Manpower Calendar](screenshots/manpower-calendar.png)
+
+#### 🎓 Training Bookings
+Training requests for workers with missing, expired, or expiring records.
+![Training Bookings](screenshots/training-bookings.png)
+
+#### 🩺 Medical Bookings
+![Medical Bookings](screenshots/medical-bookings.png)
 
 #### 🚀 Mobilization
 ![Mobilization](screenshots/mobilization.png)
 
-#### 📊 Projects Overview
-![Projects Overview](screenshots/projects-overview.png)
+#### ⭐ Post-Project Review
+![Post-Project Review](screenshots/post-project-review.png)
 
-### System
+#### 👷 Worker Pool
+Worker list with search and filters by department, position, status, availability, and mobilization.
+![Worker Pool](screenshots/workers.png)
+
+#### 🪪 Worker Detail
+![Worker Detail](screenshots/worker-detail.png)
+
+#### 💬 Project Detail & Discussion
+Position requests, employee timeline, and PE ↔ Manpower discussion with attachments.
+![Project Detail](screenshots/project-detail.png)
+
+#### 📄 CV Summary Export
+![CV Summary](screenshots/cv-summary.png)
+
+### Settings
+
+#### 🧩 Training Matrix
+Position-to-training requirements per contract (Mandatory / Assigned).
+![Training Matrix](screenshots/training-matrix.png)
+
+### Admin
 
 #### 🕵️ Audit Log
 Who did what and when, with filters, before/after changes, and CSV export.
@@ -133,56 +142,90 @@ Upload HR Excel files (Training Record or PE Tracking), preview what will change
 
 ---
 
+## Navigation
+
+The sidebar follows the manpower workflow. Each menu item can have tabs,
+shown at the top of the page.
+
+| Section | Menu | Tabs (route) |
+|---------|------|--------------|
+| **Overview** | My Dashboard | `/` |
+| | Compliance | Compliance Center `/compliance` |
+| | Reports | Analytics & Reports `/reports` |
+| **Operations** | Manpower Requirements | Requirements `/requirements` |
+| | Assign Names | Assign Names `/allocation` · PE Approvals `/pe-approvals` |
+| | Manpower Calendar | `/projects-overview` |
+| | Training Bookings | Bookings `/requests-history` · Training Courses `/certifications` |
+| | Medical Bookings | `/medical-bookings` |
+| | Worker Schedule | Mobilization `/mobilization` · Post-Project Review `/review` |
+| | Worker Pool | Workers `/workers` |
+| **Settings** | Projects & Positions | Projects `/projects` · Positions `/positions` |
+| | Training Matrix | Training Matrix `/training-matrix` · Matrix Editor `/positions/matrix` · Trainings `/trainings` |
+| | Departments | `/divisions` |
+| **Admin** | Users & Roles | Users `/users` · Bulk Set PIN `/workers/bulk-set-pin` |
+| | Audit Log | `/audit-logs` |
+| | Data Import | `/data-import` |
+
+> The menu is defined in `frontend/src/components/layout/sidebarMenu.js`;
+> route access is enforced in `AppRouter.jsx` (`ProtectedRoute allowRoles`).
+> Keep both in sync when adding a page.
+
+---
+
 ## Features
 
-### Workforce
-- **Worker profiles:** personal details, Employee ID / internal code,
-  position, department, passport & work permit, photo upload, CV/resume
-  details, offshore roster data (health risk, SSE level, permanent flag)
-- **Add / Edit Worker:** tabbed form (Profile & Status, Documents &
-  Compliance, CV / Resume Info, PE / Medical Exam) with sticky tabs and
-  save bar
-- **Worker Detail:** full profile with a compact sticky header when
-  scrolling, deployment history, and document export
-
-### Compliance
-- **Training compliance:** central `GlobalTraining` catalog plus per-source /
-  per-client `TrainingStandard`, with expiry buckets (Expired / Critical /
-  Warning / Upcoming / Valid)
-- **Training Matrix & Matrix Editor:** position-to-training requirements
-  per contract (Mandatory / Assigned)
+### Overview
+- **My Dashboard:** total workers, ready for deployment, currently on-site
+  (live from `Assignment` records), and certification alerts; a pending-work
+  panel with direct links (unfilled positions, PE approvals, projects starting
+  in 30 days, training/medical bookings awaiting HR, D-MOB in 7 days); worker
+  status and certification compliance charts. Panels a role cannot access are
+  hidden
 - **Compliance Center:** worker-centric overview that keeps training alerts
-  and medical status in separate columns, plus client requirement gap
-  analysis (Mandatory / Assigned / Others)
-- **Certifications:** cert-centric view (one training, every worker's
-  status), including bulk certificate entry
-- **Medical records:** annual check-up and Confined Space records, hospital,
-  exam/expiry dates, fitness status, and detailed PE exam results
-- **Requests:** training and medical check-up requests for workers with
-  missing, expired, or expiring records, tracked as pending / completed
+  and medical status in separate columns, click-to-filter status counts, plus
+  client requirement gap analysis (Mandatory / Assigned / Others) and PE
+  Tracking export
+- **Analytics & Reports:** workforce, compliance, and project reports
 
 ### Operations
-- **Projects:** Master Project Register (ON Number), project activation per
-  contract, and position requests with headcount
-- **Allocation:** match workers against client requirements (% match),
+- **Manpower Requirements:** all position requests across projects with
+  filled / required progress, filters (project, status, location, date), and
+  search by position, project, location, or assigned worker name (Thai /
+  English); new requirements can be created from this page
+- **Assign Names:** match workers against client requirements (% match),
   shortlist (Proposed → Approved), and export CV Summary / Roster
   (MOB–D-MOB) / Skill Matrix (print & Excel) for client submission
 - **PE Approvals:** workers below 100% match can be submitted with a reason;
   the Project Engineer approves or rejects each worker, grouped by
   project and position
-- **Mobilization:** pre-mobilization checklist (PPE, alcohol test, blood
-  pressure, baggage inspection, pre-field training, transport/hotel/vessel
-  booking), then deploy to site with D-MOB calculated from the MOB date
-- **Projects Overview:** in-progress / upcoming / completed projects with
-  staffing progress and the employee timeline
+- **Manpower Calendar:** in-progress / upcoming / completed projects with
+  staffing progress and the employee timeline, used to check availability
+  before assigning names
+- **Training Bookings / Medical Bookings:** training and medical check-up
+  requests for workers with missing, expired, or expiring records, tracked
+  as pending / completed; Training Courses shows one training across every
+  worker, including bulk certificate entry
+- **Worker Schedule:**
+  - *Mobilization:* pre-mobilization checklist (PPE, alcohol test, blood
+    pressure, baggage inspection, pre-field training, transport/hotel/vessel
+    booking), then deploy to site with D-MOB calculated from the MOB date
+  - *Post-Project Review:* per-worker rating and rehire recommendation, with
+    review progress, reviewer name and date, row filter, and Save all
+- **Worker Pool:** worker profiles (Employee ID / internal code, position,
+  department, passport & work permit, photo, CV/resume details, offshore
+  roster data), Add / Edit Worker with tabbed form, and Worker Detail with
+  deployment history and document export
 - **Project Discussion:** PE ↔ Manpower message thread with file attachments
   on each project
 
-### Review & Reports
-- **Post-Project Review:** per-worker rating and rehire recommendation
-- **Analytics & Reports** and **Dashboard:** total workers, readiness,
-  on-site count (live from `Assignment` records), certification alerts,
-  and compliance charts
+### Settings
+- **Projects & Positions:** Master Project Register (ON Number), project
+  activation per contract, and the position list
+- **Training Matrix:** position-to-training requirements per contract
+  (Mandatory / Assigned), Matrix Editor, and the central `GlobalTraining`
+  catalog with per-client `TrainingStandard` and expiry buckets (Expired /
+  Critical / Warning / Upcoming / Valid)
+- **Departments:** department list used across worker records
 
 ### Worker App
 - Login with Employee ID + PIN, with lockout after repeated failed attempts
@@ -190,11 +233,12 @@ Upload HR Excel files (Training Record or PE Tracking), preview what will change
   (no repeated digits, sequences, Employee ID, or birth date)
 - Readiness view, job confirmation, and leave requests
 
-### System
-- **Role-based access control (RBAC):** sidebar visibility and route
-  enforcement per role
-- **User Management:** users, roles, and links to worker records
-- **Bulk Set PIN:** issue Worker App PINs to many workers at once
+### Admin & System
+- **Role-based access control (RBAC):** one primary role plus optional extra
+  roles per user; access is the union of all roles
+- **Users & Roles:** users, roles, extra roles, and links to worker records
+- **Bulk Set PIN:** issue Worker App PINs to many workers at once (PINs are
+  shown once and exported to Excel; handle the file as confidential)
 - **Audit Log:** automatic record of who did what (create, update, delete,
   approve, upload, login/logout, failed login) across the MMS and the
   Worker App. Passwords, PINs, and tokens are redacted. The admin page has
@@ -218,35 +262,35 @@ Upload HR Excel files (Training Record or PE Tracking), preview what will change
 
 | Role | Description |
 |------|-------------|
-| `admin` | Full system access, user management, Audit Log |
-| `project_engineer` | Project operations and PE Approvals (approve/reject partially matched workers) |
-| `manpower_supply` | Allocation, mobilization, candidate management |
-| `hr_supervisor` | HR supervision: workers, compliance, requests |
-| `personal_record_officer` | Worker records and documents |
-| `hr_officer` | Worker and training data management |
-| `training_officer` | Training records, matrix, and certifications |
-| `safety_manager` | Safety compliance, worker and project visibility |
-| `safety_officer` | Mobilization safety checks |
+| `admin` | Full system access, Users & Roles, Audit Log, Data Import (primary role only) |
+| `manpower_supply` | All operations and settings menus |
+| `hr_supervisor` | All operations and settings menus |
+| `personal_record_officer` | All operations and settings menus |
+| `hr_officer` | All operations and settings menus |
+| `training_officer` | All operations and settings menus |
+| `project_engineer` | Projects, Assign Names, PE Approvals, Manpower Calendar, Mobilization, Post-Project Review |
+| `safety_manager` | Dashboard, Compliance, Projects, Assign Names, Worker Pool, Mobilization, Training Courses |
+| `safety_officer` | Dashboard, Mobilization safety checks |
 
-> Sidebar visibility is defined in `sidebarMenu.js`; enforcement is in
-> `AppRouter.jsx` (`ProtectedRoute allowRoles`). The two must stay in sync.
+> A user can hold extra roles (for example `manpower_supply` +
+> `project_engineer`). Check roles with the helpers in `backend/utils/roles.js`,
+> not `user.role.name`, which only returns the primary role.
 
 ---
 
 ## Manpower Workflow
 
 ```
-Project activated from Master Project Register (ON Number)
+Client requirement → Manpower Requirements (project + position + headcount)
 ↓
-Position Requests created (position + headcount)
-↓
-Allocation: search & match workers (% match vs client requirements)
-↓
-Shortlist candidates (Proposed)
+Assign Names: search & match workers (% match vs client requirements)
+├─ check availability on the Manpower Calendar
 ├─ 100% match → Approve (Proposed → Approved)
 └─ < 100% match → submit to PE Approvals → PE approves / rejects
 ↓
 Generate CV Summary / Roster / Skill Matrix → send to client
+↓
+Missing / expiring items → Training Bookings / Medical Bookings
 ↓
 Worker confirms the job in the Worker App
 ↓
@@ -266,7 +310,7 @@ MMS/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── layout/            # Layout, Navbar, Sidebar, sidebarMenu.js
+│   │   │   ├── layout/            # Layout, Navbar, Sidebar, MenuTabs, sidebarMenu.js
 │   │   │   ├── worker-layout/     # Worker App layout
 │   │   │   ├── print/             # CV / Roster / Skill Matrix print components
 │   │   │   └── ProtectedRoute.jsx
@@ -280,9 +324,10 @@ MMS/
 │   │   │   │                      #   RequestsHistory, TrainingRequestDetail, MedicalRequestDetail
 │   │   │   ├── training/          # TrainingMatrix, ManageTrainings
 │   │   │   ├── positions/         # ManagePositions, ManageDivisions, MatrixEditor
-│   │   │   ├── projects/          # Project, ProjectDetail, EditProject, Allocation,
-│   │   │   │                      #   PEApprovals, Mobilization, ProjectsOverview,
-│   │   │   │                      #   PostProjectReview, AnalyticsReports
+│   │   │   ├── projects/          # ManpowerRequirements, NewRequirementModal, Project,
+│   │   │   │                      #   ProjectDetail, EditProject, Allocation, PEApprovals,
+│   │   │   │                      #   ProjectsOverview, Mobilization, PostProjectReview,
+│   │   │   │                      #   AnalyticsReports
 │   │   │   ├── worker/            # Worker App pages (login, readiness, PIN change, ...)
 │   │   │   └── admin/             # AdminUsers, AuditLogs, DataImport
 │   │   ├── routes/                # AppRouter, WorkerAppRouter
@@ -294,7 +339,7 @@ MMS/
 │   ├── services/
 │   ├── routes/
 │   ├── middleware/                # userAuth, workerAuth, auditTrail
-│   ├── utils/                     # expiryStatus, auditLogger
+│   ├── utils/                     # roles, expiryStatus, auditLogger
 │   ├── prisma/
 │   │   ├── schema.prisma
 │   │   ├── migrations/
@@ -306,6 +351,18 @@ MMS/
 ├── screenshots/
 └── compose.yaml
 ```
+
+### UI conventions
+
+- Pages use divider lines (`border-y` / `border-b border-gray-200`) instead of
+  cards; modals and drawers keep their own box
+- Primary button and section accent: navy `#2B2F78` (hover `#22265f`)
+- Section heading: left bar `border-l-[3px] border-[#2B2F78] pl-2.5`
+- Filter labels: `text-xs font-semibold uppercase tracking-[0.4px] text-gray-500`
+- When a menu has two or more tabs, the tab already names the page, so the
+  page omits its own `h1`
+- Use named Tailwind breakpoints (`sm` / `md` / `lg` / `xl` / `2xl`);
+  arbitrary `min-[...]` breakpoints are ordered before them and get overridden
 
 ---
 
@@ -354,19 +411,27 @@ docker exec -it chevron-backend node prisma/seed.js
 cd <repo-root>
 git pull origin main
 
-# Backend: apply pending migrations, then restart
+# Backend: apply pending migrations (only when schema.prisma changed)
 cd backend
 npx prisma migrate deploy
 npx prisma generate
-pm2 restart mms-backend
+npm install                      # only when backend/package.json changed
+
+# Restart: the PM2 process runs as root, so always use sudo
+sudo pm2 restart mms-backend
+sudo pm2 logs mms-backend --lines 30
 
 # Frontend: rebuild static files
 cd ../frontend
-npm install
+npm install                      # only when frontend/package.json changed
 npm run build
 ```
 
-Skip `migrate deploy` / `generate` when `schema.prisma` has not changed.
+- Skip `migrate deploy` / `generate` when `schema.prisma` has not changed.
+- Run `npm install` / `npm run build` without `sudo`. Files created by root
+  break the next `git pull`; if that happens, run
+  `sudo chown -R <deploy-user>:<deploy-user> .` in the repo root.
+- Without `sudo`, `pm2` reports "Process not found" for `mms-backend`.
 
 > Data Import uploads Excel files up to 20 MB. If nginx sits in front of the
 > backend, set `client_max_body_size 20M;` in the server block, otherwise
