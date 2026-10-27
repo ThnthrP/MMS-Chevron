@@ -53,6 +53,11 @@ Click a status count to filter; training alerts and medical status in separate c
 
 ### Operations
 
+#### 🗂 Projects (ON Number)
+Master Project Register by year, with project status and a shortcut to open a
+new requirement from an ON Number.
+![Projects](screenshots/projects.png)
+
 #### 📋 Manpower Requirements
 Every open position request across projects, with progress, filters, and
 search by position, project, location, or worker name (Thai / English).
@@ -100,11 +105,6 @@ Position requests, employee timeline, and PE ↔ Manpower discussion with attach
 ![CV Summary](screenshots/cv-summary.png)
 
 ### Settings
-
-#### 🗂 Projects (ON Number)
-Master Project Register by year, with project status and a shortcut to open a
-new requirement from an ON Number.
-![Projects](screenshots/projects.png)
 
 #### 🧩 Training Matrix
 Position-to-training requirements per contract (Mandatory / Assigned).
