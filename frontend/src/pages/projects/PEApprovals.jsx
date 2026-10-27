@@ -6,9 +6,9 @@ import { nameEN, nameTH } from "../../utils/workerSearch";
 import { hasAnyRole } from "../../utils/roles";
 
 // ══════════════════════════════════════════════════════════
-// PE Approvals — คำขอใช้พนักงานที่ % Match ไม่ครบ 100% (ส่งมาจากหน้า Allocation)
-// จัดกลุ่ม: โปรเจกต์ → ตำแหน่ง (position request) → รายคน
-// อนุมัติ / ไม่อนุมัติ ยังเป็นรายคน
+// PE Approvals — คำขอใช้พนักงานที่ % Match ไม่ครบ 100% (ส่งมาจากหน้า Assign Names)
+// ตาราง 1 แถว = 1 คำขอ (แบบเดียวกับ Manpower Requirements) — project อยู่ในแต่ละแถว
+// อนุมัติ / ไม่อนุมัติ รายคน
 // ══════════════════════════════════════════════════════════
 
 // ปุ่มสถานะ — รูปแบบเดียวกับหน้า Requests for Training & Medical
@@ -82,30 +82,9 @@ const uniqSorted = (arr) =>
 
 const matchColor = (pct) => (pct >= 70 ? "text-[#cc8400]" : "text-[#dc3545]");
 
-// items มาจาก API เรียงใหม่สุดก่อนแล้ว → ลำดับกลุ่มตามคำขอล่าสุดของแต่ละกลุ่ม
-function groupByProject(items) {
-  const projects = new Map();
-  for (const it of items) {
-    const project = it.manpowerRequest?.project;
-    const pid = project?.id ?? "unknown";
-    if (!projects.has(pid)) {
-      projects.set(pid, { project, requests: new Map(), count: 0 });
-    }
-    const g = projects.get(pid);
-    g.count += 1;
-    const rid = it.manpowerRequest?.id ?? "unknown";
-    if (!g.requests.has(rid)) {
-      g.requests.set(rid, { request: it.manpowerRequest, items: [] });
-    }
-    g.requests.get(rid).items.push(it);
-  }
-  return [...projects.entries()].map(([pid, g]) => ({
-    pid,
-    project: g.project,
-    count: g.count,
-    requests: [...g.requests.entries()].map(([rid, r]) => ({ rid, ...r })),
-  }));
-}
+const TH =
+  "sticky top-0 z-[1] whitespace-nowrap bg-gray-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500 shadow-[inset_0_-1px_0_#e5e7eb]";
+const TD = "px-3 py-3 align-top";
 
 export default function PEApprovals() {
   const { backendUrl, userData } = useContext(AppContent);
@@ -230,7 +209,6 @@ export default function PEApprovals() {
     [baseFiltered, tab],
   );
 
-  const groups = useMemo(() => groupByProject(visibleItems), [visibleItems]);
 
   const hasFilter =
     search ||
@@ -292,123 +270,120 @@ export default function PEApprovals() {
 
   const approving = decision?.action === "approved";
 
-  // ── รายละเอียดรายคน ──
-  const renderItem = (it) => {
-    const [statusLabel, statusCls] = STATUS[it.status] ?? [
-      it.status,
-      "bg-gray-100 text-gray-500",
-    ];
-    const missing = Array.isArray(it.missingTrainings)
-      ? it.missingTrainings
-      : [];
+  // ── ส่วนย่อยของแต่ละคำขอ (ใช้ทั้งตารางและรายการบนมือถือ) ──
+  const statusPill = (it) => {
+    const [label, cls] = STATUS[it.status] ?? [it.status, "bg-gray-100 text-gray-500"];
     return (
-      <div
-        key={it.id}
-        className="flex flex-col border-b border-gray-200 py-3.5"
-      >
-        {/* ชื่อ + % + สถานะ */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="break-words text-[14px] font-bold">
-              {nameEN(it.employee)}
-            </div>
-            {nameTH(it.employee) && (
-              <div className="text-xs text-gray-600">
-                {nameTH(it.employee)}
-              </div>
-            )}
-            <div className="text-[11px] text-gray-500">
-              {it.employee?.empId || "—"} · #{it.employee?.empCode}
-              {it.employee?.position?.name
-                ? ` · ตำแหน่งปัจจุบัน ${it.employee.position.name}`
-                : ""}
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-1">
-            <span
-              className={`whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ${statusCls}`}
-            >
-              {statusLabel}
-            </span>
-            <span
-              className={`text-[15px] font-bold ${matchColor(it.matchPct)}`}
-            >
-              {it.matchPct}%
-            </span>
-          </div>
+      <span className={`whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ${cls}`}>
+        {label}
+      </span>
+    );
+  };
+
+  const employeeCell = (it) => (
+    <div className="min-w-0">
+      <div className="break-words font-semibold">{nameEN(it.employee)}</div>
+      {nameTH(it.employee) && (
+        <div className="text-xs text-gray-600">{nameTH(it.employee)}</div>
+      )}
+      <div className="text-[11px] text-gray-500">
+        {it.employee?.empId || "—"} · #{it.employee?.empCode}
+      </div>
+      {it.employee?.position?.name && (
+        <div className="text-[11px] text-gray-400">
+          ตำแหน่งปัจจุบัน {it.employee.position.name}
         </div>
+      )}
+    </div>
+  );
 
-        {/* training ที่ขาด */}
-        {missing.length > 0 && (
-          <div className="mt-2.5">
-            <div className={`${LABEL} mb-1`}>
-              Training ที่ขาด ({missing.length})
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {missing.map((m) => (
-                <span
-                  key={m}
-                  className="rounded-md border border-[#f5c6cb] bg-[#fff5f5] px-2 py-0.5 text-xs text-[#842029]"
-                >
-                  {m}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* เหตุผลจาก MP */}
-        <div className="mt-2.5 rounded-lg bg-gray-50 px-3 py-2">
-          <div className={LABEL}>
-            เหตุผล · ขอโดย {personName(it.requestedBy)} ·{" "}
-            {fmtDateTime(it.createdAt)}
-          </div>
-          <div className="mt-0.5 whitespace-pre-wrap break-words text-[13px]">
-            {it.reason}
-          </div>
-        </div>
-
-        {/* ผลการพิจารณา */}
-        {it.status !== "pending" && (
-          <div
-            className={`mt-2 rounded-lg px-3 py-2 ${
-              it.status === "approved" ? "bg-[#f0fff4]" : "bg-[#fff5f5]"
-            }`}
+  const projectCell = (it) => {
+    const req = it.manpowerRequest;
+    return (
+      <div className="min-w-0">
+        <div className="font-semibold">{req?.position?.name ?? "—"}</div>
+        <div className="text-[11px] text-gray-500">ต้องการ {req?.quantity ?? "—"} คน</div>
+        {req?.project?.id ? (
+          <Link
+            to={`/allocation?projectId=${req.project.id}`}
+            title="เปิดโปรเจกต์นี้ในหน้า Assign Names"
+            className="mt-0.5 block break-words text-xs text-blue-600 no-underline hover:underline"
           >
-            <div className={LABEL}>
-              พิจารณาโดย {personName(it.decidedBy)} ·{" "}
-              {fmtDateTime(it.decidedAt)}
-            </div>
-            {it.decisionNote && (
-              <div className="mt-0.5 whitespace-pre-wrap break-words text-[13px]">
-                {it.decisionNote}
-              </div>
+            {req.project.masterProjectRecord?.projectCode && (
+              <span className="block font-semibold">{req.project.masterProjectRecord.projectCode}</span>
             )}
-          </div>
-        )}
-
-        {/* ปุ่ม (รายคน) */}
-        {it.status === "pending" && canDecide && (
-          <div className="mt-auto flex justify-end gap-2 pt-3">
-            <button
-              type="button"
-              onClick={() => openDecision(it, "rejected")}
-              className="cursor-pointer rounded-lg border border-[#f5c6cb] bg-white px-4 py-2 text-[13px] font-semibold text-[#842029] hover:bg-[#fff5f5]"
-            >
-              ไม่อนุมัติ
-            </button>
-            <button
-              type="button"
-              onClick={() => openDecision(it, "approved")}
-              className="cursor-pointer rounded-lg border-none bg-[#198754] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#157347]"
-            >
-              อนุมัติ
-            </button>
-          </div>
+            {req.project.name}
+          </Link>
+        ) : (
+          <div className="text-xs text-gray-500">{projectLabel(req?.project)}</div>
         )}
       </div>
     );
   };
+
+  const missingChips = (it) => {
+    const missing = Array.isArray(it.missingTrainings) ? it.missingTrainings : [];
+    if (!missing.length) return <span className="text-gray-400">—</span>;
+    return (
+      <div className="flex flex-wrap gap-1">
+        {missing.map((m) => (
+          <span
+            key={m}
+            className="rounded-md border border-[#f5c6cb] bg-[#fff5f5] px-1.5 py-0.5 text-[11px] text-[#842029]"
+          >
+            {m}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  const reasonCell = (it) => (
+    <div className="min-w-0">
+      <div className="whitespace-pre-wrap break-words">{it.reason}</div>
+      <div className="mt-0.5 text-[11px] text-gray-400">
+        ขอโดย {personName(it.requestedBy)} · {fmtDateTime(it.createdAt)}
+      </div>
+    </div>
+  );
+
+  const decisionCell = (it) => (
+    <div className="min-w-0">
+      {statusPill(it)}
+      {it.status !== "pending" && (
+        <div className="mt-1 text-[11px] text-gray-500">
+          {personName(it.decidedBy)} · {fmtDateTime(it.decidedAt)}
+          {it.decisionNote && (
+            <div className="mt-0.5 whitespace-pre-wrap break-words text-xs text-gray-700">
+              {it.decisionNote}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const actionButtons = (it) =>
+    it.status === "pending" && canDecide ? (
+      <div className="flex justify-end gap-1.5">
+        <button
+          type="button"
+          onClick={() => openDecision(it, "rejected")}
+          className="cursor-pointer whitespace-nowrap rounded-md border border-[#f5c6cb] bg-white px-3 py-1.5 text-xs font-semibold text-[#842029] hover:bg-[#fff5f5]"
+        >
+          ไม่อนุมัติ
+        </button>
+        <button
+          type="button"
+          onClick={() => openDecision(it, "approved")}
+          className="cursor-pointer whitespace-nowrap rounded-md border-none bg-[#198754] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#157347]"
+        >
+          อนุมัติ
+        </button>
+      </div>
+    ) : (
+      <span className="text-gray-400">—</span>
+    );
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
@@ -416,7 +391,7 @@ export default function PEApprovals() {
       {/* ชื่อหน้าอยู่ที่แท็บแล้ว — เหลือคำอธิบายบรรทัดเดียว */}
       <div className="pb-3">
         <div className="text-xs text-gray-500">
-          คำขอใช้พนักงานที่ % Match ไม่ครบ 100% จากหน้า Allocation
+          คำขอใช้พนักงานที่ % Match ไม่ครบ 100% จากหน้า Assign Names · กดชื่อโปรเจกต์เพื่อเปิดในหน้า Assign Names
         </div>
         {!canDecide && (
           <div className="mt-2.5 rounded-lg border border-[#ffe69c] bg-[#fff8e1] px-3 py-2 text-xs text-[#664d03]">
@@ -437,7 +412,7 @@ export default function PEApprovals() {
                 onClick={() => applyPreset(key, days)}
                 className={`${CHIP} ${
                   datePreset === key
-                    ? "border-blue-600 bg-blue-600 font-bold text-white"
+                    ? "border-[#2B2F78] bg-[#2B2F78] font-bold text-white"
                     : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -537,7 +512,7 @@ export default function PEApprovals() {
       </div>
 
       {/* ════════ แถบสถานะ (เหนือรายการ) ════════ */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 py-3">
         <div className="flex flex-wrap gap-2">
           {TABS.map(([key, label]) => {
             const active = tab === key;
@@ -548,7 +523,7 @@ export default function PEApprovals() {
                 onClick={() => setTab(key)}
                 className={`cursor-pointer whitespace-nowrap rounded-md border px-3.5 py-1.5 text-xs ${
                   active
-                    ? "border-blue-600 bg-blue-600 font-bold text-white"
+                    ? "border-[#2B2F78] bg-[#2B2F78] font-bold text-white"
                     : "border-gray-200 bg-white font-medium text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -564,12 +539,12 @@ export default function PEApprovals() {
         </span>
       </div>
 
-      {/* ════════ รายการ: โปรเจกต์ → ตำแหน่ง → รายคน ════════ */}
+      {/* ════════ รายการ: 1 แถว = 1 คำขอ ════════ */}
       {loading ? (
         <div className="p-10 text-center text-[13px] text-gray-500">
           Loading…
         </div>
-      ) : groups.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <div className="p-10 text-center text-[13px] text-gray-500">
           {hasFilter
             ? "ไม่พบคำขอตามเงื่อนไขที่เลือก"
@@ -578,53 +553,63 @@ export default function PEApprovals() {
               : "ไม่มีรายการในหมวดนี้"}
         </div>
       ) : (
-        <div className="flex flex-col gap-6">
-          {groups.map((g) => (
-            <section key={g.pid}>
-              {/* หัวโปรเจกต์ */}
-              <div className="flex flex-wrap items-center justify-between gap-2 border-l-4 border-l-blue-600 bg-[#eef4ff] px-4 py-2.5">
-                <div className="min-w-0">
-                  <div className="break-words text-[15px] font-bold text-[#1e3a5f]">
-                    {projectLabel(g.project)}
-                  </div>
-                  <div className="text-xs text-[#4a6380]">
-                    {g.count} คำขอ
-                    {g.requests.length > 1
-                      ? ` · ${g.requests.length} ตำแหน่ง`
-                      : ""}
+        <div className="border-b border-gray-200">
+          {/* ── มือถือ / แท็บเล็ต ── */}
+          <div className="divide-y divide-gray-200 xl:hidden">
+            {visibleItems.map((it) => (
+              <div key={it.id} className="py-3 text-[13px]">
+                <div className="flex items-start justify-between gap-2">
+                  {employeeCell(it)}
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    {statusPill(it)}
+                    <span className={`text-[15px] font-bold ${matchColor(it.matchPct)}`}>
+                      {it.matchPct}%
+                    </span>
                   </div>
                 </div>
-                {g.project?.id && (
-                  <Link
-                    to={`/allocation?projectId=${g.project.id}`}
-                    className="shrink-0 rounded-md border border-blue-600 bg-white px-3 py-1.5 text-xs font-semibold text-blue-600 no-underline hover:bg-blue-50"
-                  >
-                    เปิดโปรเจกต์ในหน้า Allocation →
-                  </Link>
-                )}
+                <div className="mt-2">{projectCell(it)}</div>
+                <div className="mt-2">
+                  <div className={`${LABEL} mb-1`}>Training ที่ขาด</div>
+                  {missingChips(it)}
+                </div>
+                <div className="mt-2 rounded-lg bg-gray-50 px-3 py-2">{reasonCell(it)}</div>
+                {it.status !== "pending" && <div className="mt-2">{decisionCell(it)}</div>}
+                {it.status === "pending" && canDecide && <div className="mt-2.5">{actionButtons(it)}</div>}
               </div>
+            ))}
+          </div>
 
-              {/* แต่ละตำแหน่งในโปรเจกต์ */}
-              <div className="flex flex-col gap-4 pt-3">
-                {g.requests.map((r) => (
-                  <div key={r.rid}>
-                    <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <span className="text-[13px] font-bold">
-                        {r.request?.position?.name ?? "—"}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        ต้องการ {r.request?.quantity ?? "—"} คน · ขออนุมัติ{" "}
-                        {r.items.length} คน
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 gap-x-8 border-t border-gray-200 lg:grid-cols-2">
-                      {r.items.map(renderItem)}
-                    </div>
-                  </div>
+          {/* ── xl+: ตาราง ── */}
+          <div className="hidden overflow-x-auto xl:block">
+            <table className="w-full border-collapse text-[13px]">
+              <thead>
+                <tr>
+                  <th className={TH}>Employee</th>
+                  <th className={TH}>Position / Project</th>
+                  <th className={`${TH} text-center`}>% Match</th>
+                  <th className={TH}>Training ที่ขาด</th>
+                  <th className={`${TH} w-[28%]`}>เหตุผลที่ขอ</th>
+                  <th className={TH}>สถานะ</th>
+                  <th className={`${TH} text-right`}>Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {visibleItems.map((it) => (
+                  <tr key={it.id} className="hover:bg-gray-50">
+                    <td className={`${TD} min-w-[180px]`}>{employeeCell(it)}</td>
+                    <td className={`${TD} min-w-[200px]`}>{projectCell(it)}</td>
+                    <td className={`${TD} whitespace-nowrap text-center text-[15px] font-bold ${matchColor(it.matchPct)}`}>
+                      {it.matchPct}%
+                    </td>
+                    <td className={`${TD} max-w-[220px]`}>{missingChips(it)}</td>
+                    <td className={TD}>{reasonCell(it)}</td>
+                    <td className={`${TD} min-w-[150px]`}>{decisionCell(it)}</td>
+                    <td className={`${TD} whitespace-nowrap`}>{actionButtons(it)}</td>
+                  </tr>
                 ))}
-              </div>
-            </section>
-          ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -669,8 +654,8 @@ export default function PEApprovals() {
               />
               {approving && (
                 <div className="mt-2 text-[11px] text-gray-500">
-                  อนุมัติแล้วพนักงานคนนี้จะเข้า Shortlist (Approved)
-                  และไปที่หน้า Mobilization ทันที
+                  อนุมัติแล้วพนักงานคนนี้จะเป็น Approved ในรายชื่อที่จัด
+                  และไปที่หน้า Worker Schedule › Mobilization ทันที
                 </div>
               )}
             </div>
