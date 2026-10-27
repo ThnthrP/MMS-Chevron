@@ -2,6 +2,7 @@ import express from "express";
 import * as controller from "../controllers/trainingRequestController.js";
 import userAuth from "../middleware/userAuth.js";
 import requireRole from "../middleware/requireRole.js";
+import { getTrainingItems } from "../controllers/bookingListController.js";
 
 const router = express.Router();
 router.use(userAuth);
@@ -22,6 +23,9 @@ const HR_ROLES = ["admin", "hr_officer", "hr_supervisor", "training_officer"];
 
 // ต้องอยู่ก่อน "/:id" — ไม่งั้น "availability" ถูกตีความเป็น id
 // ใช้ทั้งการ์ด Request training และ Request medical (เตือนคนที่ติดงานช่วงนั้น)
+// รายการรายคน (หน้า Training Bookings) — ต้องอยู่ก่อน "/:id"
+router.get("/items", requireRole(...HR_ROLES), getTrainingItems);
+
 router.get(
   "/availability",
   requireRole(...REQUESTER_ROLES),

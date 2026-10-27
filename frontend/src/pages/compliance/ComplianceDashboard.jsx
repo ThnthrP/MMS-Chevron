@@ -114,6 +114,11 @@ const TABLE_HEADERS = [
 
 // key ของ HR request ที่ส่งไปแล้วในรอบนี้ (กันกดซ้ำ)
 const reqKey = (employeeId, trainingId) => `${employeeId}:${trainingId}`;
+// key ของคำขอตรวจสุขภาพ — ตรงกับ GET /api/medical-requests/pending-keys
+const MAIN_CHECK = "Medical Check up";
+const medKey = (employeeId, checkType) => `${employeeId}:${checkType || MAIN_CHECK}`;
+// แจ้ง HR เรื่อง medical ได้เมื่อหมดอายุแล้ว หรือเหลือไม่เกิน 120 วัน (Expired / Critical / Warning / Upcoming)
+const MEDICAL_REQUEST_WITHIN_DAYS = 120;
 
 // ชื่อ client ของ worker สำหรับแนบในคำขอ (dashboard เก็บ key เป็นตัวเล็ก เช่น "chevron")
 const clientNameOf = (w) => {
@@ -410,6 +415,9 @@ export default function ComplianceDashboard() {
   const [requestedKeys, setRequestedKeys] = useState(() => new Set()); // แจ้ง HR แล้ว (รอบนี้)
   const [sendingKey, setSendingKey] = useState(null); // key ที่กำลังส่ง / "all"
   const [noteModal, setNoteModal] = useState(null); // { name, note }
+  // คำขอตรวจสุขภาพที่รอ HR อยู่ (จาก backend) + ที่เพิ่งกดส่งในรอบนี้
+  const [medicalRequested, setMedicalRequested] = useState(() => new Set());
+  const [sendingMedKey, setSendingMedKey] = useState(null);
 
   const anyModalOpen = !!(selectedGap || selectedAlert || noteModal);
 
@@ -445,6 +453,11 @@ export default function ComplianceDashboard() {
 
   useEffect(() => {
     fetchDashboard();
+    // ใครแจ้ง HR เรื่อง medical ไปแล้ว — โหลดไม่ได้ (เช่นไม่มีสิทธิ์) ก็แค่ไม่แสดง "✓ แจ้งแล้ว"
+    axios
+      .get(`${backendUrl}/api/medical-requests/pending-keys`, { withCredentials: true })
+      .then((res) => Array.isArray(res.data) && setMedicalRequested(new Set(res.data)))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -504,7 +517,7 @@ export default function ComplianceDashboard() {
     }
   };
 
-  // ── แจ้ง HR ให้จัด training → ไปอยู่หน้า Requests (endpoint เดียวกับหน้า Allocation) ──
+  // ── แจ้ง HR ให้จัด training → ไปอยู่หน้า Training Bookings (endpoint เดียวกับหน้า Allocation) ──
   // items: alert item ที่มี globalTrainingId (training ที่ map กับระบบแล้ว)
   const sendTrainingRequest = async (items, busyKey) => {
     if (!selectedAlert || items.length === 0 || sendingKey) return;
@@ -513,7 +526,7 @@ export default function ComplianceDashboard() {
       const names = items.map((it) => `• ${it.name}`).join("\n");
       if (
         !window.confirm(
-          `แจ้ง HR ให้จัด training ${items.length} รายการให้ ${selectedAlert.fullName}?\n\n${names}\n\nคำขอจะไปอยู่ที่เมนู Requests`,
+          `แจ้ง HR ให้จัด training ${items.length} รายการให้ ${selectedAlert.fullName}?\n\n${names}\n\nคำขอจะไปอยู่ที่เมนู Training Bookings`,
         )
       )
         return;
@@ -548,6 +561,68 @@ export default function ComplianceDashboard() {
     } finally {
       setSendingKey(null);
     }
+  };
+
+  // ── แจ้ง HR ให้นัดตรวจสุขภาพ → ไปอยู่หน้า Medical Bookings (endpoint เดียวกับหน้า Assign Names) ──
+  const sendMedicalRequest = async (w, checkType, daysLeft) => {
+    const k = medKey(w.id, checkType);
+    if (sendingMedKey || medicalRequested.has(k)) return;
+    try {
+      setSendingMedKey(k);
+      await axios.post(
+        `${backendUrl}/api/medical-requests`,
+        {
+          items: [
+            {
+              employeeId: w.id,
+              checkType: checkType || MAIN_CHECK,
+              clientName: clientNameOf(w),
+              reason: daysLeft < 0 ? "overdue" : "due_soon",
+            },
+          ],
+        },
+        { withCredentials: true },
+      );
+      setMedicalRequested((prev) => new Set(prev).add(k));
+    } catch (err) {
+      console.error(err);
+      alert(
+        err.response?.status === 403
+          ? "ไม่มีสิทธิ์ส่งคำขอตรวจสุขภาพ"
+          : err.response?.data?.message || "แจ้ง HR ไม่สำเร็จ ลองใหม่อีกครั้ง",
+      );
+    } finally {
+      setSendingMedKey(null);
+    }
+  };
+
+  // ปุ่ม "แจ้ง HR" ใต้ผลตรวจในคอลัมน์ Medical
+  const renderMedicalRequestButton = (w, checkType, daysLeft, small = false) => {
+    if (daysLeft === null || daysLeft > MEDICAL_REQUEST_WITHIN_DAYS) return null;
+    const k = medKey(w.id, checkType);
+    const size = small ? "px-1.5 py-px text-[10px]" : "px-2 py-1 text-[11px]";
+    if (medicalRequested.has(k)) {
+      return (
+        <Link
+          to="/medical-bookings"
+          title="มีคำขอรอ HR นัดตรวจอยู่แล้ว — ดูที่เมนู Medical Bookings"
+          className={`mt-0.5 inline-block whitespace-nowrap rounded-md bg-[#d1e7dd] font-semibold text-[#0f5132] no-underline hover:underline ${size}`}
+        >
+          ✓ แจ้งแล้ว
+        </Link>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => sendMedicalRequest(w, checkType, daysLeft)}
+        disabled={!!sendingMedKey}
+        title={`แจ้ง HR ให้นัด ${checkType || MAIN_CHECK} — คำขอไปที่เมนู Medical Bookings`}
+        className={`mt-0.5 cursor-pointer whitespace-nowrap rounded-md border border-blue-600 bg-white font-semibold text-blue-600 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60 ${size}`}
+      >
+        {sendingMedKey === k ? "..." : "📨 แจ้ง HR"}
+      </button>
+    );
   };
 
   const filteredWorkers = workers.filter((w) => {
@@ -686,6 +761,7 @@ export default function ComplianceDashboard() {
               {hasValidExp ? `Exp: ${fmtDate(med.expiryDate)}` : "No expiry"}
               {note && <div>{note}</div>}
             </div>
+            {renderMedicalRequestButton(w, med.checkType, daysLeft)}
             {med.notes && (
               <span
                 title={med.notes}
@@ -718,6 +794,7 @@ export default function ComplianceDashboard() {
                 {d === null ? "No expiry" : `Exp: ${fmtDate(o.expiryDate)}`}
                 {daysNote(d) && ` · ${daysNote(d)}`}
               </div>
+              {renderMedicalRequestButton(w, o.checkType, d, true)}
             </div>
           );
         })}
@@ -774,7 +851,7 @@ export default function ComplianceDashboard() {
         <Link
           to="/requests-history"
           className="whitespace-nowrap rounded-md bg-[#d1e7dd] px-2 py-1 text-[11px] font-semibold text-[#0f5132] no-underline hover:underline"
-          title="มีคำขอรอ HR ดำเนินการอยู่แล้ว — ดูที่เมนู Requests"
+          title="มีคำขอรอ HR ดำเนินการอยู่แล้ว — ดูที่เมนู Training Bookings"
         >
           ✓ แจ้งแล้ว
         </Link>
@@ -785,7 +862,7 @@ export default function ComplianceDashboard() {
       <button
         onClick={() => sendTrainingRequest([item], k)}
         disabled={!!sendingKey}
-        title="แจ้ง HR ให้จัด training นี้ — คำขอไปที่เมนู Requests"
+        title="แจ้ง HR ให้จัด training นี้ — คำขอไปที่เมนู Training Bookings"
         className="cursor-pointer whitespace-nowrap rounded-md border border-blue-600 bg-white px-2 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
       >
         {sendingKey === k ? "..." : "📨 แจ้ง HR"}
@@ -802,7 +879,7 @@ export default function ComplianceDashboard() {
           <div className="text-xs text-gray-500">
             Certification Monitoring, Gap Analysis &amp; Position Matching ·
             ตัวเลขด้านล่างและคอลัมน์ Training Alerts นับเฉพาะใบรับรอง training ·
-            ผลตรวจสุขภาพดูที่คอลัมน์ Medical
+            ผลตรวจสุขภาพดูที่คอลัมน์ Medical (แจ้ง HR นัดตรวจได้เมื่อเหลือไม่เกิน 120 วัน)
           </div>
         </div>
         <button
@@ -1190,7 +1267,7 @@ export default function ComplianceDashboard() {
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2.5">
               <span className="text-xs text-gray-700">
                 แจ้ง HR ให้จัด training ที่หมด/ใกล้หมดทั้งหมด → ไปที่เมนู
-                Requests
+                Training Bookings
               </span>
               <button
                 onClick={() => sendTrainingRequest(pendingRequestable, "all")}

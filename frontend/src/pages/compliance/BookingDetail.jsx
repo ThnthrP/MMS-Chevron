@@ -2,10 +2,11 @@ import { useState, useEffect, useContext, useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
+import DecisionModal, { fmtRange, toYMD } from "./BookingDecisionModal";
 
 // ══════════════════════════════════════════════════════════
 // รายละเอียดคำขอจอง — ใช้ทั้ง Training (/training-requests/:id) และ Medical (/medical-requests/:id)
-// HR ยืนยัน / ปฏิเสธ รายคน ด้วยการ์ด "HR confirmation" (แบบโปรแกรมตัวอย่าง)
+// HR ยืนยัน / ปฏิเสธ รายคน ด้วยการ์ด "HR confirmation" (BookingDecisionModal.jsx — ใช้ร่วมกับหน้ารายการ)
 //   ยืนยัน → ใส่วันที่ที่ศูนย์อบรม / โรงพยาบาลให้จริง + สถานที่ + หมายเหตุ
 //   ปฏิเสธ → ใส่เหตุผล
 // ผู้ขอได้รับแจ้งเตือนทุกครั้งที่ HR ตัดสิน · ไม่เหลือคนรอ → คำขอปิดอัตโนมัติ
@@ -15,8 +16,6 @@ const TH = "whitespace-nowrap bg-gray-50 px-3 py-2 text-left text-[11px] font-se
 const TD = "px-3 py-2.5 align-top text-[13px]";
 const BTN =
   "inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded-md border px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50";
-const INPUT =
-  "box-border h-9 w-full rounded-md border border-gray-200 bg-white px-2.5 text-[13px] outline-none focus:border-blue-500";
 
 const STATUS = {
   pending: ["⏳ รอ HR", "bg-[#fff3cd] text-[#664d03]"],
@@ -30,9 +29,6 @@ const REASON = {
   manual: "📝 ขอเอง",
 };
 
-const fmtDay = (d) =>
-  d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "";
-const fmtRange = (a, b) => (a ? `${fmtDay(a)}${b && fmtDay(b) !== fmtDay(a) ? ` – ${fmtDay(b)}` : ""}` : "");
 const fmtDateTime = (d) =>
   new Date(d).toLocaleString("th-TH", {
     day: "2-digit",
@@ -41,166 +37,6 @@ const fmtDateTime = (d) =>
     hour: "2-digit",
     minute: "2-digit",
   });
-const toYMD = (d) => {
-  if (!d) return "";
-  const x = new Date(d);
-  if (isNaN(x.getTime())) return "";
-  const p = (n) => String(n).padStart(2, "0");
-  return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
-};
-
-// ── การ์ด HR confirmation ──
-function DecisionModal({ isTraining, rows, batch, initialDecision, onClose, onSave, saving }) {
-  const first = rows[0];
-  const [decision, setDecision] = useState(initialDecision || "confirmed");
-  const [start, setStart] = useState(toYMD(first?.confirmedStart || batch.requestedStart));
-  const [end, setEnd] = useState(toYMD(first?.confirmedEnd || batch.requestedEnd || batch.requestedStart));
-  const [provider, setProvider] = useState(first?.confirmedProvider || batch.provider || "");
-  const [note, setNote] = useState(rows.length === 1 ? first?.hrNote || "" : "");
-
-  useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && !saving && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, saving]);
-
-  const dateError = start && end && end < start ? "วันสิ้นสุดต้องไม่ก่อนวันเริ่ม" : "";
-  const ready = !saving && (decision === "rejected" || !dateError);
-
-  return (
-    <div
-      className="fixed inset-0 z-[99999] flex items-start justify-center overflow-y-auto bg-black/40 p-3 sm:items-center sm:p-6"
-      onClick={() => !saving && onClose()}
-    >
-      <div
-        className="w-full max-w-[460px] overflow-hidden rounded-xl bg-white shadow-[0_10px_40px_rgba(0,0,0,0.25)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3.5">
-          <span className="text-[15px] font-bold">HR confirmation — {rows.length} คน</span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="cursor-pointer border-none bg-transparent text-lg leading-none text-gray-400 hover:text-gray-700"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="px-5 py-4">
-          <div className="mb-3 max-h-[120px] overflow-y-auto rounded-md border border-gray-200">
-            {rows.map((r) => (
-              <div key={r.itemId} className="border-b border-gray-100 px-3 py-1.5 text-xs last:border-b-0">
-                <b className="text-[13px]">{r.fullName}</b>{" "}
-                <span className="text-gray-500">{r.position || ""}</span>
-                <div className="text-gray-500">
-                  {isTraining ? r.trainingName : r.checkType}
-                  {fmtRange(batch.requestedStart, batch.requestedEnd) &&
-                    ` · ขอ ${fmtRange(batch.requestedStart, batch.requestedEnd)}`}
-                  {batch.provider && ` · ${batch.provider}`}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1">
-            {[
-              ["confirmed", isTraining ? "✓ ยืนยัน — ศูนย์อบรมรับแล้ว" : "✓ ยืนยันวันนัด"],
-              ["rejected", "✕ ปฏิเสธ"],
-            ].map(([k, label]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setDecision(k)}
-                className={`cursor-pointer rounded-md border-none px-2 py-2 text-xs font-semibold ${
-                  decision === k
-                    ? k === "confirmed"
-                      ? "bg-white text-[#198754] shadow"
-                      : "bg-white text-[#dc3545] shadow"
-                    : "bg-transparent text-gray-500"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {decision === "confirmed" && (
-            <>
-              <div className="mb-1 text-[11px] text-gray-500">
-                วันที่ยืนยันแล้ว — แก้ได้ถ้า{isTraining ? "ศูนย์อบรม" : "โรงพยาบาล"}ให้วันอื่น
-              </div>
-              <div className="mb-3 grid grid-cols-2 gap-2">
-                <div>
-                  <label className="mb-1 block text-[11px] font-semibold text-gray-600">
-                    {isTraining ? "วันเริ่มอบรม" : "วันนัดตรวจ"}
-                  </label>
-                  <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className={INPUT} />
-                </div>
-                <div>
-                  <label className="mb-1 block text-[11px] font-semibold text-gray-600">ถึง</label>
-                  <input
-                    type="date"
-                    value={end}
-                    min={start || undefined}
-                    onChange={(e) => setEnd(e.target.value)}
-                    className={`${INPUT} ${dateError ? "border-red-400" : ""}`}
-                  />
-                </div>
-              </div>
-              {dateError && <div className="-mt-2 mb-2 text-[11px] text-red-600">{dateError}</div>}
-              <label className="mb-1 block text-[11px] font-semibold text-gray-600">
-                {isTraining ? "ศูนย์อบรม / สถานที่" : "โรงพยาบาล / คลินิก"}
-              </label>
-              <input value={provider} onChange={(e) => setProvider(e.target.value)} className={`${INPUT} mb-3`} />
-            </>
-          )}
-          <label className="mb-1 block text-[11px] font-semibold text-gray-600">
-            {decision === "rejected" ? "เหตุผล (แจ้งผู้ขอ)" : "หมายเหตุถึงผู้ขอ"}
-          </label>
-          <input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={
-              decision === "rejected"
-                ? "เช่น รอบนี้เต็ม รอรอบเดือนหน้า"
-                : "เช่น ได้ที่นั่งแล้ว รายงานตัว 07:30"
-            }
-            className={INPUT}
-          />
-        </div>
-        <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="cursor-pointer rounded-md border border-gray-200 bg-white px-4 py-2 text-[13px] hover:bg-gray-50"
-          >
-            ยกเลิก
-          </button>
-          <button
-            type="button"
-            disabled={!ready}
-            onClick={() =>
-              onSave({
-                decision,
-                confirmedStart: start || null,
-                confirmedEnd: end || start || null,
-                provider,
-                note,
-              })
-            }
-            className={`cursor-pointer rounded-md border-none px-5 py-2 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300 ${
-              decision === "rejected" ? "bg-[#dc3545] hover:bg-[#bb2d3b]" : "bg-[#198754] hover:bg-[#157347]"
-            }`}
-          >
-            {saving ? "กำลังบันทึก..." : "บันทึก"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function BookingDetail({ type = "training" }) {
   const isTraining = type === "training";
   const { id } = useParams();
@@ -364,7 +200,7 @@ export default function BookingDetail({ type = "training" }) {
             onClick={() => setModal({ rows: selectedRows, decision: "confirmed" })}
             className={`${BTN} border-[#198754] bg-[#198754] text-white hover:bg-[#157347]`}
           >
-            ✓ ยืนยันที่เลือก ({selectedRows.length})
+            ✓ Confirm selected ({selectedRows.length})
           </button>
           <button
             type="button"
@@ -372,7 +208,7 @@ export default function BookingDetail({ type = "training" }) {
             onClick={() => setModal({ rows: selectedRows, decision: "rejected" })}
             className={`${BTN} border-[#f5c6cb] bg-white text-[#dc3545] hover:bg-red-50`}
           >
-            ✕ ปฏิเสธที่เลือก
+            ✕ Reject selected
           </button>
         </div>
       </div>
@@ -464,9 +300,9 @@ export default function BookingDetail({ type = "training" }) {
                         <button
                           type="button"
                           onClick={() => setModal({ rows: [r], decision: "confirmed" })}
-                          className={`${BTN} border-[#198754] bg-white text-[#198754] hover:bg-[#198754] hover:text-white`}
+                          className={`${BTN} border-[#198754] bg-[#198754] text-white hover:bg-[#157347]`}
                         >
-                          ยืนยัน / ปฏิเสธ
+                          Confirm / reject
                         </button>
                       ) : (
                         <span className="inline-flex gap-2">
