@@ -503,6 +503,7 @@ export default function ProjectCalendarDetail() {
   const [tab, setTab] = useState("team");
   const [showHistory, setShowHistory] = useState(true);
 
+  const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
     setLoading(true);
     axios
@@ -510,7 +511,22 @@ export default function ProjectCalendarDetail() {
       .then((res) => setP(res.data))
       .catch((err) => setError(err.response?.data?.message || "โหลดข้อมูลไม่สำเร็จ"))
       .finally(() => setLoading(false));
-  }, [backendUrl, id]);
+  }, [backendUrl, id, reloadKey]);
+
+  // ลบข้อมูลลงงานของคนที่ไม่ได้ Approve แล้ว (endpoint เดียวกับปุ่ม Undeploy ใน Worker Schedule)
+  const undeployOrphan = async (o) => {
+    if (!window.confirm(`Undeploy ${o.fullName}? (ลบข้อมูลลงงานในโปรเจกต์นี้)`)) return;
+    try {
+      await axios.post(
+        `${backendUrl}/api/mobilization/undeploy`,
+        { projectId: id, employeeId: o.employeeId },
+        { withCredentials: true },
+      );
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      alert(err.response?.data?.message || "Undeploy ไม่สำเร็จ");
+    }
+  };
 
   const restByEmp = useMemo(
     () => new Map((p?.restDays || []).map((r) => [r.employeeId, r])),
@@ -596,6 +612,28 @@ export default function ProjectCalendarDetail() {
                 แก้วัน MOB / D-MOB ที่ Worker Schedule →
               </Link>
             </div>
+            {p.orphanAssignments?.length > 0 && (
+              <div className="border-b border-gray-200 bg-[#fff5f5] px-3 py-2 text-xs sm:px-5">
+                <div className="font-semibold text-[#842029]">
+                  ⚠ Deploy ค้าง {p.orphanAssignments.length} คน — ไม่ได้ Approve แล้ว (ไม่นับในตารางและขั้นตอน)
+                </div>
+                {p.orphanAssignments.map((o) => (
+                  <div key={o.employeeId} className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="font-semibold text-gray-800">{o.fullName}</span>
+                    <span className="text-gray-500">
+                      {o.empId || o.empCode} · MOB {o.mobDate ? fmtDate(o.mobDate) : "—"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => undeployOrphan(o)}
+                      className="cursor-pointer rounded-md border border-[#dc3545] bg-white px-2.5 py-0.5 font-semibold text-[#dc3545] hover:bg-red-50"
+                    >
+                      Undeploy
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <DayGrid project={p} restByEmp={restByEmp} />
           </div>
 

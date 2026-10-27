@@ -91,8 +91,8 @@ export async function unapproveWorkers(req, res) {
     const result = await service.unapproveWorkers({ candidateIds, requestId });
     res.json(result);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
+    if (!error.status) console.error(error);
+    res.status(error.status || 500).json({ message: error.message });
   }
 }
 
@@ -101,8 +101,8 @@ export async function removeFromShortlist(req, res) {
     await service.removeFromShortlist(req.params.candidateId);
     res.json({ message: "Removed" });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
+    if (!error.status) console.error(error);
+    res.status(error.status || 500).json({ message: error.message });
   }
 }
 

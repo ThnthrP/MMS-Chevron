@@ -243,6 +243,22 @@ function mapProject(p, pendingTrainingByEmp, now) {
       .map((c) => ({ ...c, requestedPosition: req.position?.name ?? null })),
   );
 
+  // ข้อมูลลงงาน (Assignment) ของคนที่ไม่ได้ Approve แล้ว — เช่น deploy แล้วถูกยกเลิก Approve / เอาออกจากรายชื่อ
+  // ไม่นับในขั้นตอนและตารางวันทำงาน แต่ส่งแยกไปให้หน้าจอเตือน + Undeploy
+  const approvedIds = new Set(approvedCands.map((c) => c.employeeId));
+  const activeAssignments = p.assignments.filter((a) => approvedIds.has(a.employeeId));
+  const orphanAssignments = p.assignments
+    .filter((a) => !approvedIds.has(a.employeeId))
+    .map((a) => ({
+      employeeId: a.employeeId,
+      fullName: a.employee?.fullName,
+      empCode: a.employee?.empCode,
+      empId: a.employee?.empId,
+      mobDate: a.mobDate,
+      demobDate: a.demobDate,
+      deployedAt: a.createdAt,
+    }));
+
   const requestedPositionByEmp = new Map(
     approvedCands.map((c) => [c.employeeId, c.requestedPosition]),
   );
@@ -291,14 +307,14 @@ function mapProject(p, pendingTrainingByEmp, now) {
     medicalIssues: approvedCands.filter((c) => !medicalOk(c)).length,
     pendingTraining,
     taskSummary,
-    assignments: p.assignments,
+    assignments: activeAssignments,
     reviews: p._count.reviews,
     hasRequests: p.requests.length > 0,
     positions: p.requests.length,
     now,
   });
 
-  const employees = p.assignments.map((a) => ({
+  const employees = activeAssignments.map((a) => ({
     employeeId: a.employeeId,
     fullName: a.employee?.fullName,
     empCode: a.employee?.empCode,
@@ -350,6 +366,7 @@ function mapProject(p, pendingTrainingByEmp, now) {
     tab,
     requests,
     employees,
+    orphanAssignments,
     pendingWorkers,
     stages,
     currentStage: current ? { key: current.key, label: current.label, state: current.state, note: current.note } : null,

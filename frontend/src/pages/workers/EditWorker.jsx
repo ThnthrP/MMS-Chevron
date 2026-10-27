@@ -376,6 +376,11 @@ function EmptyState({ title, hint }) {
 // ══════════════════════════════════════════════════════════
 // main
 // ══════════════════════════════════════════════════════════
+// เรียง certification: วันที่ออก (Issued) ล่าสุดอยู่บน · ไม่มีวันที่อยู่ล่างสุด (HR ขอ)
+// completedDate เป็น "YYYY-MM-DD" จาก <input type="date"> → เทียบเป็นข้อความได้
+const byIssuedDesc = (a, b) =>
+  (b.completedDate || "").localeCompare(a.completedDate || "");
+
 export default function EditWorker() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -613,7 +618,7 @@ export default function EditWorker() {
           certFileName: t.certFileName || "",
           certFilePreviewUrl: null,
           removeCertFile: false,
-        })),
+        })).sort(byIssuedDesc),
       );
 
       // เฉพาะ record ที่ projectId = null (manual/historical) —
@@ -780,6 +785,7 @@ export default function EditWorker() {
     }
     setCertFormError("");
     setEditingCertId(null);
+    setCertifications((prev) => [...prev].sort(byIssuedDesc)); // จัดลำดับใหม่หลังแก้วันที่
   };
 
   const handleCertFileChange = (localId, file) => {

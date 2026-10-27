@@ -430,9 +430,57 @@ export async function approveWorkers({ candidateIds, requestId }) {
   return { approved: candidateIds.length };
 }
 
+// ── กันยกเลิก Approve / เอาออกจากรายชื่อ ขณะที่คนนั้นยัง deploy อยู่ในโปรเจกต์ ──
+// (เดิมทำได้ → ข้อมูลลงงาน (Assignment) ค้าง ขึ้นใน Manpower Calendar ทั้งที่ไม่อยู่ในทีมแล้ว)
+async function assertNotDeployed(candidateIds) {
+  const candidates = await prisma.candidate.findMany({
+    where: { id: { in: candidateIds } },
+    select: {
+      employeeId: true,
+      employee: { select: { fullName: true } },
+      round: { select: { requestId: true } },
+    },
+  });
+  const requests = await prisma.manpowerRequest.findMany({
+    where: { id: { in: [...new Set(candidates.map((c) => c.round?.requestId).filter(Boolean))] } },
+    select: { id: true, projectId: true },
+  });
+  const projectByRequest = new Map(requests.map((r) => [r.id, r.projectId]));
+  const pairs = candidates
+    .map((c) => ({
+      employeeId: c.employeeId,
+      projectId: projectByRequest.get(c.round?.requestId),
+      name: c.employee?.fullName,
+    }))
+    .filter((x) => x.projectId);
+  if (pairs.length === 0) return;
+
+  const deployed = await prisma.assignment.findMany({
+    where: {
+      OR: pairs.map(({ employeeId, projectId }) => ({ employeeId, projectId })),
+    },
+    select: { employeeId: true, projectId: true },
+  });
+  if (deployed.length === 0) return;
+
+  const key = (e, p) => `${e}:${p}`;
+  const deployedKeys = new Set(deployed.map((a) => key(a.employeeId, a.projectId)));
+  const names = pairs
+    .filter((x) => deployedKeys.has(key(x.employeeId, x.projectId)))
+    .map((x) => x.name)
+    .filter(Boolean);
+  throw Object.assign(
+    new Error(
+      `${names.join(", ") || "พนักงานคนนี้"} deploy แล้ว — Undeploy ที่ Worker Schedule ก่อน`,
+    ),
+    { status: 409 },
+  );
+}
+
 // ── ยกเลิก approve → กลับเป็น proposed (ล้างให้ตรงกับ approveWorkers) ──
 export async function unapproveWorkers({ candidateIds, requestId }) {
   if (!candidateIds?.length) return { count: 0 };
+  await assertNotDeployed(candidateIds);
 
   // 1) status กลับเป็น proposed
   const result = await prisma.candidate.updateMany({
@@ -462,6 +510,7 @@ export async function unapproveWorkers({ candidateIds, requestId }) {
 }
 
 export async function removeFromShortlist(candidateId) {
+  await assertNotDeployed([candidateId]);
   return prisma.candidate.delete({ where: { id: candidateId } });
 }
 

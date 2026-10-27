@@ -589,6 +589,8 @@ export default function Mobilization() {
     "",
   );
   const [project, setProject] = useState(null);
+  // deploy ค้าง: มีข้อมูลลงงานในโปรเจกต์นี้ แต่ไม่ได้ Approve แล้ว (ไม่ขึ้นในตารางด้านล่าง)
+  const [orphans, setOrphans] = useState([]);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -673,6 +675,11 @@ export default function Mobilization() {
       if (reqId !== fetchReqRef.current) return;
       const data = res.data;
       setProject(data.project);
+      // ไม่บังคับ — โหลดไม่ได้ก็แค่ไม่แสดงแถบเตือน
+      axios
+        .get(`${backendUrl}/api/supervisor/projects-overview/${projectId}`, { withCredentials: true })
+        .then((r) => reqId === fetchReqRef.current && setOrphans(r.data?.orphanAssignments ?? []))
+        .catch(() => setOrphans([]));
       setPositionSummary(data.positionSummary ?? []);
 
       const freshRows = buildRows(data);
@@ -1782,6 +1789,35 @@ export default function Mobilization() {
           </div>
         )}
       </div>
+
+      {/* ════════ deploy ค้าง (ไม่ได้ Approve แล้ว) ════════ */}
+      {project && orphans.length > 0 && (
+        <div className="mt-3 border-l-[3px] border-[#dc3545] bg-[#fff5f5] px-3 py-2.5 text-[13px]">
+          <div className="font-semibold text-[#842029]">
+            ⚠ Deploy ค้าง {orphans.length} คน — ไม่ได้ Approve แล้ว จึงไม่อยู่ในตารางด้านล่าง
+          </div>
+          <div className="mb-1.5 text-xs text-gray-600">
+            ยังมีข้อมูลลงงานในโปรเจกต์นี้ (ขึ้นใน Manpower Calendar) — กด Undeploy เพื่อลบ
+          </div>
+          {orphans.map((o) => (
+            <div key={o.employeeId} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[#f5c2c7] py-1.5">
+              <span className="font-semibold">{o.fullName}</span>
+              <span className="text-xs text-gray-500">
+                {o.empId || o.empCode} · MOB {o.mobDate ? ymd(o.mobDate) : "—"} · D-MOB {o.demobDate ? ymd(o.demobDate) : "—"}
+              </span>
+              {canManageMobilization && (
+                <button
+                  type="button"
+                  onClick={() => undeployRow(o.employeeId)}
+                  className="ml-auto cursor-pointer rounded-md border border-[#dc3545] bg-white px-3 py-1 text-xs font-semibold text-[#dc3545] hover:bg-red-50"
+                >
+                  Undeploy
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ════════ Step 10–11 ════════ */}
       <div className={CARD}>
