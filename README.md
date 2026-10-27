@@ -60,6 +60,8 @@ search by position, project, location, or worker name (Thai / English).
 
 #### 👥 Assign Names
 Match workers against client requirements (% match) and shortlist candidates.
+The assigned list opens from the position header, with colored counts for
+Approved / awaiting approval / awaiting PE / rejected by PE.
 ![Assign Names](screenshots/allocation.png)
 
 #### ✅ PE Approvals
@@ -98,6 +100,11 @@ Position requests, employee timeline, and PE ↔ Manpower discussion with attach
 ![CV Summary](screenshots/cv-summary.png)
 
 ### Settings
+
+#### 🗂 Projects (ON Number)
+Master Project Register by year, with project status and a shortcut to open a
+new requirement from an ON Number.
+![Projects](screenshots/projects.png)
 
 #### 🧩 Training Matrix
 Position-to-training requirements per contract (Mandatory / Assigned).
@@ -193,7 +200,8 @@ shown at the top of the page.
   search by position, project, location, or assigned worker name (Thai /
   English); new requirements can be created from this page
 - **Assign Names:** match workers against client requirements (% match),
-  shortlist (Proposed → Approved), and export CV Summary / Roster
+  shortlist (Proposed → Approved) from an assigned-list dropdown with
+  colored status counts, and export CV Summary / Roster
   (MOB–D-MOB) / Skill Matrix (print & Excel) for client submission
 - **PE Approvals:** workers below 100% match can be submitted with a reason;
   the Project Engineer approves or rejects each worker, grouped by
@@ -219,8 +227,9 @@ shown at the top of the page.
   on each project
 
 ### Settings
-- **Projects & Positions:** Master Project Register (ON Number), project
-  activation per contract, and the position list
+- **Projects & Positions:** Master Project Register (ON Number) by year with
+  search, project activation per contract, "New requirement" from an ON
+  Number, and the position list
 - **Training Matrix:** position-to-training requirements per contract
   (Mandatory / Assigned), Matrix Editor, and the central `GlobalTraining`
   catalog with per-client `TrainingStandard` and expiry buckets (Expired /
