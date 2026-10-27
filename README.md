@@ -53,6 +53,11 @@ Click a status count to filter; training alerts and medical status in separate c
 
 ### Operations
 
+#### 🗂 Projects (ON Number)
+Master Project Register by year, with project status and a shortcut to open a
+new requirement from an ON Number.
+![Projects](screenshots/projects.png)
+
 #### 📋 Manpower Requirements
 Every open position request across projects, with progress, filters, and
 search by position, project, location, or worker name (Thai / English).
@@ -71,6 +76,13 @@ Workers below 100% match, grouped by project and position, approved or rejected 
 #### 📅 Manpower Calendar
 Projects with staffing progress and each worker's timeline, used to check availability.
 ![Manpower Calendar](screenshots/manpower-calendar.png)
+
+#### 🧭 Manpower Calendar › Requirement Detail
+One page per requirement: an 11-step timeline (Requirement → Review) computed
+from work done in the other menus, the per-worker work calendar (rest days,
+MOB, D-MOB, failed Check In), tabs for team status / Check In / Rest Day /
+reviewers, and a history panel of who did what and when.
+![Requirement Detail](screenshots/manpower-calendar-detail.png)
 
 #### 🎓 Training Bookings
 Training requests for workers with missing, expired, or expiring records.
@@ -100,11 +112,6 @@ Position requests, employee timeline, and PE ↔ Manpower discussion with attach
 ![CV Summary](screenshots/cv-summary.png)
 
 ### Settings
-
-#### 🗂 Projects (ON Number)
-Master Project Register by year, with project status and a shortcut to open a
-new requirement from an ON Number.
-![Projects](screenshots/projects.png)
 
 #### 🧩 Training Matrix
 Position-to-training requirements per contract (Mandatory / Assigned).
@@ -159,15 +166,15 @@ shown at the top of the page.
 | **Overview** | My Dashboard | `/` |
 | | Compliance | Compliance Center `/compliance` |
 | | Reports | Analytics & Reports `/reports` |
-| **Operations** | Manpower Requirements | Requirements `/requirements` |
+| **Operations** | Projects & Positions | Projects `/projects` · Positions `/positions` |
+| | Manpower Requirements | Requirements `/requirements` |
 | | Assign Names | Assign Names `/allocation` · PE Approvals `/pe-approvals` |
-| | Manpower Calendar | `/projects-overview` |
+| | Manpower Calendar | `/projects-overview` · detail `/projects-overview/:id` |
 | | Training Bookings | Bookings `/requests-history` · Training Courses `/certifications` |
 | | Medical Bookings | `/medical-bookings` |
 | | Worker Schedule | Mobilization `/mobilization` · Post-Project Review `/review` |
 | | Worker Pool | Workers `/workers` |
-| **Settings** | Projects & Positions | Projects `/projects` · Positions `/positions` |
-| | Training Matrix | Training Matrix `/training-matrix` · Matrix Editor `/positions/matrix` · Trainings `/trainings` |
+| **Settings** | Training Matrix | Training Matrix `/training-matrix` · Matrix Editor `/positions/matrix` · Trainings `/trainings` |
 | | Departments | `/divisions` |
 | **Admin** | Users & Roles | Users `/users` · Bulk Set PIN `/workers/bulk-set-pin` |
 | | Audit Log | `/audit-logs` |
@@ -195,6 +202,9 @@ shown at the top of the page.
 - **Analytics & Reports:** workforce, compliance, and project reports
 
 ### Operations
+- **Projects & Positions:** Master Project Register (ON Number) by year with
+  search, project activation per contract, "New requirement" from an ON
+  Number, and the position list
 - **Manpower Requirements:** all position requests across projects with
   filled / required progress, filters (project, status, location, date), and
   search by position, project, location, or assigned worker name (Thai /
@@ -206,17 +216,29 @@ shown at the top of the page.
 - **PE Approvals:** workers below 100% match can be submitted with a reason;
   the Project Engineer approves or rejects each worker, grouped by
   project and position
-- **Manpower Calendar:** in-progress / upcoming / completed projects with
-  staffing progress and the employee timeline, used to check availability
-  before assigning names
+- **Manpower Calendar:** in-progress / upcoming / completed requirements with
+  the current step and progress dots, used to check availability before
+  assigning names. The detail page shows:
+  - *Timeline (11 steps):* Requirement → Assign Names → Approval → Worker
+    Confirm → Training & Medical → Pre-Field Training → Travel Booking →
+    Check In → MOB → D-MOB → Review. Each step is computed from data in the
+    other menus (no manual status), shows its progress, explains on hover
+    where it is done, and links to that page. Red = a worker declined or
+    failed Check In; dashed = no records, skipped
+  - *Work calendar:* rest days, MOB / D-MOB, days on site, failed Check In
+  - *Tabs:* team status per position (Proposed / Approved, worker
+    confirmation, medical, pending training), Check In per trip, Rest Day,
+    reviewers
+  - *History:* entries from the Audit Log in plain language with the
+    employee's name, filtered by team / documents / status & approvals
 - **Training Bookings / Medical Bookings:** training and medical check-up
   requests for workers with missing, expired, or expiring records, tracked
   as pending / completed; Training Courses shows one training across every
   worker, including bulk certificate entry
 - **Worker Schedule:**
-  - *Mobilization:* pre-mobilization checklist (PPE, alcohol test, blood
-    pressure, baggage inspection, pre-field training, transport/hotel/vessel
-    booking), then deploy to site with D-MOB calculated from the MOB date
+  - *Mobilization:* pre-mobilization checklist (alcohol test, drug test, PPE
+    inspection, pre-field training, baggage inspection, blood pressure), then
+    deploy to site with D-MOB calculated from the MOB date
   - *Post-Project Review:* per-worker rating and rehire recommendation, with
     review progress, reviewer name and date, row filter, and Save all
 - **Worker Pool:** worker profiles (Employee ID / internal code, position,
@@ -227,9 +249,6 @@ shown at the top of the page.
   on each project
 
 ### Settings
-- **Projects & Positions:** Master Project Register (ON Number) by year with
-  search, project activation per contract, "New requirement" from an ON
-  Number, and the position list
 - **Training Matrix:** position-to-training requirements per contract
   (Mandatory / Assigned), Matrix Editor, and the central `GlobalTraining`
   catalog with per-client `TrainingStandard` and expiry buckets (Expired /
@@ -290,7 +309,7 @@ shown at the top of the page.
 ## Manpower Workflow
 
 ```
-Client requirement → Manpower Requirements (project + position + headcount)
+Projects (ON Number) → New requirement → Manpower Requirements (position + headcount)
 ↓
 Assign Names: search & match workers (% match vs client requirements)
 ├─ check availability on the Manpower Calendar
@@ -303,12 +322,15 @@ Missing / expiring items → Training Bookings / Medical Bookings
 ↓
 Worker confirms the job in the Worker App
 ↓
-Mobilization: pre-mobilization checklist (PPE, alcohol test, BP, briefing, travel)
+Mobilization: pre-field training + Check In (alcohol, drug, PPE, baggage, BP)
 ↓
 Deploy to site → Assignment created (MOB / D-MOB)
 ↓
 Post-Project Review (after demobilization)
 ```
+
+Every requirement's progress through these steps is shown on the Manpower
+Calendar detail page.
 
 ---
 
@@ -335,7 +357,8 @@ MMS/
 │   │   │   ├── positions/         # ManagePositions, ManageDivisions, MatrixEditor
 │   │   │   ├── projects/          # ManpowerRequirements, NewRequirementModal, Project,
 │   │   │   │                      #   ProjectDetail, EditProject, Allocation, PEApprovals,
-│   │   │   │                      #   ProjectsOverview, Mobilization, PostProjectReview,
+│   │   │   │                      #   ProjectsOverview, ProjectCalendarDetail, HistoryPanel,
+│   │   │   │                      #   calendarShared, Mobilization, PostProjectReview,
 │   │   │   │                      #   AnalyticsReports
 │   │   │   ├── worker/            # Worker App pages (login, readiness, PIN change, ...)
 │   │   │   └── admin/             # AdminUsers, AuditLogs, DataImport
@@ -345,7 +368,7 @@ MMS/
 │
 ├── backend/
 │   ├── controllers/
-│   ├── services/
+│   ├── services/                  # supervisorService = Manpower Calendar timeline + history
 │   ├── routes/
 │   ├── middleware/                # userAuth, workerAuth, auditTrail
 │   ├── utils/                     # roles, expiryStatus, auditLogger
