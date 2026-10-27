@@ -25,7 +25,7 @@ export const STAGE_STYLE = {
     line: "bg-gray-200",
     badge: "bg-red-100 text-red-700",
   },
-  // ไม่มีรายการให้บันทึก (เช่น Travel Booking ที่ไม่ได้จองผ่านระบบ) — ข้ามไป ไม่นับเป็นขั้นปัจจุบัน
+  // ไม่มีรายการให้บันทึก (เช่น Pre-Field Training ที่ไม่มีรายการ) — ข้ามไป ไม่นับเป็นขั้นปัจจุบัน
   skip: {
     dot: "bg-gray-50 text-gray-400 border-gray-300 border-dashed",
     text: "text-gray-400",
@@ -52,7 +52,6 @@ export const stageLink = (key, projectId) => {
     case "training":
       return "/requests-history";
     case "briefing":
-    case "travel":
     case "hangar":
     case "onsite":
     case "demob":

@@ -13,7 +13,7 @@ const prisma = new PrismaClient();
 //          (CES: Awaiting Respond/Confirmation) .......... confirm
 //   ISO 3  อบรมความปลอดภัย · ตรวจ Certificate · สุขภาพ ... training
 //   ISO 4  แจ้งรายละเอียดงาน · เตรียม PPE ............... briefing
-//   ISO 8  ที่พัก · ตั๋ว · เรือ · รถรับส่ง (CES: Booking) .. travel
+//   ISO 8  ที่พัก · ตั๋ว · เรือ · รถรับส่ง — ไม่แสดงเป็นขั้น (บริษัทจองเดินทางนอกระบบ ไม่มีหน้าบันทึกใน MMS)
 //   ISO 9  ตรวจแอลกอฮอล์ที่ Hangar/ท่าเรือ — ผ่าน/ไม่ผ่าน .. hangar
 //   ISO 10 ปฏิบัติงาน ..................................... onsite
 //   ISO 11 ครบกำหนด รับกลับ ............................... demob
@@ -26,9 +26,7 @@ const TASK_STAGE = {
   ppe_preparation: "briefing",
   accounting_notify: "briefing",
   pre_field_training: "briefing",
-  vessel_booking: "travel",
-  transport_booking: "travel",
-  hotel_booking: "travel",
+  // vessel_booking / transport_booking / hotel_booking — ไม่นับเข้าขั้นใด (ไม่มีขั้น Travel Booking)
   alcohol_test: "hangar",
   drug_test: "hangar",
   ppe_inspection: "hangar",
@@ -50,8 +48,6 @@ export const STAGES = [
     hint: "Training Bookings / Medical Bookings · ผ่านเมื่อผลตรวจสุขภาพใช้ได้ถึงวันเริ่มงานและไม่มีคำขออบรมค้าง" },
   { key: "briefing", label: "Pre-Field Training", iso: "แจ้งรายละเอียดงาน · อบรมก่อนลงงาน",
     hint: "Worker Schedule › Mobilization: อบรมก่อนปฏิบัติงานนอกพื้นที่ (Safety Oriented, 28 Days plan ฯลฯ) · ผ่านเมื่ออบรมครบทุกคน" },
-  { key: "travel", label: "Travel Booking", iso: "ที่พัก · ตั๋ว · เรือ · รถรับส่ง",
-    hint: "จองเรือ · รถ · ที่พัก — ยังไม่มีหน้าบันทึกในระบบ จึงขึ้น \"ไม่มีรายการ\" และข้ามไป" },
   { key: "hangar", label: "Check In", iso: "ตรวจความพร้อมก่อนเดินทาง (Hangar / ท่าเรือ)",
     hint: "Worker Schedule › Mobilization: ตรวจแอลกอฮอล์ · สารเสพติด · PPE · กระเป๋า · ความดัน — ดูรายเที่ยวที่แท็บ Check In · ไม่ผ่าน = แดง" },
   { key: "onsite", label: "MOB", iso: "ปฏิบัติงาน",
@@ -173,14 +169,14 @@ function buildStages(ctx) {
         .filter(Boolean)
         .join(" · ") || (approved > 0 ? "พร้อม" : ""),
   };
-  for (const key of ["briefing", "travel", "hangar"]) {
+  for (const key of ["briefing", "hangar"]) {
     const t = taskSummary[key];
     s[key] = {
       // ตรวจไม่ผ่าน (เช่น แอลกอฮอล์) = ยังไม่ผ่านขั้นนี้ ต้องส่งตัวกลับ / หาคนแทน
       done: t.total > 0 && t.done === t.total && t.failed === 0,
       fail: t.failed > 0,
       note: t.total > 0 ? `${t.done}/${t.total}` + (t.failed ? ` · ไม่ผ่าน ${t.failed}` : "") : "",
-      // Briefing / Travel ยังไม่มีรายการให้บันทึก → ข้ามได้ ไม่ให้ค้างเป็น "ขั้นปัจจุบัน"
+      // Pre-Field Training ยังไม่มีรายการให้บันทึก → ข้ามได้ ไม่ให้ค้างเป็น "ขั้นปัจจุบัน"
       // (Check In ไม่ข้าม — ต้องตรวจก่อนเดินทางเสมอ)
       skip: key !== "hangar" && t.total === 0 && assignments.length > 0,
     };
@@ -260,7 +256,6 @@ function mapProject(p, pendingTrainingByEmp, now) {
 
   const taskSummary = {
     briefing: { total: 0, done: 0, failed: 0 },
-    travel: { total: 0, done: 0, failed: 0 },
     hangar: { total: 0, done: 0, failed: 0 },
   };
   const hangarFailByEmp = new Set();
