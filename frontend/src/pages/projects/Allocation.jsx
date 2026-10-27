@@ -2036,7 +2036,8 @@ export default function Allocation() {
                     ✓ ทุกตำแหน่งจัดครบแล้ว
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-1">
+                  // จอใหญ่: เลื่อนเฉพาะรายการตำแหน่ง — ตำแหน่งเยอะไม่ดันหน้ายาว
+                  <div className="flex flex-col gap-1 lg:max-h-[max(240px,calc(100vh-330px))] lg:overflow-y-auto lg:pr-1.5 lg:[scrollbar-width:thin]">
                     {shownRequests.map((r) => {
                       const st = requestStats(r);
                       const active = r.id === selectedRequest?.id;

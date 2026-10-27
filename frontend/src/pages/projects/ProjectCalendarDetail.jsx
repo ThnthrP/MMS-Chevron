@@ -36,15 +36,16 @@ const dayStart = (d) => {
 const sameDay = (a, b) => a && b && dayStart(a).getTime() === dayStart(b).getTime();
 const addDays = (d, n) => new Date(d.getTime() + n * DAY_MS);
 
+// [ป้าย, สี, คำอธิบาย (tooltip)] — คำเดียวกับหน้า Assign Names (Proposed / Approved)
 const CONFIRM_LABEL = {
-  confirmed: ["✓ ตอบรับ", "bg-emerald-100 text-emerald-800"],
-  rejected: ["✕ ปฏิเสธ", "bg-red-100 text-red-700"],
-  pending: ["รอตอบรับ", "bg-amber-100 text-amber-800"],
+  confirmed: ["✓ ตอบรับ", "bg-emerald-100 text-emerald-800", "พนักงานกดตอบรับงานใน Worker App แล้ว"],
+  rejected: ["✕ ปฏิเสธ", "bg-red-100 text-red-700", "พนักงานกดปฏิเสธงานใน Worker App — ต้องหาคนแทน"],
+  pending: ["รอตอบรับ", "bg-amber-100 text-amber-800", "Approve แล้ว รอพนักงานกดตอบรับใน Worker App"],
 };
 const CAND_LABEL = {
-  approved: ["อนุมัติ", "bg-blue-100 text-blue-800"],
-  proposed: ["เสนอชื่อ", "bg-gray-100 text-gray-600"],
-  rejected: ["ไม่อนุมัติ", "bg-red-100 text-red-700"],
+  approved: ["Approved", "bg-blue-100 text-blue-800", "Approve แล้วที่ Assign Names (หรือ PE อนุมัติ)"],
+  proposed: ["Proposed", "bg-gray-100 text-gray-600", "เสนอชื่อแล้ว ยังไม่ Approve — กด Approve ที่ Assign Names"],
+  rejected: ["ไม่อนุมัติ", "bg-red-100 text-red-700", "ไม่อนุมัติรายชื่อนี้"],
 };
 const CHECK_LABEL = {
   alcohol_test: "แอลกอฮอล์",
@@ -236,7 +237,7 @@ function DayGrid({ project, restByEmp }) {
         <span><b className="rounded bg-[#b91c1c] px-1 text-white">MB</b> วันลงงาน (MOB)</span>
         <span><b className="rounded bg-red-100 px-1 text-red-800">1 2 3</b> วันที่อยู่บนงาน</span>
         <span><b className="rounded bg-[#7f1d1d] px-1 text-white">DM</b> วันกลับ (D-MOB)</span>
-        <span><b className="rounded bg-red-600 px-1 text-white">✕</b> ตรวจที่ Hangar ไม่ผ่าน</span>
+        <span><b className="rounded bg-red-600 px-1 text-white">✕</b> Check In ไม่ผ่าน (ตรวจก่อนเดินทาง)</span>
         <span><b className="rounded bg-blue-600 px-1 text-white">วันนี้</b></span>
         <span>พัก x/y = พักแล้ว x วัน / ควรพัก y วัน</span>
       </div>
@@ -265,21 +266,29 @@ function TeamTab({ p }) {
             ) : (
               <div className="grid grid-cols-1 gap-1.5 lg:grid-cols-2">
                 {t.members.map((m) => {
-                  const [cl, cc] = CAND_LABEL[m.status] || CAND_LABEL.proposed;
-                  const [fl, fc] = CONFIRM_LABEL[m.workerConfirmStatus] || CONFIRM_LABEL.pending;
+                  const [cl, cc, ct] = CAND_LABEL[m.status] || CAND_LABEL.proposed;
+                  const [fl, fc, ft] = CONFIRM_LABEL[m.workerConfirmStatus] || CONFIRM_LABEL.pending;
                   return (
                     <div key={m.employeeId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 px-3 py-2 text-xs">
                       <PersonCell id={m.employeeId} name={m.fullName} sub={`${m.empId || m.empCode} · ${m.employeePosition || "—"}`} />
                       <div className="flex flex-wrap gap-1">
-                        <Pill cls={cc}>{cl}</Pill>
-                        {m.status === "approved" && <Pill cls={fc}>{fl}</Pill>}
+                        <Pill cls={cc} title={ct}>{cl}</Pill>
+                        {m.status === "approved" && <Pill cls={fc} title={ft}>{fl}</Pill>}
                         <Pill
                           cls={m.medicalOk ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"}
-                          title={m.medicalExpiry ? `Medical หมดอายุ ${fmtDate(m.medicalExpiry)}` : "ไม่มีผลตรวจสุขภาพ"}
+                          title={
+                            m.medicalExpiry
+                              ? `ผลตรวจสุขภาพหมดอายุ ${fmtDate(m.medicalExpiry)} — ${m.medicalOk ? "ใช้ได้ถึงวันเริ่มงาน" : "ไม่ทันวันเริ่มงาน หรือผลไม่ผ่าน"}`
+                              : "ไม่มีผลตรวจสุขภาพ — จองที่ Medical Bookings"
+                          }
                         >
                           {m.medicalOk ? "สุขภาพ ✓" : "สุขภาพ ✕"}
                         </Pill>
-                        {m.pendingTraining > 0 && <Pill cls="bg-amber-100 text-amber-800">รออบรม {m.pendingTraining}</Pill>}
+                        {m.pendingTraining > 0 && (
+                          <Pill cls="bg-amber-100 text-amber-800" title={`มีคำขออบรม ${m.pendingTraining} หลักสูตรที่ Training Bookings รอ HR ยืนยัน`}>
+                            รออบรม {m.pendingTraining}
+                          </Pill>
+                        )}
                         {m.mobDate && <Pill cls="bg-red-50 text-red-700">MOB {fmtShort(m.mobDate)}</Pill>}
                       </div>
                     </div>
@@ -575,7 +584,7 @@ export default function ProjectCalendarDetail() {
               </span>
             </div>
             <div className="px-3 py-4 sm:px-5">
-              <StageStepper stages={p.stages} />
+              <StageStepper stages={p.stages} projectId={p.id} />
             </div>
           </div>
 

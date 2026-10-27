@@ -36,18 +36,30 @@ const TASK_STAGE = {
   blood_pressure_check: "hangar",
 };
 
+// label = ชื่อขั้น (ใช้คำเดียวกับเมนู/ปุ่มในระบบ) · hint = ทำที่ไหน / ผ่านเมื่อไร (แสดงเป็น tooltip)
 export const STAGES = [
-  { key: "requirement", label: "Requirement", iso: "ลูกค้าแจ้งความต้องการ · บันทึกในระบบ" },
-  { key: "assign", label: "Assign Names", iso: "ตรวจสอบบุคลากร · จัดรายชื่อ" },
-  { key: "approval", label: "Approval", iso: "PE / ลูกค้าอนุมัติรายชื่อ" },
-  { key: "confirm", label: "Worker Confirm", iso: "พนักงานตอบรับงาน" },
-  { key: "training", label: "Training & Medical", iso: "อบรม · ตรวจ Certificate · ตรวจสุขภาพ" },
-  { key: "briefing", label: "Briefing & PPE", iso: "แจ้งรายละเอียดงาน · เตรียม PPE" },
-  { key: "travel", label: "Travel Booking", iso: "ที่พัก · ตั๋ว · เรือ · รถรับส่ง" },
-  { key: "hangar", label: "Hangar Check", iso: "ตรวจแอลกอฮอล์ที่ Hangar / ท่าเรือ" },
-  { key: "onsite", label: "On-Site", iso: "ปฏิบัติงาน" },
-  { key: "demob", label: "Demob", iso: "ครบกำหนด · รับกลับ" },
-  { key: "evaluated", label: "Evaluated", iso: "ประเมินผลหลังจบงาน" },
+  { key: "requirement", label: "Requirement", iso: "ลูกค้าแจ้งความต้องการ · บันทึกในระบบ",
+    hint: "สร้าง requirement และเพิ่มตำแหน่ง — Projects › + New requirement / หน้า Requirement · ผ่านเมื่อมีตำแหน่งอย่างน้อย 1 ตำแหน่ง" },
+  { key: "assign", label: "Assign Names", iso: "ตรวจสอบบุคลากร · จัดรายชื่อ",
+    hint: "Assign Names › กด + เพิ่ม · ผ่านเมื่อจัดคนครบทุกตำแหน่ง" },
+  { key: "approval", label: "Approval", iso: "PE / ลูกค้าอนุมัติรายชื่อ",
+    hint: "Assign Names › Approve · คนที่ % Match ไม่ถึง 100% ส่ง PE Approvals · ผ่านเมื่ออนุมัติครบและไม่มีคำขอค้างที่ PE" },
+  { key: "confirm", label: "Worker Confirm", iso: "พนักงานตอบรับงาน",
+    hint: "พนักงานกดตอบรับ/ปฏิเสธใน Worker App · ผ่านเมื่อทุกคนตอบรับ · มีคนปฏิเสธ = แดง" },
+  { key: "training", label: "Training & Medical", iso: "อบรม · ตรวจ Certificate · ตรวจสุขภาพ",
+    hint: "Training Bookings / Medical Bookings · ผ่านเมื่อผลตรวจสุขภาพใช้ได้ถึงวันเริ่มงานและไม่มีคำขออบรมค้าง" },
+  { key: "briefing", label: "Pre-Field Training", iso: "แจ้งรายละเอียดงาน · อบรมก่อนลงงาน",
+    hint: "Worker Schedule › Mobilization: อบรมก่อนปฏิบัติงานนอกพื้นที่ (Safety Oriented, 28 Days plan ฯลฯ) · ผ่านเมื่ออบรมครบทุกคน" },
+  { key: "travel", label: "Travel Booking", iso: "ที่พัก · ตั๋ว · เรือ · รถรับส่ง",
+    hint: "จองเรือ · รถ · ที่พัก — ยังไม่มีหน้าบันทึกในระบบ จึงขึ้น \"ไม่มีรายการ\" และข้ามไป" },
+  { key: "hangar", label: "Check In", iso: "ตรวจความพร้อมก่อนเดินทาง (Hangar / ท่าเรือ)",
+    hint: "Worker Schedule › Mobilization: ตรวจแอลกอฮอล์ · สารเสพติด · PPE · กระเป๋า · ความดัน — ดูรายเที่ยวที่แท็บ Check In · ไม่ผ่าน = แดง" },
+  { key: "onsite", label: "MOB", iso: "ปฏิบัติงาน",
+    hint: "วัน MOB ที่ Worker Schedule · ผ่านเมื่อถึงวัน MOB ครบทุกคน" },
+  { key: "demob", label: "D-MOB", iso: "ครบกำหนด · รับกลับ",
+    hint: "วัน D-MOB ที่ Worker Schedule · ผ่านเมื่อถึงวัน D-MOB ครบทุกคน" },
+  { key: "evaluated", label: "Review", iso: "ประเมินผลหลังจบงาน",
+    hint: "Worker Schedule › Post-Project Review · ผ่านเมื่อประเมินครบทุกคนที่ลงงาน" },
 ];
 
 const TASK_DONE = ["completed", "not_required"];
@@ -128,17 +140,19 @@ function buildStages(ctx) {
     assignments,
     reviews,
     hasRequests,
+    positions = 0,
     now,
   } = ctx;
 
   const s = {};
-  s.requirement = { done: true, note: "" };
-  s.assign = !hasRequests
-    ? { done: false, note: "ยังไม่มีตำแหน่ง" }
-    : {
-        done: quantity > 0 && shortlisted >= quantity,
-        note: `${shortlisted}/${quantity} คน`,
-      };
+  // Requirement ผ่านเมื่อใส่ตำแหน่งแล้ว (เดิมผ่านเสมอ → "ยังไม่มีตำแหน่ง" ไปโผล่ที่ขั้น Assign Names)
+  s.requirement = hasRequests
+    ? { done: quantity > 0, note: `${positions} ตำแหน่ง · ${quantity} คน` }
+    : { done: false, note: "ยังไม่มีตำแหน่ง" };
+  s.assign = {
+    done: hasRequests && quantity > 0 && shortlisted >= quantity,
+    note: hasRequests ? `จัดแล้ว ${shortlisted}/${quantity}` : "",
+  };
   s.approval = {
     done: quantity > 0 && approved >= quantity && pendingPE === 0,
     note:
@@ -166,23 +180,30 @@ function buildStages(ctx) {
       done: t.total > 0 && t.done === t.total && t.failed === 0,
       fail: t.failed > 0,
       note: t.total > 0 ? `${t.done}/${t.total}` + (t.failed ? ` · ไม่ผ่าน ${t.failed}` : "") : "",
+      // Briefing / Travel ยังไม่มีรายการให้บันทึก → ข้ามได้ ไม่ให้ค้างเป็น "ขั้นปัจจุบัน"
+      // (Check In ไม่ข้าม — ต้องตรวจก่อนเดินทางเสมอ)
+      skip: key !== "hangar" && t.total === 0 && assignments.length > 0,
     };
+    if (s[key].skip) s[key].note = "ไม่มีรายการ";
   }
   const mobbed = assignments.filter((a) => a.mobDate && new Date(a.mobDate) <= now);
   const demobbed = assignments.filter(
     (a) => a.demobDate && new Date(a.demobDate) <= now,
   );
+  // MOB / D-MOB / Review — นับเทียบจำนวนคนที่ต้องการ (เดิมเทียบแค่คนที่ลงตารางแล้ว
+  // → ลงตาราง 1 จาก 13 คนก็ขึ้นเขียว)
+  const crew = Math.max(quantity, assignments.length);
   s.onsite = {
-    done: assignments.length > 0 && mobbed.length === assignments.length,
-    note: assignments.length ? `${mobbed.length}/${assignments.length} คน` : "",
+    done: crew > 0 && mobbed.length >= crew,
+    note: assignments.length ? `${mobbed.length}/${crew} คน` : "",
   };
   s.demob = {
-    done: assignments.length > 0 && demobbed.length === assignments.length,
-    note: assignments.length ? `${demobbed.length}/${assignments.length} คน` : "",
+    done: crew > 0 && demobbed.length >= crew,
+    note: assignments.length ? `${demobbed.length}/${crew} คน` : "",
   };
   s.evaluated = {
-    done: assignments.length > 0 && reviews >= assignments.length,
-    note: assignments.length ? `${Math.min(reviews, assignments.length)}/${assignments.length} คน` : "",
+    done: crew > 0 && demobbed.length >= crew && reviews >= crew,
+    note: assignments.length ? `${Math.min(reviews, crew)}/${crew} คน` : "",
   };
 
   // ขั้นแรกที่ยังไม่ผ่าน = ขั้นปัจจุบัน (จุดที่ติดอยู่)
@@ -191,6 +212,7 @@ function buildStages(ctx) {
     const x = s[st.key];
     let state;
     if (x.done) state = "done";
+    else if (x.skip) state = "skip";
     else if (!currentFound) {
       currentFound = true;
       state = x.fail ? "fail" : "current";
@@ -277,6 +299,7 @@ function mapProject(p, pendingTrainingByEmp, now) {
     assignments: p.assignments,
     reviews: p._count.reviews,
     hasRequests: p.requests.length > 0,
+    positions: p.requests.length,
     now,
   });
 
@@ -315,7 +338,7 @@ function mapProject(p, pendingTrainingByEmp, now) {
   else if (p.startDate && new Date(p.startDate) > now) tab = "upcoming";
   else tab = "in_progress";
 
-  const current = stages.find((s) => s.state !== "done") || null;
+  const current = stages.find((s) => s.state !== "done" && s.state !== "skip") || null;
 
   return {
     id: p.id,
@@ -636,6 +659,48 @@ const MODULE_TH = {
   medical_requests: "คำขอตรวจสุขภาพ",
 };
 
+// ข้อความที่ผู้ใช้อ่านเข้าใจ (แทน "เพิ่ม allocation" / "ตัดสินผล pe_approvals #…")
+const HISTORY_TEXT = {
+  allocation: {
+    CREATE: "เสนอชื่อเข้าตำแหน่ง (Proposed)",
+    DELETE: "เอาชื่อออกจากรายชื่อที่จัด",
+    APPROVE: "Approve รายชื่อ",
+    REVOKE: "ยกเลิก Approve (กลับเป็น Proposed)",
+    REJECT: "ไม่อนุมัติรายชื่อ",
+    UPDATE: "แก้ไขรายชื่อที่จัด",
+  },
+  pe_approvals: {
+    CREATE: "ส่งขออนุมัติ PE (% Match ไม่ครบ 100%)",
+    DECISION: "PE ตัดสินคำขอ",
+    APPROVE: "PE อนุมัติ",
+    REJECT: "PE ไม่อนุมัติ",
+    DELETE: "ยกเลิกคำขออนุมัติ PE",
+  },
+  projects: {
+    CREATE: "สร้าง requirement",
+    UPDATE: "แก้ไข requirement / ตำแหน่ง",
+    DELETE: "ลบ requirement / ตำแหน่ง",
+  },
+  project_messages: { CREATE: "ส่งข้อความในโปรเจกต์", UPLOAD: "แนบไฟล์ในโปรเจกต์" },
+  mobilization: {
+    CREATE: "เพิ่มใน Worker Schedule",
+    UPDATE: "อัปเดต Worker Schedule (checklist / วัน MOB–D-MOB)",
+    DELETE: "ลบจาก Worker Schedule",
+  },
+  review: { CREATE: "บันทึกผลประเมิน", UPDATE: "แก้ผลประเมิน" },
+  training_requests: { CREATE: "ส่งคำขออบรม", UPDATE: "อัปเดตคำขออบรม", DECISION: "HR ตอบคำขออบรม" },
+  medical_requests: { CREATE: "ส่งคำขอตรวจสุขภาพ", UPDATE: "อัปเดตคำขอตรวจสุขภาพ", DECISION: "HR ตอบคำขอตรวจสุขภาพ" },
+};
+function historyText(log, peStatus) {
+  const t = HISTORY_TEXT[log.module]?.[log.action];
+  if (!t) return null;
+  if (log.module === "pe_approvals" && log.action === "DECISION") {
+    if (peStatus === "approved") return "PE อนุมัติ (% Match ไม่ครบ)";
+    if (peStatus === "rejected") return "PE ไม่อนุมัติ";
+  }
+  return t;
+}
+
 const historyCategory = (log) => {
   if (["APPROVE", "REJECT", "DECISION", "REVOKE"].includes(log.action)) return "status";
   if (["allocation", "pe_approvals"].includes(log.module)) return "team";
@@ -652,12 +717,21 @@ export async function getProjectHistory(id) {
       requests: {
         select: {
           id: true,
-          bookings: { select: { id: true } },
-          matchExceptions: { select: { id: true } },
-          rounds: { select: { id: true, candidates: { select: { id: true } } } },
+          bookings: { select: { id: true, employeeId: true, employee: { select: { fullName: true } } } },
+          matchExceptions: {
+            select: { id: true, status: true, employeeId: true, employee: { select: { fullName: true } } },
+          },
+          rounds: {
+            select: {
+              id: true,
+              candidates: {
+                select: { id: true, employeeId: true, employee: { select: { fullName: true } } },
+              },
+            },
+          },
         },
       },
-      assignments: { select: { id: true } },
+      assignments: { select: { id: true, employeeId: true, employee: { select: { fullName: true } } } },
     },
   });
   if (!p) {
@@ -678,6 +752,25 @@ export async function getProjectHistory(id) {
   }
   p.assignments.forEach((a) => ids.add(a.id));
   const idList = [...ids];
+
+  // id → ชื่อพนักงาน (candidate / คำขอ PE / booking / assignment / employee) — ใช้บอกว่าทำกับใคร
+  const nameById = new Map();
+  const peStatusById = new Map();
+  const addName = (x) => {
+    const n = x.employee?.fullName;
+    if (!n) return;
+    nameById.set(x.id, n);
+    if (x.employeeId) nameById.set(x.employeeId, n);
+  };
+  for (const r of p.requests) {
+    r.bookings.forEach(addName);
+    r.matchExceptions.forEach((m) => {
+      addName(m);
+      peStatusById.set(m.id, m.status);
+    });
+    r.rounds.forEach((rd) => rd.candidates.forEach(addName));
+  }
+  p.assignments.forEach(addName);
 
   const logs = await prisma.auditLog.findMany({
     where: {
@@ -712,19 +805,25 @@ export async function getProjectHistory(id) {
     return false;
   });
 
-  const items = related.slice(0, 300).map((l) => ({
-    id: l.id,
-    at: l.createdAt,
-    actor: l.actorName,
-    role: l.actorRole,
-    action: l.action,
-    module: l.module,
-    summary:
-      l.summary ||
-      `${ACTION_TH[l.action] || l.action} · ${MODULE_TH[l.module] || l.module}`,
-    changes: l.details?.changes ? Object.keys(l.details.changes).length : 0,
-    category: historyCategory(l),
-  }));
+  const items = related.slice(0, 300).map((l) => {
+    const hay = `${l.resourceId || ""} ${l.path || ""} ${l.details ? JSON.stringify(l.details) : ""}`;
+    const names = [...new Set([...nameById.keys()].filter((k) => hay.includes(k)).map((k) => nameById.get(k)))];
+    const peId = [...peStatusById.keys()].find((k) => hay.includes(k));
+    const friendly = historyText(l, peId ? peStatusById.get(peId) : null);
+    const who = names.length ? ` · ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}` : "";
+    return {
+      id: l.id,
+      at: l.createdAt,
+      actor: l.actorName,
+      role: l.actorRole,
+      action: l.action,
+      module: l.module,
+      summary: friendly ? friendly + who : (l.summary || `${ACTION_TH[l.action] || l.action} · ${MODULE_TH[l.module] || l.module}`),
+      raw: l.summary || `${l.method || ""} ${l.path || ""}`.trim(), // ข้อความเดิมจาก Audit Log (tooltip)
+      changes: l.details?.changes ? Object.keys(l.details.changes).length : 0,
+      category: historyCategory(l),
+    };
+  });
 
   // requirement ที่สร้างก่อนเปิด Audit Log — ยังมีจุดเริ่มต้นให้เห็น
   if (!items.some((i) => i.module === "projects" && i.action === "CREATE")) {

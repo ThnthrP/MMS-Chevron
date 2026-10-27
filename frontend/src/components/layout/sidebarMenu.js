@@ -5,9 +5,10 @@
 //
 // เมนูจัดตาม flow ISO / โปรแกรมตัวอย่างของลูกค้า แบ่ง section ตามช่วงของ flow:
 //   OVERVIEW      My Dashboard · Compliance · Reports
-//   OPERATIONS    Manpower Requirements · Assign Names · Manpower Calendar ·
-//                 Training Bookings · Medical Bookings · Worker Schedule · Worker Pool   (ISO 1–12)
-//   SETTINGS      Projects & Positions · Training Matrix · Departments
+//   OPERATIONS    Projects & Positions · Manpower Requirements · Assign Names ·
+//                 Manpower Calendar · Training Bookings · Medical Bookings ·
+//                 Worker Schedule · Worker Pool   (ISO 1–12)
+//   SETTINGS      Training Matrix · Departments
 //   ADMIN         Users & Roles · Audit Log · Data Import (admin เท่านั้น)
 //
 // 1 เมนู = หลายหน้าเดิมได้ (tabs) — แสดงเป็นแท็บด้านบนของหน้า (MenuTabs.jsx)
@@ -110,6 +111,15 @@ export const APP_MENU = [
   {
     section: "OPERATIONS",
     items: [
+      // จุดเริ่มของ flow: ON Number (Master Project Register) → + New requirement
+      {
+        name: "Projects & Positions",
+        icon: Settings2,
+        tabs: [
+          { name: "Projects", path: "/projects", roles: R.projects },
+          { name: "Positions", path: "/positions", roles: R.settings },
+        ],
+      },
       {
         name: "Manpower Requirements",
         icon: ClipboardList,
@@ -201,15 +211,6 @@ export const APP_MENU = [
   {
     section: "SETTINGS",
     items: [
-      {
-        name: "Projects & Positions",
-        icon: Settings2,
-        tabs: [
-          // ON Number (Master Project Register) — ย้ายมาจากเมนู Manpower Requirements
-          { name: "Projects", path: "/projects", roles: R.projects },
-          { name: "Positions", path: "/positions", roles: R.settings },
-        ],
-      },
       // ข้อกำหนด training ของลูกค้า — ดู (Matrix) → แก้ (Matrix Editor) → รายการ training กลาง
       {
         name: "Training Matrix",

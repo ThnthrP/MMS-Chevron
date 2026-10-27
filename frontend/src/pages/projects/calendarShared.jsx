@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 // ============================================================
 // calendarShared.jsx — ของที่ใช้ร่วมกันระหว่าง
 //   ProjectsOverview.jsx (Manpower Calendar — รายการ)
@@ -24,12 +25,43 @@ export const STAGE_STYLE = {
     line: "bg-gray-200",
     badge: "bg-red-100 text-red-700",
   },
+  // ไม่มีรายการให้บันทึก (เช่น Travel Booking ที่ไม่ได้จองผ่านระบบ) — ข้ามไป ไม่นับเป็นขั้นปัจจุบัน
+  skip: {
+    dot: "bg-gray-50 text-gray-400 border-gray-300 border-dashed",
+    text: "text-gray-400",
+    line: "bg-emerald-400",
+    badge: "bg-gray-100 text-gray-500",
+  },
   todo: {
     dot: "bg-white text-gray-400 border-gray-300",
     text: "text-gray-400",
     line: "bg-gray-200",
     badge: "bg-gray-100 text-gray-500",
   },
+};
+
+// แต่ละขั้นทำที่หน้าไหน — กดชื่อขั้นใน timeline เพื่อไปหน้านั้น (Worker Confirm ทำใน Worker App → ไม่มีลิงก์)
+export const stageLink = (key, projectId) => {
+  if (!projectId) return null;
+  switch (key) {
+    case "requirement":
+      return `/projects/${projectId}`;
+    case "assign":
+    case "approval":
+      return `/allocation?projectId=${projectId}`;
+    case "training":
+      return "/requests-history";
+    case "briefing":
+    case "travel":
+    case "hangar":
+    case "onsite":
+    case "demob":
+      return `/mobilization?projectId=${projectId}`;
+    case "evaluated":
+      return "/review";
+    default:
+      return null;
+  }
 };
 
 export const fmtDate = (d) =>
@@ -88,10 +120,13 @@ export function StageDots({ stages = [] }) {
 }
 
 // Timeline ขั้นตอนแนวนอน (หน้ารายละเอียด)
-export function StageStepper({ stages = [] }) {
+export function StageStepper({ stages = [], projectId }) {
   return (
     <div className="overflow-x-auto pb-1">
-      <ol className="flex min-w-[980px] items-start">
+      <div className="mb-2 text-right text-[10px] text-gray-400">
+        ชี้ที่ขั้นเพื่อดูว่าทำที่ไหน · กดชื่อขั้นเพื่อไปหน้านั้น
+      </div>
+      <ol className="flex min-w-[880px] items-start">
         {stages.map((s, i) => {
           const st = STAGE_STYLE[s.state] || STAGE_STYLE.todo;
           return (
@@ -99,18 +134,32 @@ export function StageStepper({ stages = [] }) {
               {i > 0 && (
                 <span
                   className={`absolute right-1/2 top-[14px] h-0.5 w-full ${
-                    STAGE_STYLE[stages[i - 1].state === "done" ? "done" : "todo"].line
+                    // เส้นเขียว = ทุกขั้นก่อนหน้าผ่าน (หรือข้าม) แล้ว
+                    stages.slice(0, i).every((x) => ["done", "skip"].includes(x.state))
+                      ? STAGE_STYLE.done.line
+                      : STAGE_STYLE.todo.line
                   }`}
                 />
               )}
               <span
+                title={s.hint || s.iso || ""}
                 className={`relative z-[1] flex h-7 w-7 items-center justify-center rounded-full border-2 text-[11px] font-bold ${st.dot}`}
               >
-                {s.state === "done" ? "✓" : s.state === "fail" ? "✕" : i + 1}
+                {s.state === "done" ? "✓" : s.state === "fail" ? "✕" : s.state === "skip" ? "–" : i + 1}
               </span>
-              <span className={`mt-1.5 text-[11px] leading-tight ${st.text}`}>
-                {i + 1}. {s.label}
-              </span>
+              {stageLink(s.key, projectId) ? (
+                <Link
+                  to={stageLink(s.key, projectId)}
+                  title={s.hint || s.iso || ""}
+                  className={`mt-1.5 text-[11px] leading-tight no-underline decoration-dotted underline-offset-2 hover:underline ${st.text}`}
+                >
+                  {i + 1}. {s.label}
+                </Link>
+              ) : (
+                <span title={s.hint || s.iso || ""} className={`mt-1.5 cursor-help text-[11px] leading-tight ${st.text}`}>
+                  {i + 1}. {s.label}
+                </span>
+              )}
               {s.note && (
                 <span className="mt-0.5 text-[10px] leading-tight text-gray-500">
                   {s.note}

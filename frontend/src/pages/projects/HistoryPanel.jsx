@@ -113,7 +113,7 @@ export default function HistoryPanel({ projectId, onClose }) {
                       </span>
                       <span className={`absolute -left-[5px] top-2 h-2.5 w-2.5 rounded-full ring-2 ring-white ${st.dot}`} />
                       <div className="rounded-lg border border-gray-200 px-3 py-2 text-xs shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                        <div className="break-words">
+                        <div className="break-words" title={it.raw ? `Audit Log: ${it.raw}` : undefined}>
                           {it.actor && <b>{it.actor} · </b>}
                           {it.summary}
                           {it.changes > 0 && (
