@@ -341,11 +341,16 @@ export async function runTrainingImport({
     where: { contractId: contract.id },
     include: { globalTraining: true },
   });
+  // ชื่อกลาง / "ชื่อที่ HR ใช้ในไฟล์" ก่อน → nameAlias ของ contract (ไม่เห็นในหน้า Trainings) ทีหลัง
+  // กัน alias เก่าจากการนำเข้า matrix ดึงคอลัมน์ไปผิดหลักสูตร ทั้งที่มีหลักสูตรชื่อตรงอยู่แล้ว
   const ctByKey = new Map();
-  for (const ct of clientTrainings) {
-    for (const n of trainingAliases(ct.globalTraining, ct.nameAlias)) {
-      const k = looseKey(trainingNameOf(n));
-      if (k && !ctByKey.has(k)) ctByKey.set(k, ct);
+  for (const pass of ["name", "alias"]) {
+    for (const ct of clientTrainings) {
+      const names = pass === "name" ? trainingAliases(ct.globalTraining) : [ct.nameAlias];
+      for (const n of names) {
+        const k = looseKey(trainingNameOf(n));
+        if (k && !ctByKey.has(k)) ctByKey.set(k, ct);
+      }
     }
   }
   // training ที่ยังไม่ผูกกับ contract นี้ (เช่น หลักสูตรเฉพาะ Assistant Floor Operator) ก็นำเข้าได้
@@ -360,10 +365,15 @@ export async function runTrainingImport({
     }
   }
   const unmapped = [];
+  const ctByGt = new Map(clientTrainings.map((ct) => [ct.globalTrainingId, ct]));
   const mappedTrainings = parsed.trainings.map((t) => {
     const key = looseKey(t.name);
-    const ct = ctByKey.get(key) || null;
-    const gt = ct?.globalTraining || gtByKey.get(key) || null;
+    // หลักสูตรที่ชื่อตรงกับหัวคอลัมน์ (ใน contract หรือไม่ก็ตาม) ชนะ alias ของ contract
+    const ctHit = ctByKey.get(key) || null;
+    const gtHit = gtByKey.get(key) || null;
+    const aliasOnly = ctHit && !trainingAliases(ctHit.globalTraining).some((n) => looseKey(trainingNameOf(n)) === key);
+    const gt = gtHit && aliasOnly && gtHit.id !== ctHit.globalTrainingId ? gtHit : ctHit?.globalTraining || gtHit;
+    const ct = gt ? (ctHit?.globalTrainingId === gt.id ? ctHit : ctByGt.get(gt.id) || null) : null;
     if (!gt) {
       const filled = parsed.records.filter((r) =>
         r.trainings.some((x) => x.name === t.name && (x.completed || x.expiry)),
