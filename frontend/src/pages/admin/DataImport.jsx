@@ -52,8 +52,9 @@ const KINDS = {
     fileLabel: "ไฟล์ Employee Training (.xlsx) — sheet \"Record\"",
     endpoint: "employee-trainings",
     hints: [
-      "จับคู่พนักงานด้วย Employee ID ก่อน ไม่เจอจึงใช้ชื่อไทย/อังกฤษ",
-      "วันที่เหมือนเดิม → ข้าม, ช่องว่าง / N/A / Pending → ไม่ลบข้อมูลเดิม",
+      "จับคู่พนักงานด้วย Employee ID ก่อน ไม่เจอจึงใช้ชื่อไทย/อังกฤษ · ไฟล์ที่ไม่มีคอลัมน์ ID Employee (เช่น Assistant Floor Operators) ใช้ชื่ออย่างเดียว",
+      "วันที่เหมือนเดิม → ข้าม, ช่องว่าง / N/A / Pending → ไม่ลบข้อมูลเดิม, ในระบบมีวันที่ใหม่กว่าไฟล์ → ไม่ทับ",
+      "ชื่อ training ในไฟล์สะกดต่างจากในระบบ → ใส่ใน “ชื่อที่ HR ใช้ในไฟล์” ได้หลายชื่อ คั่นด้วย |",
     ],
   },
   pe: {
@@ -310,6 +311,7 @@ export default function DataImport() {
             <Stat label="Passport" value={c.passportUpsert} />
             <Stat label="ข้อมูลพนักงาน" value={c.employeeInfoUpdate} />
             <Stat label="จับคู่ด้วยชื่อ" value={report.matchedByName} tone={report.matchedByName ? "text-amber-700" : "text-gray-800"} />
+            <Stat label="ข้าม (ระบบใหม่กว่า)" value={c.olderSkipped ?? 0} tone={c.olderSkipped ? "text-amber-700" : "text-gray-400"} />
             <Stat label="Error" value={c.errors} tone={c.errors ? "text-red-600" : "text-gray-800"} />
           </div>
 
@@ -364,9 +366,20 @@ export default function DataImport() {
               </table>
             </Section>
 
+            <Section title="⏭ ข้าม — ในระบบมีข้อมูลใหม่กว่าไฟล์ (ไม่ทับ)" count={report.olderInFile?.length || 0} tone="text-amber-700">
+              <table className="w-full">
+                <thead><tr><th className={TH}>พนักงาน</th><th className={TH}>รายการ</th><th className={TH}>ในระบบ</th><th className={TH}>ในไฟล์</th></tr></thead>
+                <tbody>
+                  {(report.olderInFile || []).map((o, i) => (
+                    <tr key={i}><td className={TD}>{o.employee}</td><td className={TD}>{o.item}</td><td className={TD}>{o.inSystem}</td><td className={`${TD} text-gray-400`}>{o.inFile}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+
             <Section title="⚠ Training ในไฟล์ที่ map ไม่ได้ (จะถูกข้าม)" count={report.unmappedTrainings.length} tone="text-amber-700">
               <div className="px-4 py-2 text-[12px] text-gray-500">
-                แก้ได้โดยตั้ง Alias ของ training ให้ตรงกับชื่อในไฟล์ (หน้า Manage Trainings) แล้วตรวจสอบใหม่
+                แก้ได้โดยใส่ชื่อในไฟล์ลงช่อง “ชื่อที่ HR ใช้ในไฟล์” ของ training (หน้า Trainings) — ใส่ได้หลายชื่อ คั่นด้วย | — แล้วตรวจสอบใหม่
               </div>
               <table className="w-full">
                 <thead><tr><th className={TH}>ชื่อในไฟล์</th><th className={TH}>จำนวนคนที่มีข้อมูล</th></tr></thead>
@@ -376,6 +389,10 @@ export default function DataImport() {
                   ))}
                 </tbody>
               </table>
+            </Section>
+
+            <Section title="Training ที่ยังไม่ได้ผูกกับ contract นี้ (นำเข้าได้ — ผูกใน Matrix ทีหลัง)" count={report.mappedOutsideContract?.length || 0}>
+              <div className="px-4 py-2 text-[12px] text-gray-700">{(report.mappedOutsideContract || []).join(" · ")}</div>
             </Section>
 
             <Section title="พนักงานซ้ำในไฟล์ (ใช้แถวแรก)" count={report.duplicatesInFile.length} tone="text-amber-700">
