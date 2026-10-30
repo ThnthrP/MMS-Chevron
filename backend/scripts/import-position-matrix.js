@@ -34,14 +34,24 @@ const ALIASES = {
   "Electical Standard": "Electrical Standard", // สะกดผิดในไฟล์
 };
 
+// คอลัมน์ในไฟล์ที่ไม่ใช้ (ชื่อตรงตัว สนตัวพิมพ์) — เพิ่มทาง CLI ได้ด้วย --skip-column "ชื่อ" (ใส่ซ้ำได้)
+// "Fire and gas detection…" (g เล็ก) — HR แจ้ง 30/10/2026 ให้ใช้เฉพาะ "Fire and Gas Detection…" (G ใหญ่)
+const SKIP_COLUMNS = ["Fire and gas detection and Suppression system"];
+
 const argv = process.argv.slice(2);
 const opt = (f) => {
   const i = argv.indexOf(f);
   return i >= 0 ? argv[i + 1] : undefined;
 };
+const optAll = (f) => argv.flatMap((a, i) => (a === f && argv[i + 1] ? [argv[i + 1]] : []));
 const APPLY = argv.includes("--apply");
 const file = opt("--file");
 const sheetName = opt("--sheet");
+// --create-missing --source "ชื่อ Source" [--validity-days 1095]
+//   สร้าง training ที่ map ไม่ได้ให้เลย (ไม่ใส่ --validity-days = ไม่หมดอายุ)
+const CREATE_MISSING = argv.includes("--create-missing");
+const sourceName = opt("--source");
+const validityDays = opt("--validity-days") ? parseInt(opt("--validity-days"), 10) : null;
 
 const clean = (v) => (v == null ? "" : String(v).replace(/\s+/g, " ").trim());
 const looseKey = (s) =>
@@ -66,10 +76,14 @@ function readSheet() {
   if (headerIdx < 0) throw new Error('ไม่พบแถวหัวที่คอลัมน์ A = "Position"');
   const header = rows[headerIdx];
 
+  const skip = new Set([...SKIP_COLUMNS, ...optAll("--skip-column")].map(clean));
   const trainings = [];
+  const skippedCols = [];
   for (let c = 2; c < header.length; c++) {
     const t = clean(header[c]);
-    if (t) trainings.push({ col: c, name: t });
+    if (!t) continue;
+    if (skip.has(t)) skippedCols.push(t);
+    else trainings.push({ col: c, name: t });
   }
   const positions = [];
   for (let r = headerIdx + 1; r < rows.length; r++) {
@@ -81,7 +95,7 @@ function readSheet() {
       required: trainings.filter((t) => isX(rows[r][t.col])).map((t) => t.name),
     });
   }
-  return { sheet: name, headerRow: headerIdx + 1, trainings, positions };
+  return { sheet: name, headerRow: headerIdx + 1, trainings, positions, skippedCols };
 }
 
 async function main() {
@@ -94,6 +108,7 @@ async function main() {
     : null;
   if (!contract) throw new Error(`ไม่พบ contract ที่ active ของ ${CLIENT}`);
   console.log(`contract: ${contract.name}`);
+  if (parsed.skippedCols.length) console.log(`ข้ามคอลัมน์: ${parsed.skippedCols.map((n) => `"${n}"`).join(" · ")}`);
 
   // ── ตำแหน่ง ──
   const allPos = await prisma.position.findMany({ select: { id: true, name: true } });
@@ -107,17 +122,75 @@ async function main() {
   const gts = await prisma.globalTraining.findMany({
     select: { id: true, name: true, fullName: true, trainingStandards: { select: { id: true }, take: 1 } },
   });
+  // จับคู่ชื่อตรงตัว (สนตัวพิมพ์) ก่อน แล้วค่อยแบบหลวม — ชื่อที่ต่างกันแค่ตัวพิมพ์ในไฟล์ matrix
+  // อาจเป็นคนละหลักสูตร (เช่น "Fire and gas detection…" กับ "Fire and Gas Detection…")
+  const gtByExact = new Map();
   const gtByKey = new Map();
+  const addExact = (n, gt) => clean(n) && !gtByExact.has(clean(n)) && gtByExact.set(clean(n), gt);
   const add = (k, gt) => k && !gtByKey.has(k) && gtByKey.set(k, gt);
+  for (const gt of gts) addExact(gt.name, gt);
+  for (const gt of gts) for (const n of String(gt.fullName || "").split("|")) addExact(n, gt);
   for (const gt of gts) add(nameKey(gt.name), gt);
   for (const gt of gts) for (const n of String(gt.fullName || "").split("|")) add(nameKey(n), gt);
-  const resolve = (name) => gtByKey.get(nameKey(ALIASES[name] || name)) || gtByKey.get(nameKey(name)) || null;
+  const resolve = (name) => {
+    const target = ALIASES[name] || name;
+    return gtByExact.get(clean(target)) || gtByKey.get(nameKey(target)) || gtByKey.get(nameKey(name)) || null;
+  };
 
-  const unmapped = parsed.trainings.filter((t) => !resolve(t.name));
+  // ชื่อในไฟล์ที่ต่างกันแค่ตัวพิมพ์ → ถือเป็นคนละหลักสูตร (ต้องมี training แยกกันในระบบ)
+  const caseGroups = new Map();
+  for (const t of parsed.trainings) {
+    const k = nameKey(ALIASES[t.name] || t.name);
+    if (!caseGroups.has(k)) caseGroups.set(k, new Set());
+    caseGroups.get(k).add(clean(ALIASES[t.name] || t.name));
+  }
+  const caseVariants = new Set(
+    [...caseGroups.values()].filter((g) => g.size > 1).flatMap((g) => [...g]),
+  );
+  // ชื่อที่มีคู่ต่างตัวพิมพ์ ต้อง match แบบตรงตัวเท่านั้น (ไม่ fallback แบบหลวม)
+  const resolveStrict = (name) => {
+    const target = clean(ALIASES[name] || name);
+    return caseVariants.has(target) ? gtByExact.get(target) || null : resolve(name);
+  };
+
+  const unmapped = parsed.trainings.filter((t) => !resolveStrict(t.name));
+
+  // ── --create-missing: เตรียมสร้าง training ที่ map ไม่ได้ (ชื่อซ้ำกันแค่ตัวพิมพ์ = ตัวเดียว) ──
+  const newGts = [];
+  let source = null;
+  let stdClientId = null;
+  if (CREATE_MISSING && unmapped.length) {
+    const sources = await prisma.trainingSourceOption.findMany({ select: { id: true, name: true } });
+    source = sourceName && sources.find((s) => looseKey(s.name) === looseKey(sourceName));
+    if (!source) {
+      throw new Error(
+        `--create-missing ต้องมี --source "ชื่อ Source" ที่มีในระบบ — ที่มี: ${sources.map((s) => `"${s.name}"`).join(", ")}`,
+      );
+    }
+    if (validityDays != null && !(validityDays > 0)) throw new Error("--validity-days ต้องเป็นตัวเลขมากกว่า 0");
+    // clientId ของ Training Standard — ใช้แบบเดียวกับ training ส่วนใหญ่ที่ผูกกับ contract นี้อยู่แล้ว
+    const ctStd = await prisma.clientTraining.findMany({
+      where: { contractId: contract.id },
+      select: { trainingStandard: { select: { clientId: true } } },
+    });
+    const withClient = ctStd.filter((c) => c.trainingStandard?.clientId).length;
+    stdClientId = withClient > ctStd.length / 2 ? client.id : null;
+
+    for (const t of unmapped) {
+      const n = clean(t.name);
+      if (gtByExact.has(n)) continue;
+      const gt = { id: `new:${n}`, name: n, fullName: null, trainingStandards: [{ id: null }], isNew: true };
+      gtByExact.set(n, gt);
+      add(nameKey(n), gt);
+      gts.push(gt);
+      newGts.push(gt);
+    }
+  }
+
   const noStandard = [
     ...new Set(
       parsed.trainings
-        .map((t) => resolve(t.name))
+        .map((t) => resolveStrict(t.name))
         .filter((gt) => gt && !gt.trainingStandards.length)
         .map((gt) => gt.name),
     ),
@@ -129,8 +202,8 @@ async function main() {
   // ── แผน ──
   const plan = parsed.positions.map((p) => {
     const pos = posByKey.get(looseKey(p.name));
-    const gtIds = [...new Set(p.required.map((n) => resolve(n)?.id).filter(Boolean))];
-    const skipped = p.required.filter((n) => !resolve(n));
+    const gtIds = [...new Set(p.required.map((n) => resolveStrict(n)?.id).filter(Boolean))];
+    const skipped = p.required.filter((n) => !resolveStrict(n));
     return { ...p, pos, gtIds, skipped };
   });
   const existing = await prisma.positionRequirement.findMany({
@@ -146,9 +219,21 @@ async function main() {
       console.log(`    (บางคอลัมน์ชี้ไป training เดียวกัน เช่น T-BOSIET / T-FOET → นับเป็น 1)`);
     if (p.skipped.length) console.log(`    ⚠ map ไม่ได้ (ข้าม): ${p.skipped.join(" · ")}`);
   }
-  if (unmapped.length) {
-    console.log(`\n⚠ ชื่อ training ในไฟล์ที่ map ไม่ได้ ${unmapped.length} ตัว — สร้างที่หน้า Trainings หรือใส่ใน "ชื่อที่ HR ใช้ในไฟล์":`);
-    unmapped.forEach((t) => console.log(`    • ${t.name}`));
+  const stillUnmapped = parsed.trainings.filter((t) => !resolveStrict(t.name));
+  if (stillUnmapped.length) {
+    console.log(
+      `\n⚠ ชื่อ training ในไฟล์ที่ map ไม่ได้ ${stillUnmapped.length} ตัว — สร้างที่หน้า Trainings, ใส่ใน "ชื่อที่ HR ใช้ในไฟล์" ` +
+        `หรือรันพร้อม --create-missing --source "ชื่อ Source":`,
+    );
+    stillUnmapped.forEach((t) => console.log(`    • ${t.name}`));
+  }
+  if (caseVariants.size) {
+    console.log(`\nℹ ชื่อที่ต่างกันแค่ตัวพิมพ์ — ถือเป็นคนละ training: ${[...caseVariants].map((n) => `"${n}"`).join(" · ")}`);
+  }
+  if (newGts.length) {
+    const v = validityDays ? `อายุ ${validityDays} วัน` : "ไม่หมดอายุ";
+    console.log(`\n＋ จะสร้าง training ใหม่ ${newGts.length} ตัว (Source "${source.name}" · ${v}):`);
+    newGts.forEach((g) => console.log(`    • ${g.name}`));
   }
   const usedNoStd = noStandard.filter((n) => plan.some((p) => p.gtIds.some((id) => gts.find((g) => g.id === id)?.name === n)));
   const needCt = [...new Set(plan.flatMap((p) => p.gtIds))].filter((id) => !ctByGt.has(id));
@@ -165,11 +250,24 @@ async function main() {
 
   await prisma.$transaction(
     async (tx) => {
+      // สร้าง training ใหม่ (--create-missing)
+      for (const gt of newGts) {
+        const created = await tx.globalTraining.create({ data: { name: gt.name } });
+        const std = await tx.trainingStandard.create({
+          data: { globalTrainingId: created.id, sourceId: source.id, clientId: stdClientId, validityDays },
+        });
+        gt.realId = created.id;
+        gt.trainingStandards = [{ id: std.id }];
+      }
       // ผูก training กับ contract (ถ้ายังไม่ผูก)
       for (const gtId of needCt) {
         const gt = gts.find((g) => g.id === gtId);
         const ct = await tx.clientTraining.create({
-          data: { globalTrainingId: gtId, contractId: contract.id, trainingStandardId: gt.trainingStandards[0].id },
+          data: {
+            globalTrainingId: gt.realId || gtId,
+            contractId: contract.id,
+            trainingStandardId: gt.trainingStandards[0].id,
+          },
         });
         ctByGt.set(gtId, ct);
       }
@@ -191,6 +289,7 @@ async function main() {
     },
     { timeout: 60000 },
   );
+  if (newGts.length) console.log(`\n✓ สร้าง training ใหม่ ${newGts.length} ตัว`);
   console.log(`\n✓ ตั้ง matrix แล้ว — ${plan.map((p) => `${p.pos.name} ${p.gtIds.length}`).join(" · ")}\n`);
 }
 
