@@ -30,6 +30,8 @@ const ALIASES = {
   "Tropical Basic Offshore Safety Induction and Emergency Training": COMBINED_TBOSIET,
   "Tropical Further Offshore Emergency Training ( T-FOET)": COMBINED_TBOSIET,
   "Tropical Further Offshore Emergency Training (T-FOET)": COMBINED_TBOSIET,
+  "Basic IE": "Basic IE (Pneumatic)", // HR เรียก "IE Electrical and Instrument Basic (Basic IE)"
+  "Electical Standard": "Electrical Standard", // สะกดผิดในไฟล์
 };
 
 const argv = process.argv.slice(2);
