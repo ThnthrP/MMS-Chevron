@@ -19,4 +19,8 @@ router.post("/:id/standards", controller.createStandard);
 router.put("/:id/standards/:standardId", controller.updateStandard);
 router.delete("/:id/standards/:standardId", controller.removeStandard);
 
+// ── ตรวจชื่อ cert (ใบ cert แยกตามชื่อในไฟล์) + ย้ายใบที่ผูกผิด training ──
+router.get("/:id/certs", controller.listCerts);
+router.post("/:id/reassign-certs", controller.reassignCerts);
+
 export default router;

@@ -1,5 +1,6 @@
 import { useState, useEffect, useContext, useCallback, useRef } from "react";
 import axios from "axios";
+import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
 
 // ══════════════════════════════════════════════════════════
@@ -98,16 +99,30 @@ function SetBadge({ isSet }) {
   );
 }
 
-function EmpCount({ count }) {
-  return count > 0 ? (
-    <span
-      className="font-bold text-blue-600"
-      title={`มีพนักงาน ${count} คนถือ cert นี้อยู่`}
+function EmpCount({ count, onClick, inline = false }) {
+  if (!(count > 0)) return <span className="text-gray-400">0</span>;
+  // ตัวเลขแสดงเฉยๆ + ลิงก์ "ดูรายชื่อ" แยก — เปิดหน้าต่างตรวจชื่อ cert (ไม่ใช่เปลี่ยนหน้า จึงไม่ใส่ลูกศร)
+  const link = (
+    <button
+      type="button"
+      onClick={onClick}
+      className="cursor-pointer whitespace-nowrap border-none bg-transparent p-0 text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+      title="ดูรายชื่อพนักงาน + ตรวจชื่อ cert เทียบกับชื่อในไฟล์ HR"
     >
-      {count}
+      ดูรายชื่อ
+    </button>
+  );
+  return inline ? (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="font-bold text-gray-900">{count}</span>
+      <span className="text-gray-300">·</span>
+      {link}
     </span>
   ) : (
-    <span className="text-gray-400">0</span>
+    <div className="flex flex-col items-center leading-tight">
+      <span className="font-bold text-gray-900">{count}</span>
+      {link}
+    </div>
   );
 }
 
@@ -117,6 +132,319 @@ function ClientUsageCell({ usage }) {
     <span className="whitespace-nowrap font-semibold text-[#198754]">
       ✓{usage.positionCount > 0 ? ` (${usage.positionCount})` : ""}
     </span>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// ตรวจชื่อ cert — ใบ cert ของ training นี้ แยกตาม "ชื่อในไฟล์" (rawTrainingName)
+//   HR เทียบชื่อในไฟล์ Excel กับชื่อในระบบ · ชื่อผิด → ✏️ แก้ชื่อ training
+//   ใบผูกผิดตัว → ติ๊กแล้ว "ย้ายไป training อื่น"
+// ══════════════════════════════════════════════════════════
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-GB") : "—");
+const empName = (e) => e.fullNameEN || e.fullName || e.fullNameTH || "—";
+
+function GroupBadge({ matches }) {
+  if (matches === true)
+    return (
+      <span className="whitespace-nowrap rounded bg-[#d1e7dd] px-1.5 py-px text-[10px] font-semibold text-[#0f5132]">
+        ✓ ตรงกับชื่อในระบบ
+      </span>
+    );
+  if (matches === false)
+    return (
+      <span className="whitespace-nowrap rounded bg-[#fff3cd] px-1.5 py-px text-[10px] font-semibold text-[#664d03]">
+        ⚠ ชื่อต่างจากระบบ — ตรวจ
+      </span>
+    );
+  return (
+    <span className="whitespace-nowrap rounded bg-gray-100 px-1.5 py-px text-[10px] font-semibold text-gray-600">
+      เพิ่มในระบบ (ไม่มีชื่อจากไฟล์)
+    </span>
+  );
+}
+
+function CertsModal({ backendUrl, training, onClose, onEditTraining, onChanged }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState(null);
+  const [open, setOpen] = useState({}); // groupKey -> bool
+  const [selected, setSelected] = useState([]); // certIds
+  const [target, setTarget] = useState(null);
+  const [moving, setMoving] = useState(false);
+  const [trainings, setTrainings] = useState([]); // ตัวเลือกปลายทาง — โหลดครบทุกตัว (ไม่ขึ้นกับช่องค้นหาของหน้าหลัก)
+
+  useEffect(() => {
+    axios
+      .get(`${backendUrl}/api/global-trainings`, { withCredentials: true })
+      .then((res) => setTrainings(res.data || []))
+      .catch((err) => console.error(err));
+  }, [backendUrl]);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await axios.get(
+        `${backendUrl}/api/global-trainings/${training.id}/certs`,
+        { withCredentials: true },
+      );
+      setData(res.data);
+      // เปิดกลุ่มที่ชื่อไม่ตรงไว้ก่อน
+      const o = {};
+      (res.data.groups || []).forEach((g, i) => {
+        if (g.matchesSystemName === false) o[i] = true;
+      });
+      setOpen(o);
+    } catch (err) {
+      console.error(err);
+      setMsg({ type: "err", text: "โหลดรายการ cert ไม่สำเร็จ" });
+    } finally {
+      setLoading(false);
+    }
+  }, [backendUrl, training.id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const toggle = (ids, on) =>
+    setSelected((prev) =>
+      on ? [...new Set([...prev, ...ids])] : prev.filter((x) => !ids.includes(x)),
+    );
+
+  const targetOptions = trainings
+    .filter((t) => t.id !== training.id)
+    .map((t) => ({
+      value: t.id,
+      label: `${t.name}${t.fullName && t.fullName !== t.name ? ` — ${t.fullName}` : ""}`,
+    }));
+
+  const handleMove = async () => {
+    if (!target || selected.length === 0) return;
+    if (
+      !window.confirm(
+        `ย้าย cert ${selected.length} ใบ\nจาก "${training.name}"\nไป "${target.label}" ?\n\n` +
+          "(ประวัติเก่าของพนักงานคนนั้นใน training นี้จะย้ายไปด้วย)",
+      )
+    )
+      return;
+    try {
+      setMoving(true);
+      setMsg(null);
+      const res = await axios.post(
+        `${backendUrl}/api/global-trainings/${training.id}/reassign-certs`,
+        { certIds: selected, targetTrainingId: target.value },
+        { withCredentials: true },
+      );
+      setSelected([]);
+      setTarget(null);
+      await load();
+      onChanged?.();
+      setMsg({
+        type: "ok",
+        text: `ย้าย cert ${res.data.employeeCount} คนไป "${res.data.target.name}" แล้ว`,
+      });
+    } catch (err) {
+      setMsg({ type: "err", text: err.response?.data?.message || "ย้ายไม่สำเร็จ" });
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 p-3 sm:p-5"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[90vh] w-full max-w-[920px] flex-col overflow-hidden rounded-[10px] bg-white"
+      >
+        {/* Header */}
+        <div className="flex shrink-0 items-start justify-between gap-3 bg-[#1e3a5f] px-4 py-4 text-white sm:px-6">
+          <div className="min-w-0">
+            <div className="text-[11px] text-white/70">ตรวจชื่อ cert</div>
+            <div className="break-words text-base font-semibold">{training.name}</div>
+            {training.fullName && training.fullName !== training.name && (
+              <div className="break-words text-[11px] text-white/70">
+                ชื่อที่ HR ใช้ในไฟล์: {training.fullName}
+              </div>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-3.5">
+            <button
+              onClick={onEditTraining}
+              className="cursor-pointer whitespace-nowrap rounded-md border border-white/30 bg-white/15 px-3 py-[5px] text-xs font-semibold text-white hover:bg-white/25"
+              title="แก้ชื่อกลาง / ชื่อที่ HR ใช้ในไฟล์ — มีผลกับทุกคนที่มี cert นี้"
+            >
+              ✏️ แก้ชื่อ training
+            </button>
+            <button
+              onClick={onClose}
+              className="cursor-pointer border-none bg-transparent text-xl leading-none text-white"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto p-4 sm:p-6">
+          <MessageBanner msg={msg} />
+          <div className="mb-3 text-xs text-gray-500">
+            เทียบ <strong>ชื่อในไฟล์ Excel</strong> กับชื่อ training ในระบบ —
+            ชื่อในระบบผิด กด <strong>✏️ แก้ชื่อ training</strong> (มีผลทุกคน) ·
+            ใบผูกผิด training ติ๊ก ☑ <strong>เลือกทั้งกลุ่ม</strong> หรือกด{" "}
+            <strong>แสดงรายชื่อ</strong> แล้วติ๊กรายคน จากนั้นกด{" "}
+            <strong>ย้ายไป training อื่น</strong> ด้านล่าง
+          </div>
+
+          {loading ? (
+            <div className="p-8 text-center text-gray-500">Loading...</div>
+          ) : !data || data.total === 0 ? (
+            <div className="p-8 text-center text-[13px] text-gray-500">
+              ไม่มีพนักงานถือ cert นี้
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100 border-y border-gray-200">
+              {data.groups.map((g, gi) => {
+                const ids = g.certs.map((c) => c.id);
+                const allOn = ids.every((id) => selected.includes(id));
+                const someOn = !allOn && ids.some((id) => selected.includes(id));
+                return (
+                  <div key={gi} className="py-2.5">
+                    <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-[11px] text-gray-500">ชื่อในไฟล์:</span>
+                        <span className="break-words text-[13px] font-semibold text-gray-900">
+                          {g.rawName ? `"${g.rawName}"` : "—"}
+                        </span>
+                        <GroupBadge matches={g.matchesSystemName} />
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <span className="whitespace-nowrap text-xs font-semibold text-gray-700">
+                          {g.count} ใบ
+                        </span>
+                        <label className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={allOn}
+                            ref={(el) => el && (el.indeterminate = someOn)}
+                            onChange={(e) => toggle(ids, e.target.checked)}
+                            className="h-[15px] w-[15px] cursor-pointer"
+                          />
+                          เลือกทั้งกลุ่ม
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setOpen((o) => ({ ...o, [gi]: !o[gi] }))}
+                          className="cursor-pointer whitespace-nowrap border-none bg-transparent p-0 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {open[gi] ? "ซ่อนรายชื่อ ▴" : "แสดงรายชื่อ ▾"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {open[gi] && (
+                      <div className="mt-2 overflow-x-auto rounded-md bg-gray-50 px-3 py-1">
+                        <table className="w-full border-collapse text-[12px]">
+                          <thead>
+                            <tr className="text-left text-[10px] font-semibold uppercase text-gray-500">
+                              <th className="w-12 whitespace-nowrap py-1 pr-2">เลือก</th>
+                              <th className="py-1 pr-3">Worker</th>
+                              <th className="py-1 pr-3">Position</th>
+                              <th className="whitespace-nowrap py-1 pr-3">Issued</th>
+                              <th className="whitespace-nowrap py-1">Expiry</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {g.certs.map((c) => (
+                              <tr key={c.id} className="border-t border-gray-100">
+                                <td className="py-1.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={selected.includes(c.id)}
+                                    onChange={(e) => toggle([c.id], e.target.checked)}
+                                    className="h-[14px] w-[14px] cursor-pointer"
+                                  />
+                                </td>
+                                <td className="py-1.5 pr-3">
+                                  <a
+                                    href={`/workers/${c.employee.id}/edit`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="font-semibold text-gray-900 hover:text-blue-600 hover:underline"
+                                    title="เปิดหน้า Edit Worker (แท็บใหม่)"
+                                  >
+                                    {empName(c.employee)}
+                                  </a>
+                                  <div className="text-[10px] text-gray-500">
+                                    {c.employee.empId || c.employee.empCode}
+                                    {c.employee.status !== "active" && ` · ${c.employee.status}`}
+                                  </div>
+                                </td>
+                                <td className="py-1.5 pr-3 text-gray-600">
+                                  {c.employee.position || "—"}
+                                </td>
+                                <td className="whitespace-nowrap py-1.5 pr-3 text-gray-600">
+                                  {fmtDate(c.completedDate)}
+                                </td>
+                                <td className="whitespace-nowrap py-1.5 text-gray-600">
+                                  {c.expiryDate ? fmtDate(c.expiryDate) : "ไม่มีวันหมดอายุ"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer — ย้ายใบที่เลือก */}
+        {data?.total > 0 && (
+          <div className="flex shrink-0 flex-col gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center sm:px-6">
+            <span className="whitespace-nowrap text-[13px] text-gray-700">
+              {selected.length === 0 ? (
+                <span className="text-gray-500">ติ๊ก ☑ ใบที่ต้องการย้ายก่อน →</span>
+              ) : (
+                <>
+                  เลือก <strong>{selected.length}</strong> ใบ → ย้ายไป
+                </>
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <Select
+                options={targetOptions}
+                value={target}
+                onChange={setTarget}
+                placeholder="ค้นหา training ปลายทาง..."
+                isClearable
+                menuPlacement="top"
+                maxMenuHeight={260}
+                noOptionsMessage={() => "ไม่พบ training"}
+                styles={{
+                  control: (b) => ({ ...b, minHeight: 36, fontSize: 13 }),
+                  option: (b) => ({ ...b, fontSize: 13 }),
+                  menuPortal: (b) => ({ ...b, zIndex: 9999999 }),
+                }}
+                menuPortalTarget={document.body}
+              />
+            </div>
+            <button
+              onClick={handleMove}
+              disabled={moving || !target || selected.length === 0}
+              className={`${BTN_PRIMARY} whitespace-nowrap`}
+            >
+              {moving ? "กำลังย้าย…" : "ย้ายไป training อื่น"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -166,6 +494,9 @@ export default function ManageTrainings() {
   // clientId -> clientTrainingId ของ training ที่เปิดอยู่
   const [clientLinks, setClientLinks] = useState({});
   const [linkingClientId, setLinkingClientId] = useState(null);
+
+  // ----- ตรวจชื่อ cert (กดตัวเลขพนักงานที่มี cert) -----
+  const [certsTraining, setCertsTraining] = useState(null);
 
   // ── ค้นหา: รอพิมพ์หยุด 300ms ค่อยยิง API (เดิมยิงทุกตัวอักษร) ──
   useEffect(() => {
@@ -746,7 +1077,11 @@ export default function ManageTrainings() {
                     )}
                     <span>
                       Cert:{" "}
-                      <EmpCount count={t._count?.employeeTrainings ?? 0} />
+                      <EmpCount
+                        count={t._count?.employeeTrainings ?? 0}
+                        onClick={() => setCertsTraining(t)}
+                        inline
+                      />
                     </span>
                     {visibleClients.map((c) => (
                       <span key={c.id}>
@@ -839,7 +1174,10 @@ export default function ManageTrainings() {
                         />
                       </td>
                       <td className="px-4 py-2 text-center">
-                        <EmpCount count={t._count?.employeeTrainings ?? 0} />
+                        <EmpCount
+                        count={t._count?.employeeTrainings ?? 0}
+                        onClick={() => setCertsTraining(t)}
+                      />
                       </td>
                       {visibleClients.map((c) => (
                         <td key={c.id} className="px-2 py-2 text-center">
@@ -1246,6 +1584,21 @@ export default function ManageTrainings() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ════════ ตรวจชื่อ cert ════════ */}
+      {certsTraining && (
+        <CertsModal
+          backendUrl={backendUrl}
+          training={certsTraining}
+          onClose={() => setCertsTraining(null)}
+          onEditTraining={() => {
+            const id = certsTraining.id;
+            setCertsTraining(null);
+            openTraining(id, "edit");
+          }}
+          onChanged={loadTrainings}
+        />
       )}
     </div>
   );

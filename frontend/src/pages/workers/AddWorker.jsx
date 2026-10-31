@@ -285,6 +285,28 @@ function SectionHeader({ number, title, subtitle, accent, right }) {
   );
 }
 
+// ชื่อ cert ในรายการ — ชื่อในระบบ (ตัวหนา) + ชื่อในไฟล์ HR (ตัวเล็ก) ให้เทียบกันได้ทันที
+const looseName = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .replace(/[\s\-_/().,:;'"&]+/g, "");
+function CertName({ training, rawName }) {
+  if (!training) return <span className="text-gray-400">—</span>;
+  // ชื่อในไฟล์ของใบนี้ (จาก import) — ถ้าไม่มี ใช้ "ชื่อที่ HR ใช้ในไฟล์" ของ training
+  const fileName = rawName || training.fullName || "";
+  const showFile = fileName && looseName(fileName) !== looseName(training.name);
+  return (
+    <div>
+      <div className="font-medium text-gray-900">{training.name}</div>
+      {showFile && (
+        <div className="mt-0.5 text-[11px] text-gray-500">
+          ในไฟล์: {fileName}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditPanelHeader({ label, onDone, onRemove }) {
   return (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -846,9 +868,10 @@ export default function AddWorker() {
   const filteredCertifications = certifications.filter((cert) => {
     if (cert.id === editingCertId) return true;
     if (!certSearch.trim()) return true;
-    return trainingNameStringById(cert.globalTrainingId)
+    const q = certSearch.trim().toLowerCase();
+    return `${trainingNameStringById(cert.globalTrainingId)} ${cert.rawTrainingName || ""}`
       .toLowerCase()
-      .includes(certSearch.trim().toLowerCase());
+      .includes(q);
   });
 
   const departmentOptions = divisions.map((d) => ({ value: d, label: d }));
@@ -1788,8 +1811,8 @@ export default function AddWorker() {
                                   onDone={() => handleDoneCert(cert)}
                                   onRemove={() => removeCertification(cert)}
                                 />
-                                <div className={GRID3}>
-                                  <div>
+                                <div className={GRID2}>
+                                  <div className="sm:col-span-2">
                                     <label className={LABEL}>
                                       Training / Certification
                                     </label>
@@ -1857,8 +1880,12 @@ export default function AddWorker() {
                         ) : (
                           <tr key={cert.id}>
                             <td className={`${TD} break-words`}>
-                              {trainingNameStringById(cert.globalTrainingId) ||
-                                DASH}
+                              <CertName
+                                  training={globalTrainings.find(
+                                    (t) => t.id === cert.globalTrainingId,
+                                  )}
+                                  rawName={cert.rawTrainingName}
+                                />
                             </td>
                             <td
                               className={`${TD} ${HIDE_MOBILE} whitespace-nowrap`}

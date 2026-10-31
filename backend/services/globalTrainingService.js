@@ -286,3 +286,169 @@ export async function deleteTrainingStandard(standardId) {
   }
   return prisma.trainingStandard.delete({ where: { id: standardId } });
 }
+
+// ════════════════════════════════════════════════════════════════
+// ตรวจชื่อ cert — ใบ cert (isLatest) ของ training นี้ แยกกลุ่มตาม "ชื่อในไฟล์" (rawTrainingName)
+//   ให้ HR เทียบว่าชื่อในไฟล์ Excel ผูกกับ training ในระบบถูกตัวไหม
+// ════════════════════════════════════════════════════════════════
+const looseName = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .replace(/[\s\-_/().,:;'"&]+/g, "");
+
+export async function getTrainingCerts(id) {
+  const training = await prisma.globalTraining.findUnique({
+    where: { id },
+    select: { id: true, name: true, fullName: true },
+  });
+  if (!training) return null;
+
+  const certs = await prisma.employeeTraining.findMany({
+    where: { globalTrainingId: id, isLatest: true },
+    orderBy: [{ rawTrainingName: "asc" }, { completedDate: "desc" }],
+    select: {
+      id: true,
+      rawTrainingName: true,
+      completedDate: true,
+      expiryDate: true,
+      source: true,
+      employee: {
+        select: {
+          id: true,
+          empId: true,
+          empCode: true,
+          fullName: true,
+          fullNameEN: true,
+          fullNameTH: true,
+          status: true,
+          position: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  // ชื่อที่ถือว่า "ตรงกับระบบ" = ชื่อกลาง + ทุกชื่อใน "ชื่อที่ HR ใช้ในไฟล์" (คั่นด้วย |)
+  const known = new Set(
+    [training.name, ...String(training.fullName || "").split("|")]
+      .map(looseName)
+      .filter(Boolean),
+  );
+
+  const groups = new Map();
+  for (const c of certs) {
+    const raw = (c.rawTrainingName || "").trim();
+    const key = raw || "";
+    if (!groups.has(key)) {
+      groups.set(key, {
+        rawName: raw || null,
+        matchesSystemName: raw ? known.has(looseName(raw)) : null,
+        certs: [],
+      });
+    }
+    groups.get(key).certs.push({
+      id: c.id,
+      completedDate: c.completedDate,
+      expiryDate: c.expiryDate,
+      source: c.source,
+      employee: {
+        id: c.employee.id,
+        empId: c.employee.empId,
+        empCode: c.employee.empCode,
+        fullName: c.employee.fullName,
+        fullNameEN: c.employee.fullNameEN,
+        fullNameTH: c.employee.fullNameTH,
+        status: c.employee.status,
+        position: c.employee.position?.name || null,
+      },
+    });
+  }
+
+  // กลุ่มที่ชื่อไม่ตรงขึ้นก่อน (HR ควรตรวจ) → ไม่มีชื่อในไฟล์ → ตรงแล้ว
+  const rank = (g) => (g.matchesSystemName === false ? 0 : g.matchesSystemName === null ? 1 : 2);
+  const list = [...groups.values()]
+    .map((g) => ({ ...g, count: g.certs.length }))
+    .sort((a, b) => rank(a) - rank(b) || b.count - a.count);
+
+  return { training, total: certs.length, groups: list };
+}
+
+// ════════════════════════════════════════════════════════════════
+// ย้ายใบ cert ไป training อื่น (กรณีผูกผิดตัว)
+//   - ย้ายทั้งประวัติของพนักงานคนนั้นใน training เดิม (ทุก version) ไปด้วย
+//   - ใบที่ issued ล่าสุดของ training ปลายทางเป็น isLatest (แบบเดียวกับ scripts/merge-trainings.js)
+//   - clientTrainingId ชี้ไป ClientTraining ของ training ปลายทางใน contract เดิม (ถ้ามี)
+// ════════════════════════════════════════════════════════════════
+const httpError = (status, message) => Object.assign(new Error(message), { status });
+
+export async function reassignCerts(fromId, { certIds, targetTrainingId }) {
+  if (!Array.isArray(certIds) || certIds.length === 0) throw httpError(400, "ยังไม่ได้เลือกใบ cert");
+  if (!targetTrainingId) throw httpError(400, "ยังไม่ได้เลือก training ปลายทาง");
+  if (targetTrainingId === fromId) throw httpError(400, "training ปลายทางต้องไม่ใช่ตัวเดิม");
+
+  const [from, target] = await Promise.all([
+    prisma.globalTraining.findUnique({ where: { id: fromId }, select: { id: true, name: true } }),
+    prisma.globalTraining.findUnique({ where: { id: targetTrainingId }, select: { id: true, name: true } }),
+  ]);
+  if (!from) throw httpError(404, "ไม่พบ training ต้นทาง");
+  if (!target) throw httpError(404, "ไม่พบ training ปลายทาง");
+
+  const picked = await prisma.employeeTraining.findMany({
+    where: { id: { in: certIds }, globalTrainingId: fromId, isLatest: true },
+    select: { employeeId: true, employee: { select: { empId: true, empCode: true } } },
+  });
+  if (picked.length !== certIds.length) {
+    throw httpError(409, "ข้อมูล cert เปลี่ยนไประหว่างนี้ — โหลดหน้าใหม่แล้วลองอีกครั้ง");
+  }
+  const employeeIds = [...new Set(picked.map((p) => p.employeeId))];
+
+  const targetCts = await prisma.clientTraining.findMany({
+    where: { globalTrainingId: targetTrainingId },
+    select: { id: true, contractId: true },
+  });
+  const ctByContract = new Map(targetCts.map((ct) => [ct.contractId, ct.id]));
+
+  const moved = await prisma.$transaction(
+    async (tx) => {
+      let count = 0;
+      for (const employeeId of employeeIds) {
+        const rows = await tx.employeeTraining.findMany({
+          where: { employeeId, globalTrainingId: fromId },
+          select: { id: true, contractId: true },
+        });
+        for (const r of rows) {
+          await tx.employeeTraining.update({
+            where: { id: r.id },
+            data: {
+              globalTrainingId: targetTrainingId,
+              clientTrainingId: r.contractId ? ctByContract.get(r.contractId) || null : null,
+            },
+          });
+          count++;
+        }
+
+        // คำนวณ isLatest ใหม่ใน training ปลายทาง — issued ล่าสุดชนะ
+        const all = await tx.employeeTraining.findMany({
+          where: { employeeId, globalTrainingId: targetTrainingId },
+          select: { id: true, completedDate: true, updatedAt: true },
+        });
+        const t = (d) => (d ? new Date(d).getTime() : -Infinity);
+        all.sort((a, b) => t(b.completedDate) - t(a.completedDate) || t(b.updatedAt) - t(a.updatedAt));
+        await tx.employeeTraining.updateMany({
+          where: { employeeId, globalTrainingId: targetTrainingId },
+          data: { isLatest: false },
+        });
+        await tx.employeeTraining.update({ where: { id: all[0].id }, data: { isLatest: true } });
+      }
+      return count;
+    },
+    { timeout: 60000 },
+  );
+
+  return {
+    from,
+    target,
+    employeeCount: employeeIds.length,
+    recordCount: moved,
+    empIds: picked.map((p) => p.employee.empId || p.employee.empCode),
+  };
+}

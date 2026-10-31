@@ -1,4 +1,5 @@
 import * as service from "../services/globalTrainingService.js";
+import { setAuditContext } from "../utils/auditLogger.js";
 
 // ── Training Sources ──
 
@@ -175,6 +176,41 @@ export async function removeStandard(req, res) {
   try {
     await service.deleteTrainingStandard(req.params.standardId);
     res.json({ message: "Deleted" });
+  } catch (error) {
+    console.error(error);
+    res.status(error.status || 500).json({ message: error.message });
+  }
+}
+
+// GET /api/global-trainings/:id/certs — ใบ cert แยกตามชื่อในไฟล์ (ตรวจชื่อ)
+export async function listCerts(req, res) {
+  try {
+    const data = await service.getTrainingCerts(req.params.id);
+    if (!data) return res.status(404).json({ message: "Training not found" });
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+// POST /api/global-trainings/:id/reassign-certs
+// body: { certIds: [...], targetTrainingId }
+export async function reassignCerts(req, res) {
+  try {
+    const { certIds, targetTrainingId } = req.body || {};
+    const result = await service.reassignCerts(req.params.id, { certIds, targetTrainingId });
+    setAuditContext(req, {
+      summary: `ย้าย cert ${result.employeeCount} คน จาก "${result.from.name}" ไป "${result.target.name}"`,
+      resourceId: req.params.id,
+      details: {
+        fromTraining: result.from.name,
+        toTraining: result.target.name,
+        employees: result.empIds,
+        records: result.recordCount,
+      },
+    });
+    res.json(result);
   } catch (error) {
     console.error(error);
     res.status(error.status || 500).json({ message: error.message });
