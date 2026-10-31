@@ -18,6 +18,11 @@ import {
 const STAT_TILE = "rounded-lg border border-gray-200 bg-white";
 const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
 const CHECKBOX = "h-[15px] w-[15px] cursor-pointer";
+// หัวตารางตรึงไว้ตอนเลื่อน (ต้องอยู่ในกรอบที่มี overflow-auto + max-h)
+const STICKY_TH =
+  "sticky top-0 z-[1] bg-gray-50 px-3.5 py-2.5 shadow-[inset_0_-1px_0_#e5e7eb]";
+// คลิกที่แถวเพื่อติ๊ก — ยกเว้นคลิกโดนลิงก์ / ปุ่ม / checkbox เอง
+const isInteractive = (e) => !!e.target.closest("a,button,input,select,label");
 
 const BUCKET_BADGE = {
   expired: ["bg-[#f8d7da] text-[#842029]", "🔴 Expired"],
@@ -414,16 +419,39 @@ export default function Certifications() {
           </div>
 
           {/* ════════ Request Training bar ════════ */}
-          {canRequestTraining && selectedEmployeeIds.length > 0 && (
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#ffe69c] bg-[#fff3cd] px-4 py-2.5">
-              <span className="text-[13px] text-[#664d03]">
-                เลือกไว้ <strong>{selectedEmployeeIds.length}</strong> คน สำหรับ
-                training นี้
-              </span>
+          {/* แสดงตลอด — ยังไม่เลือก = บอกวิธีเลือก / เลือกแล้ว = จำนวน + ปุ่มแจ้ง HR */}
+          {canRequestTraining && (
+            <div
+              className={`mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-4 py-2.5 ${
+                selectedEmployeeIds.length > 0
+                  ? "border-[#ffe69c] bg-[#fff3cd]"
+                  : "border-gray-200 bg-gray-50"
+              }`}
+            >
+              {selectedEmployeeIds.length > 0 ? (
+                <span className="text-[13px] text-[#664d03]">
+                  เลือกไว้ <strong>{selectedEmployeeIds.length}</strong> คน
+                  สำหรับ training นี้
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEmployeeIds([])}
+                    className="ml-2 cursor-pointer border-none bg-transparent p-0 text-xs text-[#664d03] underline"
+                  >
+                    ล้างที่เลือก
+                  </button>
+                </span>
+              ) : (
+                <span className="text-[13px] text-gray-600">
+                  ติ๊ก ☐ หน้าชื่อพนักงาน (หรือคลิกที่แถว) เพื่อเลือกคนที่ต้องการให้
+                  HR จัดอบรม — ☐ <strong>เลือกทั้งหมด</strong> ที่หัวตาราง =
+                  ทุกคนที่แสดงอยู่ตาม filter
+                </span>
+              )}
               {/* เปิดการ์ด Request training ที่กรอกหลักสูตร + คนไว้ให้แล้ว — ใส่วันที่ / สถานที่ต่อได้ */}
               <button
                 onClick={() => setRequestOpen(true)}
-                className="cursor-pointer rounded-lg border-none bg-[#664d03] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#523e02]"
+                disabled={selectedEmployeeIds.length === 0}
+                className="cursor-pointer rounded-lg border-none bg-[#664d03] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#523e02] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 📢 แจ้ง HR ให้จัด Training
               </button>
@@ -451,7 +479,7 @@ export default function Certifications() {
                       onChange={toggleAllFiltered}
                       className={CHECKBOX}
                     />
-                    เลือกทั้งหมด
+                    เลือกทั้งหมด ({filteredWorkers.length})
                   </label>
                 ) : (
                   <span />
@@ -531,24 +559,28 @@ export default function Certifications() {
             </div>
 
             {/* ── lg+: ตาราง ── */}
-            <div className="hidden overflow-x-auto lg:block">
+            {/* ตารางเลื่อนในกรอบตัวเอง → หัวคอลัมน์ตรึงไว้ด้านบนตอนเลื่อน */}
+            <div className="hidden max-h-[calc(100vh-240px)] overflow-auto lg:block">
               <table className="w-full border-collapse text-[13px]">
                 <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
+                  <tr>
                     {canRequestTraining && (
-                      <th className="w-9 px-3.5 py-2.5">
-                        <input
-                          type="checkbox"
-                          checked={allFilteredSelected}
-                          onChange={toggleAllFiltered}
-                          className={CHECKBOX}
-                        />
+                      <th className={`${STICKY_TH} w-[120px]`}>
+                        <label className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-[11px] font-semibold text-gray-600">
+                          <input
+                            type="checkbox"
+                            checked={allFilteredSelected}
+                            onChange={toggleAllFiltered}
+                            className={CHECKBOX}
+                          />
+                          เลือกทั้งหมด
+                        </label>
                       </th>
                     )}
                     {TABLE_HEADERS.map((h) => (
                       <th
                         key={h}
-                        className="whitespace-nowrap px-3.5 py-2.5 text-left text-[11px] font-semibold text-gray-500"
+                        className={`${STICKY_TH} whitespace-nowrap text-left text-[11px] font-semibold text-gray-500`}
                       >
                         {h}
                       </th>
@@ -572,12 +604,20 @@ export default function Certifications() {
                       <tr
                         key={w.employeeId}
                         data-worker-row={w.employeeId}
-                        className={`border-b border-gray-100 ${rowBg(w)}`}
+                        onClick={(e) =>
+                          canRequestTraining &&
+                          !isInteractive(e) &&
+                          toggleEmployee(w.employeeId)
+                        }
+                        className={`border-b border-gray-100 ${rowBg(w)} ${
+                          canRequestTraining ? "cursor-pointer hover:bg-gray-50" : ""
+                        }`}
                       >
                         {canRequestTraining && (
-                          <td className="px-3.5 py-3">
+                          <td className="px-3.5 py-3 text-center">
                             <input
                               type="checkbox"
+                              aria-label={`เลือก ${nameEN(w)}`}
                               checked={selectedEmployeeIds.includes(
                                 w.employeeId,
                               )}

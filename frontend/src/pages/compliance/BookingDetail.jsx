@@ -12,7 +12,9 @@ import DecisionModal, { fmtRange, toYMD } from "./BookingDecisionModal";
 // ผู้ขอได้รับแจ้งเตือนทุกครั้งที่ HR ตัดสิน · ไม่เหลือคนรอ → คำขอปิดอัตโนมัติ
 // ══════════════════════════════════════════════════════════
 
-const TH = "whitespace-nowrap bg-gray-50 px-3 py-2 text-left text-[11px] font-semibold text-gray-500";
+// หัวตารางตรึงไว้ตอนเลื่อน (ตารางเลื่อนในกรอบ max-h ของตัวเอง)
+const TH =
+  "sticky top-0 z-[1] whitespace-nowrap bg-gray-50 px-3 py-2 text-left text-[11px] font-semibold text-gray-500 shadow-[inset_0_-1px_0_#e5e7eb]";
 const TD = "px-3 py-2.5 align-top text-[13px]";
 const BTN =
   "inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded-md border px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50";
@@ -28,6 +30,9 @@ const REASON = {
   due_soon: "⏰ ใกล้หมดอายุ",
   manual: "📝 ขอเอง",
 };
+
+// คลิกที่แถวเพื่อติ๊ก — ยกเว้นคลิกโดนลิงก์ / ปุ่ม / checkbox เอง
+const isInteractive = (e) => !!e.target.closest("a,button,input,select,label");
 
 const fmtDateTime = (d) =>
   new Date(d).toLocaleString("th-TH", {
@@ -183,16 +188,27 @@ export default function BookingDetail({ type = "training" }) {
 
       {/* ════════ แถบเลือก ════════ */}
       <div className="flex flex-wrap items-center justify-between gap-2 py-2.5">
-        <label className="flex cursor-pointer items-center gap-2 text-[13px] text-gray-700">
-          <input
-            type="checkbox"
-            checked={allPendingSelected}
-            onChange={toggleAll}
-            disabled={!hasItemIds || pendingRows.length === 0}
-            className="h-[15px] w-[15px]"
-          />
-          เลือกทุกคนที่รอ HR ({pendingRows.length})
-        </label>
+        <span className="text-[13px] text-gray-600">
+          {selectedRows.length > 0 ? (
+            <>
+              เลือกไว้ <strong className="text-gray-900">{selectedRows.length}</strong> คน
+              <button
+                type="button"
+                onClick={() => setSelected([])}
+                className="ml-2 cursor-pointer border-none bg-transparent p-0 text-xs text-gray-500 underline hover:text-gray-800"
+              >
+                ล้างที่เลือก
+              </button>
+            </>
+          ) : pendingRows.length > 0 ? (
+            <>
+              ติ๊ก ☐ หน้าชื่อ (หรือคลิกที่แถว) เพื่อยืนยัน / ปฏิเสธหลายคนพร้อมกัน —
+              เลือกได้เฉพาะคนที่ <b>⏳ รอ HR</b>
+            </>
+          ) : (
+            "ทุกคนในคำขอนี้ HR ตัดสินแล้ว"
+          )}
+        </span>
         <div className="flex flex-wrap gap-1.5">
           <button
             type="button"
@@ -214,16 +230,32 @@ export default function BookingDetail({ type = "training" }) {
       </div>
 
       {/* ════════ ตารางรายคน ════════ */}
-      <div className="overflow-x-auto border-t border-gray-200">
+      <div className="max-h-[calc(100vh-300px)] min-h-[240px] overflow-auto border-t border-gray-200">
         <table className="w-full min-w-[760px] border-collapse">
           <thead>
-            <tr className="border-b border-gray-200">
-              <th className={`${TH} w-9`} />
+            <tr>
+              <th className={`${TH} w-[120px]`}>
+                <label
+                  className={`flex items-center gap-1.5 ${
+                    hasItemIds && pendingRows.length > 0 ? "cursor-pointer" : "cursor-not-allowed opacity-50"
+                  }`}
+                  title="เลือกทุกคนที่รอ HR"
+                >
+                  <input
+                    type="checkbox"
+                    checked={allPendingSelected}
+                    onChange={toggleAll}
+                    disabled={!hasItemIds || pendingRows.length === 0}
+                    className="h-[15px] w-[15px] cursor-pointer"
+                  />
+                  ทั้งหมดที่รอ ({pendingRows.length})
+                </label>
+              </th>
               <th className={TH}>พนักงาน</th>
               <th className={TH}>{isTraining ? "หลักสูตร" : "การตรวจ"}</th>
               <th className={TH}>ผลจาก HR</th>
               <th className={`${TH} text-center`}>สถานะ</th>
-              <th className={`${TH} w-[150px] text-right`} />
+              <th className={`${TH} w-[150px] text-right`}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -233,16 +265,26 @@ export default function BookingDetail({ type = "training" }) {
               return (
                 <tr
                   key={r.itemId || i}
-                  className={`border-b border-gray-100 ${selected.includes(r.itemId) ? "bg-[#f0f7ff]" : ""}`}
+                  onClick={(e) =>
+                    st === "pending" && hasItemIds && !isInteractive(e) && toggle(r.itemId)
+                  }
+                  className={`border-b border-gray-100 ${selected.includes(r.itemId) ? "bg-[#f0f7ff]" : ""} ${
+                    st === "pending" && hasItemIds ? "cursor-pointer hover:bg-gray-50" : ""
+                  }`}
                 >
-                  <td className={TD}>
-                    {st === "pending" && hasItemIds && (
+                  <td className={`${TD} text-center`}>
+                    {st === "pending" && hasItemIds ? (
                       <input
                         type="checkbox"
+                        aria-label={`เลือก ${r.fullName}`}
                         checked={selected.includes(r.itemId)}
                         onChange={() => toggle(r.itemId)}
                         className="h-[15px] w-[15px] cursor-pointer"
                       />
+                    ) : (
+                      <span className="text-gray-300" title="ตัดสินแล้ว — แก้ไขได้ที่ Actions">
+                        —
+                      </span>
                     )}
                   </td>
                   <td className={TD}>

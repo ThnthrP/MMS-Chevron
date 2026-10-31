@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useContext, useCallback, useRef } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
@@ -127,8 +127,11 @@ const downloadCsv = (filename, rows) => {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
 
+// หัวตารางตรึงไว้ตอนเลื่อน (ตารางเลื่อนในกรอบ max-h ของตัวเอง)
 const TH =
-  "whitespace-nowrap bg-gray-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500";
+  "sticky top-0 z-[1] whitespace-nowrap bg-gray-50 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500 shadow-[inset_0_-1px_0_#e5e7eb]";
+// คลิกที่แถวเพื่อติ๊ก — ยกเว้นคลิกโดนลิงก์ / ปุ่ม / checkbox เอง
+const isInteractive = (e) => !!e.target.closest("a,button,input,select,label");
 const TD = "px-3 py-3 align-top text-[13px]";
 const FILTER_LABEL = "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
 const FIELD_BASE =
@@ -175,6 +178,11 @@ function BookingsPage({ requestType }) {
   const [decision, setDecision] = useState(null); // { rows, decision }
   const [saving, setSaving] = useState(false);
   const [lastViewed, setLastViewed] = useState(() => readLastViewed());
+
+  // ความสูงกรอบตาราง = พื้นที่ที่เหลือของจอ (วัดจริง) → เห็นแถบเลขหน้าโดยไม่ต้องเลื่อนทั้งหน้า
+  //   หน้า Training มีแท็บด้านบน / filter ขึ้นบรรทัดใหม่ตามความกว้างจอ — ค่าคงที่ใช้ไม่ได้
+  const tableBoxRef = useRef(null);
+  const [tableMaxH, setTableMaxH] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -258,6 +266,20 @@ function BookingsPage({ requestType }) {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const paged = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = tableBoxRef.current;
+      if (!el || el.offsetParent === null) return; // ซ่อนอยู่ (มือถือ)
+      const top = el.getBoundingClientRect().top;
+      // เผื่อแถบเลขหน้า (~56px) + ระยะขอบล่างของ layout
+      const reserve = totalPages > 1 ? 88 : 32;
+      setTableMaxH(Math.max(300, Math.floor(window.innerHeight - top - reserve)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [totalPages, loading, hasFilter, isTraining]);
 
   // ── เลือกหลายคน (เฉพาะคนที่รอ HR ในผลการกรอง) ──
   const pendingInView = filtered.filter((r) => r.status === "pending");
@@ -474,7 +496,13 @@ function BookingsPage({ requestType }) {
         className="h-[15px] w-[15px] cursor-pointer"
         aria-label={`เลือก ${r.fullName}`}
       />
-    ) : null;
+    ) : (
+      <span className="text-gray-300" title="ตัดสินแล้ว — แก้ไขได้ที่ Actions">
+        —
+      </span>
+    );
+  // คลิกที่แถว (คนที่รอ HR) = ติ๊ก
+  const rowClick = (r) => (e) => r.status === "pending" && !isInteractive(e) && toggle(r.itemId);
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
@@ -646,7 +674,8 @@ function BookingsPage({ requestType }) {
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <label className="mr-1 flex cursor-pointer items-center gap-2 text-[13px] text-gray-700">
+          {/* มือถือไม่มีหัวตาราง — ใช้ checkbox นี้แทน */}
+          <label className="mr-1 flex cursor-pointer items-center gap-2 text-[13px] text-gray-700 lg:hidden">
             <input
               type="checkbox"
               checked={allSelected}
@@ -656,6 +685,24 @@ function BookingsPage({ requestType }) {
             />
             เลือกทุกคนที่รอ HR ({pendingInView.length})
           </label>
+          <span className="mr-1 hidden text-xs text-gray-600 lg:inline">
+            {selectedRows.length > 0 ? (
+              <>
+                เลือกไว้ <strong className="text-gray-900">{selectedRows.length}</strong> คน
+                <button
+                  type="button"
+                  onClick={() => setSelected([])}
+                  className="ml-1.5 cursor-pointer border-none bg-transparent p-0 text-xs text-gray-500 underline hover:text-gray-800"
+                >
+                  ล้าง
+                </button>
+              </>
+            ) : pendingInView.length > 0 ? (
+              <>
+                ติ๊ก ☐ หน้าชื่อ (หรือคลิกที่แถว) เพื่อยืนยัน / ปฏิเสธหลายคน — เฉพาะ <b>⏳ รอ HR</b>
+              </>
+            ) : null}
+          </span>
           <button
             type="button"
             disabled={selectedRows.length === 0}
@@ -684,7 +731,11 @@ function BookingsPage({ requestType }) {
           ) : (
             <div className="divide-y divide-gray-200">
               {paged.map((r) => (
-                <div key={r.itemId} className={`flex gap-2.5 py-3 text-[13px] ${rowBg(r)}`}>
+                <div
+                  key={r.itemId}
+                  onClick={rowClick(r)}
+                  className={`flex gap-2.5 py-3 text-[13px] ${rowBg(r)} ${r.status === "pending" ? "cursor-pointer" : ""}`}
+                >
                   <div className="w-[15px] shrink-0 pt-0.5">{checkbox(r)}</div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
@@ -710,11 +761,32 @@ function BookingsPage({ requestType }) {
         </div>
 
         {/* ── lg+: ตาราง ── */}
-        <div className="hidden overflow-x-auto lg:block">
+        {/* ตารางเลื่อนในกรอบตัวเอง → หัวคอลัมน์ตรึงไว้ด้านบนตอนเลื่อน */}
+        <div
+          ref={tableBoxRef}
+          style={tableMaxH ? { maxHeight: tableMaxH } : undefined}
+          className="hidden max-h-[calc(100vh-330px)] min-h-[300px] overflow-auto lg:block"
+        >
           <table className="w-full border-collapse">
             <thead>
-              <tr className="border-b border-gray-200">
-                <th className={`${TH} w-9`} />
+              <tr>
+                <th className={`${TH} w-[130px] normal-case tracking-normal`}>
+                  <label
+                    className={`flex items-center gap-1.5 ${
+                      pendingInView.length > 0 ? "cursor-pointer" : "cursor-not-allowed opacity-50"
+                    }`}
+                    title="เลือกทุกคนที่รอ HR ตาม filter (ทุกหน้า)"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      disabled={pendingInView.length === 0}
+                      className="h-[15px] w-[15px] cursor-pointer"
+                    />
+                    ทั้งหมดที่รอ ({pendingInView.length})
+                  </label>
+                </th>
                 <th className={TH}>Worker</th>
                 <th className={TH}>{isTraining ? "Course" : "Check Type"}</th>
                 <th className={TH}>วันที่ / สถานที่</th>
@@ -733,8 +805,12 @@ function BookingsPage({ requestType }) {
                 </tr>
               ) : (
                 paged.map((r) => (
-                  <tr key={r.itemId} className={rowBg(r)}>
-                    <td className={TD}>{checkbox(r)}</td>
+                  <tr
+                    key={r.itemId}
+                    onClick={rowClick(r)}
+                    className={`${rowBg(r)} ${r.status === "pending" ? "cursor-pointer" : ""}`}
+                  >
+                    <td className={`${TD} text-center`}>{checkbox(r)}</td>
                     <td className={`${TD} min-w-[190px]`}>{workerCell(r)}</td>
                     <td className={`${TD} min-w-[180px] max-w-[300px]`}>{subjectCell(r)}</td>
                     <td className={TD}>{whenCell(r)}</td>
